@@ -1,0 +1,93 @@
+# 웹 프레임워크
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# 데이터 검증 및 설정
+pydantic==2.11.7
+pydantic-settings==2.10.1
+python-dotenv==1.0.0
+
+# 데이터베이스 관련
+sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+pgvector==0.4.1
+alembic==1.16.5
+
+# HTTP 클라이언트
+requests==2.31.0
+httpx==0.28.1
+
+# 인증 및 보안
+python-jose[cryptography]==3.3.0
+PyJWT==2.8.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+email-validator==2.3.0
+
+# AWS SDK
+boto3==1.39.10
+botocore==1.39.10
+
+# Azure SDK
+# azure-ai-formrecognizer==3.3.0  # Deprecated - FIGURES 미지원
+azure-ai-documentintelligence==1.0.0  # GA (2024-11-30) - FIGURES 지원
+azure-identity==1.15.0
+azure-storage-blob==12.23.1
+
+# Upstage Document Parse API (Azure DI 대안)
+upstage==0.1  # Document Parse, Layout Analysis - REST API 직접 호출 방식
+
+# LLM 및 AI 프레임워크 (최신 호환 버전)
+openai==1.97.1
+langchain==0.3.26
+langchain-openai==0.3.28
+langchain-aws==0.2.29
+langchain-community==0.3.27
+langgraph==0.2.70
+
+# 비동기 및 파일 처리
+aiofiles==24.1.0
+psutil==5.9.8
+
+# Redis (실시간 채팅 및 캐싱)
+redis[hiredis]==5.0.1
+aioredis==2.0.1
+
+# Celery (비동기 백그라운드 작업)
+celery==5.3.4
+flower==2.0.1  # Celery 모니터링 (선택)
+
+# 로깅
+loguru==0.7.3
+
+# 한국어 NLP
+konlpy==0.6.0
+JPype1==1.4.1
+kss==6.0.3  # Korean Sentence Splitter
+
+# 영어 NLP (다국어 검색 지원)
+nltk==3.8.1  # 경량 영어 NLP 라이브러리
+pyspellchecker==0.7.2  # 간단한 영어 오탈자 교정
+
+# 문서 처리 라이브러리 (MS Office + HWP)
+python-docx>=0.8.11
+openpyxl>=3.1.0
+python-pptx>=0.6.21
+olefile>=0.46
+PyPDF2>=3.0.0
+pdfplumber>=0.11,<0.12
+pdfminer.six==20231228
+unoconv>=0.9.0  # LibreOffice headless 변환
+pytesseract>=0.3.10  # OCR 엔진
+Pillow>=10.0.0  # 이미지 처리 (OCR용)
+ImageHash>=4.3.1  # 이미지 퍼셉추얼 해시 (유사 이미지 검색용)
+
+# HWP 파일 처리 (대안)
+lxml>=4.9.0  # HWPX XML 파싱
+zipfile-deflate64>=0.2.0  # 대용량 ZIP 파일 지원
+
+# 테스트
+pytest==7.4.3
+pytest-asyncio==0.21.1

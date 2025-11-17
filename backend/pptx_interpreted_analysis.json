@@ -1,0 +1,1444 @@
+{
+  "presentationTitle": "스마트 인슐린 펌프 제품소개서",
+  "extractionMethod": "2-stage hybrid approach (extraction + interpretation)",
+  "totalPages": 9,
+  "slideSize": {
+    "width": "720pt",
+    "height": "540pt"
+  },
+  "slides": [
+    {
+      "pageNumber": 1,
+      "layout": "내용 슬라이드 (5개 요소)",
+      "originalLayout": "제목 슬라이드",
+      "elements": [
+        {
+          "type": "title",
+          "originalType": "TEXT_BOX",
+          "content": "스마트 인슐린 펌프",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 24.24488188976378,
+            "top": 104.74212598425197
+          },
+          "size": {
+            "width": 674.4489763779527,
+            "height": 55.73905511811024
+          },
+          "style": {
+            "fontSize": "40pt",
+            "fontFamily": "Noto Sans KR Black"
+          }
+        },
+        {
+          "type": "textbox",
+          "originalType": "TEXT_BOX",
+          "content": "차세대 연속혈당측정 연동                              자동 인슐린 주입 시스템",
+          "position": "middle-right",
+          "rawPosition": {
+            "left": 360.12503937007875,
+            "top": 184.71771653543308
+          },
+          "size": {
+            "width": 338.5688188976378,
+            "height": 68.86102362204724
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "line",
+          "originalType": "LINE",
+          "content": null,
+          "position": "center",
+          "rawPosition": {
+            "left": 390.3725984251968,
+            "top": 331.2320472440945
+          },
+          "size": {
+            "width": 47.25,
+            "height": 0.0
+          },
+          "style": {}
+        },
+        {
+          "type": "shape",
+          "originalType": "GROUP",
+          "content": null,
+          "position": "bottom-right",
+          "rawPosition": {
+            "left": 387.65708661417324,
+            "top": 394.5975590551181
+          },
+          "size": {
+            "width": 241.56251968503938,
+            "height": 50.25
+          },
+          "style": {}
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "Company or Team Name",
+          "position": "top-left",
+          "rawPosition": {
+            "left": 12.646692913385827,
+            "top": 10.80976377952756
+          },
+          "size": {
+            "width": 150.10346456692915,
+            "height": 36.3515748031496
+          },
+          "style": {
+            "fontSize": "12pt",
+            "fontFamily": "나눔스퀘어"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "Logo",
+          "position": "top-right",
+          "rawPosition": {
+            "left": 660.75,
+            "top": 10.80976377952756
+          },
+          "size": {
+            "width": 45.02133858267717,
+            "height": 21.810944881889764
+          },
+          "style": {
+            "fontSize": "12pt",
+            "fontFamily": "나눔스퀘어"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "2025년 8월 21 일",
+          "position": "middle-right",
+          "rawPosition": {
+            "left": 565.7581889763779,
+            "top": 360.4043307086614
+          },
+          "size": {
+            "width": 132.93566929133857,
+            "height": 26.65779527559055
+          },
+          "style": {
+            "fontSize": "16pt",
+            "fontFamily": "Noto Sans KR"
+          }
+        }
+      ]
+    },
+    {
+      "pageNumber": 2,
+      "layout": "목차",
+      "originalLayout": "목차",
+      "elements": [
+        {
+          "type": "title",
+          "originalType": "TEXT_BOX",
+          "content": "목  차",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 144.33,
+            "top": 35.68795275590551
+          },
+          "size": {
+            "width": 291.87346456692916,
+            "height": 55.73905511811024
+          },
+          "style": {
+            "fontSize": "40pt",
+            "fontFamily": "Noto Sans KR Black"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "center",
+          "rawPosition": {
+            "left": 222.57826771653544,
+            "top": 159.75094488188975
+          },
+          "size": {
+            "width": 37.33944881889764,
+            "height": 37.33944881889764
+          },
+          "style": {}
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "01",
+          "position": "center",
+          "rawPosition": {
+            "left": 224.78417322834645,
+            "top": 166.94055118110236
+          },
+          "size": {
+            "width": 31.706614173228346,
+            "height": 24.234409448818898
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontStyle": "italic",
+            "fontFamily": "나눔스퀘어 Bold"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "제품 개요",
+          "position": "center",
+          "rawPosition": {
+            "left": 263.85716535433073,
+            "top": 163.87992125984252
+          },
+          "size": {
+            "width": 216.63267716535432,
+            "height": 29.081259842519685
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR Black"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "center",
+          "rawPosition": {
+            "left": 222.57826771653544,
+            "top": 220.24472440944882
+          },
+          "size": {
+            "width": 37.33944881889764,
+            "height": 37.33944881889764
+          },
+          "style": {}
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "02",
+          "position": "center",
+          "rawPosition": {
+            "left": 223.50984251968504,
+            "top": 227.4343307086614
+          },
+          "size": {
+            "width": 30.19196850393701,
+            "height": 24.234409448818898
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontStyle": "italic",
+            "fontFamily": "나눔스퀘어 Bold"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "주요 기능",
+          "position": "center",
+          "rawPosition": {
+            "left": 263.85716535433073,
+            "top": 224.3737007874016
+          },
+          "size": {
+            "width": 216.63267716535432,
+            "height": 29.081259842519685
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR Black"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "center",
+          "rawPosition": {
+            "left": 222.57826771653544,
+            "top": 280.73850393700786
+          },
+          "size": {
+            "width": 37.33944881889764,
+            "height": 37.33944881889764
+          },
+          "style": {}
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "03",
+          "position": "center",
+          "rawPosition": {
+            "left": 223.50984251968504,
+            "top": 287.92818897637795
+          },
+          "size": {
+            "width": 30.19196850393701,
+            "height": 24.234409448818898
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontStyle": "italic",
+            "fontFamily": "나눔스퀘어 Bold"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "기술 사양",
+          "position": "center",
+          "rawPosition": {
+            "left": 263.85716535433073,
+            "top": 284.86748031496063
+          },
+          "size": {
+            "width": 216.63267716535432,
+            "height": 29.081259842519685
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR Black"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "혁신적인 제품 서비스 ",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 227.4592125984252,
+            "top": 111.37740157480314
+          },
+          "size": {
+            "width": 125.61488188976378,
+            "height": 21.810944881889764
+          },
+          "style": {
+            "fontSize": "12pt",
+            "fontFamily": "Noto Sans KR Medium"
+          }
+        },
+        {
+          "type": "line",
+          "originalType": "LINE",
+          "content": null,
+          "position": "top-center",
+          "rawPosition": {
+            "left": 266.6417322834646,
+            "top": 99.1071653543307
+          },
+          "size": {
+            "width": 47.25,
+            "height": 0.0
+          },
+          "style": {}
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "center",
+          "rawPosition": {
+            "left": 222.6407874015748,
+            "top": 341.23228346456693
+          },
+          "size": {
+            "width": 37.33944881889764,
+            "height": 37.33944881889764
+          },
+          "style": {}
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "04",
+          "position": "center",
+          "rawPosition": {
+            "left": 224.84669291338582,
+            "top": 348.4218897637795
+          },
+          "size": {
+            "width": 31.706614173228346,
+            "height": 24.234409448818898
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontStyle": "italic",
+            "fontFamily": "나눔스퀘어 Bold"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "연결성 및 호환성",
+          "position": "center",
+          "rawPosition": {
+            "left": 263.91968503937005,
+            "top": 345.3612598425197
+          },
+          "size": {
+            "width": 216.63267716535432,
+            "height": 29.081259842519685
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR Black"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "bottom-center",
+          "rawPosition": {
+            "left": 222.6407874015748,
+            "top": 401.726062992126
+          },
+          "size": {
+            "width": 37.33944881889764,
+            "height": 37.33944881889764
+          },
+          "style": {}
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "05",
+          "position": "bottom-center",
+          "rawPosition": {
+            "left": 223.5723622047244,
+            "top": 408.9156692913386
+          },
+          "size": {
+            "width": 30.19196850393701,
+            "height": 24.234409448818898
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontStyle": "italic",
+            "fontFamily": "나눔스퀘어 Bold"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "안전성 및 위험 관리",
+          "position": "bottom-center",
+          "rawPosition": {
+            "left": 263.91968503937005,
+            "top": 405.8550393700787
+          },
+          "size": {
+            "width": 216.63267716535432,
+            "height": 29.081259842519685
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR Black"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "bottom-center",
+          "rawPosition": {
+            "left": 222.6407874015748,
+            "top": 462.219842519685
+          },
+          "size": {
+            "width": 37.33944881889764,
+            "height": 37.33944881889764
+          },
+          "style": {}
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "06",
+          "position": "bottom-center",
+          "rawPosition": {
+            "left": 223.5723622047244,
+            "top": 469.4095275590551
+          },
+          "size": {
+            "width": 30.19196850393701,
+            "height": 24.234409448818898
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontStyle": "italic",
+            "fontFamily": "나눔스퀘어 Bold"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "규제 준수",
+          "position": "bottom-center",
+          "rawPosition": {
+            "left": 263.91968503937005,
+            "top": 466.3488188976378
+          },
+          "size": {
+            "width": 216.63267716535432,
+            "height": 29.081259842519685
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR Black"
+          }
+        }
+      ]
+    },
+    {
+      "pageNumber": 3,
+      "layout": "내용 슬라이드 (7개 요소)",
+      "originalLayout": "내용01",
+      "elements": [
+        {
+          "type": "title",
+          "originalType": "TEXT_BOX",
+          "content": "제품 개요",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 26.41740157480315,
+            "top": 13.65708661417323
+          },
+          "size": {
+            "width": 560.6030708661417,
+            "height": 36.3515748031496
+          },
+          "style": {
+            "fontSize": "24pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "Company or Team Name",
+          "position": "bottom-left",
+          "rawPosition": {
+            "left": 12.646692913385827,
+            "top": 507.4527559055118
+          },
+          "size": {
+            "width": 150.10346456692915,
+            "height": 36.3515748031496
+          },
+          "style": {
+            "fontSize": "12pt",
+            "fontFamily": "나눔스퀘어"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "Logo",
+          "position": "bottom-right",
+          "rawPosition": {
+            "left": 660.75,
+            "top": 507.4527559055118
+          },
+          "size": {
+            "width": 45.02133858267717,
+            "height": 21.810944881889764
+          },
+          "style": {
+            "fontSize": "12pt",
+            "fontFamily": "나눔스퀘어"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": " 연속혈당측정기(CGM)와 연동하여 주입량을 자동으로 보정하는 휴대형 당뇨 관리 기기",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 23.13015748031496,
+            "top": 98.03574803149607
+          },
+          "size": {
+            "width": 647.7903149606299,
+            "height": 73.7007874015748
+          },
+          "style": {
+            "fontSize": "16pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "top-left",
+          "rawPosition": {
+            "left": 24.959370078740157,
+            "top": 100.08354330708661
+          },
+          "size": {
+            "width": 5.897716535433071,
+            "height": 68.03149606299213
+          },
+          "style": {}
+        },
+        {
+          "type": "paragraph",
+          "originalType": "TEXT_BOX",
+          "content": "본 제품은 사용자의 혈당 정보를 실시간으로 모니터링하고, 이를 바탕으로 최적의 인슐린 주입량을 자동으로 조절합니다.\n\n\n\n\n첨단 알고리즘과 안전한 하드웨어 설계를 통해 당뇨 환자의 혈당 관리를 혁신적으로 개선합니다.",
+          "position": "middle-right",
+          "rawPosition": {
+            "left": 360.12496062992125,
+            "top": 188.08173228346456
+          },
+          "size": {
+            "width": 325.3443307086614,
+            "height": 225.3796850393701
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": "제품 이미지",
+          "position": "middle-left",
+          "rawPosition": {
+            "left": 24.959370078740157,
+            "top": 188.08173228346456
+          },
+          "size": {
+            "width": 328.4283464566929,
+            "height": 307.83669291338583
+          },
+          "style": {}
+        },
+        {
+          "type": "heading",
+          "originalType": "PICTURE",
+          "content": "Image: image.png",
+          "position": "middle-left",
+          "rawPosition": {
+            "left": 26.803779527559055,
+            "top": 190.25314960629922
+          },
+          "size": {
+            "width": 325.34425196850395,
+            "height": 303.46125984251967
+          },
+          "style": {}
+        }
+      ]
+    },
+    {
+      "pageNumber": 4,
+      "layout": "내용 슬라이드 (9개 요소)",
+      "originalLayout": "내용01",
+      "elements": [
+        {
+          "type": "title",
+          "originalType": "TEXT_BOX",
+          "content": "주요 기능",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 26.41740157480315,
+            "top": 13.65708661417323
+          },
+          "size": {
+            "width": 560.6030708661417,
+            "height": 36.3515748031496
+          },
+          "style": {
+            "fontSize": "24pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "Company or Team Name",
+          "position": "bottom-left",
+          "rawPosition": {
+            "left": 12.646692913385827,
+            "top": 507.4527559055118
+          },
+          "size": {
+            "width": 150.10346456692915,
+            "height": 36.3515748031496
+          },
+          "style": {
+            "fontSize": "12pt",
+            "fontFamily": "나눔스퀘어"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "TEXT_BOX",
+          "content": "Logo",
+          "position": "bottom-right",
+          "rawPosition": {
+            "left": 660.75,
+            "top": 507.4527559055118
+          },
+          "size": {
+            "width": 45.02133858267717,
+            "height": 21.810944881889764
+          },
+          "style": {
+            "fontSize": "12pt",
+            "fontFamily": "나눔스퀘어"
+          }
+        },
+        {
+          "type": "paragraph",
+          "originalType": "AUTO_SHAPE",
+          "content": "01\n자동 베이설 조절\nCGM 추세 기반 알고리즘으로 목표 혈당 범위(TIR) 유지\n",
+          "position": "middle-left",
+          "rawPosition": {
+            "left": 23.13015748031496,
+            "top": 191.92
+          },
+          "size": {
+            "width": 319.2372440944882,
+            "height": 100.30102362204724
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "paragraph",
+          "originalType": "AUTO_SHAPE",
+          "content": "02\n볼루스 추천\n인슐린 감수성 요인(ISF) 및 탄수화물비(CR) 기반 권장 주입량 계산\n",
+          "position": "middle-right",
+          "rawPosition": {
+            "left": 355.14700787401574,
+            "top": 191.92
+          },
+          "size": {
+            "width": 319.2371653543307,
+            "height": 100.30102362204724
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "paragraph",
+          "originalType": "AUTO_SHAPE",
+          "content": "03\n모바일 앱 연동\n블루투스 5.3 기반 iOS/Android 앱지원, 오프라인 모드 제공",
+          "position": "middle-left",
+          "rawPosition": {
+            "left": 23.13015748031496,
+            "top": 302.18346456692916
+          },
+          "size": {
+            "width": 319.2372440944882,
+            "height": 100.30102362204724
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "paragraph",
+          "originalType": "AUTO_SHAPE",
+          "content": "04\n알림 및 경보\n진동, 음향, 푸시 알림을 통한 사용자 알림 기능",
+          "position": "middle-right",
+          "rawPosition": {
+            "left": 355.14700787401574,
+            "top": 302.18346456692916
+          },
+          "size": {
+            "width": 319.2371653543307,
+            "height": 100.30102362204724
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "paragraph",
+          "originalType": "AUTO_SHAPE",
+          "content": "05\n보안 및 안전성\n서명 검증, AES-256 암호화, TLS 1.3 프로토콜, 롤백 부트로더 지원",
+          "position": "bottom-center",
+          "rawPosition": {
+            "left": 23.13007874015748,
+            "top": 412.4470866141732
+          },
+          "size": {
+            "width": 651.2540157480315,
+            "height": 84.2059842519685
+          },
+          "style": {
+            "fontSize": "14pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": "  5가지 핵심 기능으로 완성된 스마트 당뇨 관리 솔루션",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 23.13015748031496,
+            "top": 98.03574803149607
+          },
+          "size": {
+            "width": 647.7903149606299,
+            "height": 73.7007874015748
+          },
+          "style": {
+            "fontSize": "16pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "top-left",
+          "rawPosition": {
+            "left": 24.959370078740157,
+            "top": 100.08354330708661
+          },
+          "size": {
+            "width": 5.897716535433071,
+            "height": 68.03149606299213
+          },
+          "style": {}
+        }
+      ]
+    },
+    {
+      "pageNumber": 5,
+      "layout": "내용01",
+      "originalLayout": "내용01",
+      "elements": [
+        {
+          "type": "title",
+          "originalType": "TEXT_BOX",
+          "content": "기술 사양",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 26.41740157480315,
+            "top": 13.65708661417323
+          },
+          "size": {
+            "width": 560.6030708661417,
+            "height": 36.3515748031496
+          },
+          "style": {
+            "fontSize": "24pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": " 컴팩트한 설계와 강력한 성능을 동시에 구현",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 23.13015748031496,
+            "top": 98.03574803149607
+          },
+          "size": {
+            "width": 647.7903149606299,
+            "height": 73.7007874015748
+          },
+          "style": {
+            "fontSize": "16pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "top-left",
+          "rawPosition": {
+            "left": 24.959370078740157,
+            "top": 100.08354330708661
+          },
+          "size": {
+            "width": 5.897716535433071,
+            "height": 68.03149606299213
+          },
+          "style": {}
+        },
+        {
+          "type": "table",
+          "originalType": "TABLE",
+          "content": null,
+          "position": "center",
+          "rawPosition": {
+            "left": 23.13007874015748,
+            "top": 192.48984251968503
+          },
+          "size": {
+            "width": 647.7902362204725,
+            "height": 308.9870078740158
+          },
+          "style": {}
+        }
+      ]
+    },
+    {
+      "pageNumber": 6,
+      "layout": "내용 슬라이드 (12개 요소)",
+      "originalLayout": "내용01",
+      "elements": [
+        {
+          "type": "title",
+          "originalType": "TEXT_BOX",
+          "content": "연결성 및 호환성",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 26.41740157480315,
+            "top": 13.65708661417323
+          },
+          "size": {
+            "width": 560.6030708661417,
+            "height": 36.3515748031496
+          },
+          "style": {
+            "fontSize": "24pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": " 의료 표준 프로토콜 지원으로 기존 시스템과의 완벽한 통합",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 23.13015748031496,
+            "top": 98.03574803149607
+          },
+          "size": {
+            "width": 647.7903149606299,
+            "height": 73.7007874015748
+          },
+          "style": {
+            "fontSize": "16pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "top-left",
+          "rawPosition": {
+            "left": 24.959370078740157,
+            "top": 100.08354330708661
+          },
+          "size": {
+            "width": 5.897716535433071,
+            "height": 68.03149606299213
+          },
+          "style": {}
+        },
+        {
+          "type": "paragraph",
+          "originalType": "AUTO_SHAPE",
+          "content": "지원 표준\nFHIR 변환 지원\nIEEE 11073 SDC 일부 프로파일 가정\n전자의무기록(EMR) 시스템 연동 가능",
+          "position": "bottom-left",
+          "rawPosition": {
+            "left": 33.75267716535433,
+            "top": 311.47023622047243
+          },
+          "size": {
+            "width": 360.0,
+            "height": 134.29385826771653
+          },
+          "style": {
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "title",
+          "originalType": "AUTO_SHAPE",
+          "content": "📱",
+          "position": "middle-left",
+          "rawPosition": {
+            "left": 99.99511811023622,
+            "top": 192.15338582677165
+          },
+          "size": {
+            "width": 62.36220472440945,
+            "height": 62.36220472440945
+          },
+          "style": {
+            "fontSize": "24pt",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "title",
+          "originalType": "AUTO_SHAPE",
+          "content": "→",
+          "position": "center",
+          "rawPosition": {
+            "left": 211.896062992126,
+            "top": 197.0387401574803
+          },
+          "size": {
+            "width": 50.892204724409446,
+            "height": 50.892204724409446
+          },
+          "style": {
+            "fontSize": "36pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": "모바일 앱",
+          "position": "middle-left",
+          "rawPosition": {
+            "left": 81.71456692913385,
+            "top": 268.4522834645669
+          },
+          "size": {
+            "width": 85.22425196850394,
+            "height": 29.081259842519685
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": "FHIR 변환",
+          "position": "center",
+          "rawPosition": {
+            "left": 301.06826771653544,
+            "top": 268.4522834645669
+          },
+          "size": {
+            "width": 91.91385826771653,
+            "height": 29.081259842519685
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": "EMR 시스템",
+          "position": "middle-right",
+          "rawPosition": {
+            "left": 503.0663779527559,
+            "top": 268.4522834645669
+          },
+          "size": {
+            "width": 105.54574803149606,
+            "height": 29.081259842519685
+          },
+          "style": {
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "title",
+          "originalType": "AUTO_SHAPE",
+          "content": "→",
+          "position": "center",
+          "rawPosition": {
+            "left": 424.2275590551181,
+            "top": 197.0387401574803
+          },
+          "size": {
+            "width": 50.892204724409446,
+            "height": 50.892204724409446
+          },
+          "style": {
+            "fontSize": "36pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "title",
+          "originalType": "AUTO_SHAPE",
+          "content": "🔄",
+          "position": "center",
+          "rawPosition": {
+            "left": 312.32669291338584,
+            "top": 192.15338582677165
+          },
+          "size": {
+            "width": 62.36220472440945,
+            "height": 62.36220472440945
+          },
+          "style": {
+            "fontSize": "24pt",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "PICTURE",
+          "content": "Image: image.png",
+          "position": "bottom-right",
+          "rawPosition": {
+            "left": 413.9646456692913,
+            "top": 311.47031496062993
+          },
+          "size": {
+            "width": 235.5048031496063,
+            "height": 157.0032283464567
+          },
+          "style": {}
+        },
+        {
+          "type": "title",
+          "originalType": "AUTO_SHAPE",
+          "content": "🏥",
+          "position": "middle-right",
+          "rawPosition": {
+            "left": 524.6582677165354,
+            "top": 192.15338582677165
+          },
+          "size": {
+            "width": 62.36220472440945,
+            "height": 62.36220472440945
+          },
+          "style": {
+            "fontSize": "24pt",
+            "fontFamily": "Noto Sans KR"
+          }
+        }
+      ]
+    },
+    {
+      "pageNumber": 7,
+      "layout": "내용 슬라이드 (5개 요소)",
+      "originalLayout": "내용01",
+      "elements": [
+        {
+          "type": "title",
+          "originalType": "TEXT_BOX",
+          "content": "안전성 및 위험 관리",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 26.41740157480315,
+            "top": 13.65708661417323
+          },
+          "size": {
+            "width": 560.6030708661417,
+            "height": 36.3515748031496
+          },
+          "style": {
+            "fontSize": "24pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": " 다중 안전 장치로 환자의 안전을 최우선으로 보장",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 23.13015748031496,
+            "top": 98.03574803149607
+          },
+          "size": {
+            "width": 647.7903149606299,
+            "height": 73.7007874015748
+          },
+          "style": {
+            "fontSize": "16pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "top-left",
+          "rawPosition": {
+            "left": 24.959370078740157,
+            "top": 100.08354330708661
+          },
+          "size": {
+            "width": 5.897716535433071,
+            "height": 68.03149606299213
+          },
+          "style": {}
+        },
+        {
+          "type": "paragraph",
+          "originalType": "AUTO_SHAPE",
+          "content": "🛡️\n과다 주입 방지\n\n이중 확인 기능으로 안전한 주입량 보장",
+          "position": "middle-left",
+          "rawPosition": {
+            "left": 27.78803149606299,
+            "top": 223.8944094488189
+          },
+          "size": {
+            "width": 198.49779527559056,
+            "height": 195.61582677165353
+          },
+          "style": {
+            "fontSize": "20pt",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "paragraph",
+          "originalType": "AUTO_SHAPE",
+          "content": "🔍\n막힘 감지\n\n카테터 막힘 감지 및 교체 가이드 제공",
+          "position": "center",
+          "rawPosition": {
+            "left": 243.67614173228347,
+            "top": 223.8944094488189
+          },
+          "size": {
+            "width": 198.49779527559056,
+            "height": 195.61582677165353
+          },
+          "style": {
+            "fontSize": "20pt",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "paragraph",
+          "originalType": "AUTO_SHAPE",
+          "content": "📊\n위험 분석\n\nRPN(위험우선순위수) 56이하 달성",
+          "position": "middle-right",
+          "rawPosition": {
+            "left": 459.5641732283465,
+            "top": 223.8944094488189
+          },
+          "size": {
+            "width": 198.49779527559056,
+            "height": 195.61582677165353
+          },
+          "style": {
+            "fontSize": "20pt",
+            "fontFamily": "Noto Sans KR"
+          }
+        }
+      ]
+    },
+    {
+      "pageNumber": 8,
+      "layout": "내용 슬라이드 (6개 요소)",
+      "originalLayout": "내용01",
+      "elements": [
+        {
+          "type": "title",
+          "originalType": "TEXT_BOX",
+          "content": "규제 준수",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 26.41740157480315,
+            "top": 13.65708661417323
+          },
+          "size": {
+            "width": 560.6030708661417,
+            "height": 36.3515748031496
+          },
+          "style": {
+            "fontSize": "24pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": " 국제 의료기기 표준을 모두 충족하는 글로벌 인증 제품",
+          "position": "top-center",
+          "rawPosition": {
+            "left": 23.13015748031496,
+            "top": 98.03574803149607
+          },
+          "size": {
+            "width": 647.7903149606299,
+            "height": 73.7007874015748
+          },
+          "style": {
+            "fontSize": "16pt",
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "shape",
+          "originalType": "AUTO_SHAPE",
+          "content": null,
+          "position": "top-left",
+          "rawPosition": {
+            "left": 24.959370078740157,
+            "top": 100.08354330708661
+          },
+          "size": {
+            "width": 5.897716535433071,
+            "height": 68.03149606299213
+          },
+          "style": {}
+        },
+        {
+          "type": "heading",
+          "originalType": "AUTO_SHAPE",
+          "content": "글로벌 시장 진출을 위한 모든 규제 요구사항을 완벽하게 충족합니다",
+          "position": "bottom-center",
+          "rawPosition": {
+            "left": 44.33133858267716,
+            "top": 427.42362204724407
+          },
+          "size": {
+            "width": 605.387716535433,
+            "height": 29.081259842519685
+          },
+          "style": {}
+        },
+        {
+          "type": "textbox",
+          "originalType": "AUTO_SHAPE",
+          "content": "ISO 13485\n의료기기 품질관리시스템",
+          "position": "middle-left",
+          "rawPosition": {
+            "left": 27.78803149606299,
+            "top": 223.89448818897637
+          },
+          "size": {
+            "width": 198.49779527559056,
+            "height": 139.77905511811025
+          },
+          "style": {
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "textbox",
+          "originalType": "AUTO_SHAPE",
+          "content": "21 CFR Part 820\n미국 FDA 규정",
+          "position": "center",
+          "rawPosition": {
+            "left": 243.67614173228347,
+            "top": 223.89448818897637
+          },
+          "size": {
+            "width": 198.49779527559056,
+            "height": 139.77905511811025
+          },
+          "style": {
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        },
+        {
+          "type": "textbox",
+          "originalType": "AUTO_SHAPE",
+          "content": "EU MDR 2017/745\n유럽 의료기기 규정",
+          "position": "middle-right",
+          "rawPosition": {
+            "left": 459.5641732283465,
+            "top": 223.89448818897637
+          },
+          "size": {
+            "width": 198.49779527559056,
+            "height": 139.77905511811025
+          },
+          "style": {
+            "fontWeight": "bold",
+            "fontFamily": "Noto Sans KR"
+          }
+        }
+      ]
+    },
+    {
+      "pageNumber": 9,
+      "layout": "내용02",
+      "originalLayout": "내용02",
+      "elements": [
+        {
+          "type": "title",
+          "originalType": "TEXT_BOX",
+          "content": "THANK YOU\nFOR WATCHING",
+          "position": "center",
+          "rawPosition": {
+            "left": 214.12590551181103,
+            "top": 157.12023622047244
+          },
+          "size": {
+            "width": 291.87346456692916,
+            "height": 92.09062992125985
+          },
+          "style": {
+            "fontSize": "35pt",
+            "fontFamily": "나눔스퀘어 ExtraBold"
+          }
+        },
+        {
+          "type": "line",
+          "originalType": "LINE",
+          "content": null,
+          "position": "center",
+          "rawPosition": {
+            "left": 336.1634645669291,
+            "top": 261.4341732283465
+          },
+          "size": {
+            "width": 47.798267716535435,
+            "height": 0.0
+          },
+          "style": {}
+        },
+        {
+          "type": "shape",
+          "originalType": "GROUP",
+          "content": null,
+          "position": "center",
+          "rawPosition": {
+            "left": 239.28133858267717,
+            "top": 332.62984251968504
+          },
+          "size": {
+            "width": 241.56251968503938,
+            "height": 50.25
+          },
+          "style": {}
+        }
+      ]
+    }
+  ]
+}

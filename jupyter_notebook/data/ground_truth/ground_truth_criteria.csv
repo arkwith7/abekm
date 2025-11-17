@@ -1,0 +1,131 @@
+﻿question,category,api_type,expected_has_reference,expected_reference_file,expected_answer_type,keywords,difficulty,test_purpose
+17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx 파일이 있나요?,document_existence,general,True,17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx,확인,"데이터, 분석, 기반",easy,문서 존재 확인
+PPTX 파일 중에 데이터 내용이 있나요?,document_existence,general,True,17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx,확인,"데이터, 분석, 기반",easy,문서 존재 확인
+업로드된 문서 중에 데이터 관련 자료가 있나요?,document_existence,general,True,17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx,확인,"데이터, 분석, 기반",easy,문서 존재 확인
+데이터에 대해 알려주세요,content_inquiry,general,True,17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx,설명,"데이터, 분석, 기반",medium,내용 검색 및 설명
+데이터 관련 정보를 찾아주세요,content_inquiry,general,True,17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx,설명,"데이터, 분석, 기반",medium,내용 검색 및 설명
+데이터의 특징이나 내용을 설명해주세요,content_inquiry,general,True,17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx,설명,"데이터, 분석, 기반",medium,내용 검색 및 설명
+데이터 PPT 만들어주세요,ppt_generation,ppt,True,17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx,PPT 생성,"데이터, 분석, 기반",hard,PPT 생성 기능
+데이터 발표자료 생성해주세요,ppt_generation,ppt,True,17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx,PPT 생성,"데이터, 분석, 기반",hard,PPT 생성 기능
+데이터 프레젠테이션 만들어주세요,ppt_generation,ppt,True,17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx,PPT 생성,"데이터, 분석, 기반",hard,PPT 생성 기능
+bc013ed9f7574691a01e2d327c3ea830_20250814_171208.docx 파일이 있나요?,document_existence,general,True,bc013ed9f7574691a01e2d327c3ea830_20250814_171208.docx,확인,"시험, 가정, cgm",easy,문서 존재 확인
+DOCX 파일 중에 시험 내용이 있나요?,document_existence,general,True,bc013ed9f7574691a01e2d327c3ea830_20250814_171208.docx,확인,"시험, 가정, cgm",easy,문서 존재 확인
+업로드된 문서 중에 시험 관련 자료가 있나요?,document_existence,general,True,bc013ed9f7574691a01e2d327c3ea830_20250814_171208.docx,확인,"시험, 가정, cgm",easy,문서 존재 확인
+시험에 대해 알려주세요,content_inquiry,general,True,bc013ed9f7574691a01e2d327c3ea830_20250814_171208.docx,설명,"시험, 가정, cgm",medium,내용 검색 및 설명
+시험 관련 정보를 찾아주세요,content_inquiry,general,True,bc013ed9f7574691a01e2d327c3ea830_20250814_171208.docx,설명,"시험, 가정, cgm",medium,내용 검색 및 설명
+시험의 특징이나 내용을 설명해주세요,content_inquiry,general,True,bc013ed9f7574691a01e2d327c3ea830_20250814_171208.docx,설명,"시험, 가정, cgm",medium,내용 검색 및 설명
+a1fd95b6d240479aa1cf053b8031444f_20250821_175103.pptx 파일이 있나요?,document_existence,general,True,a1fd95b6d240479aa1cf053b8031444f_20250821_175103.pptx,확인,"제품, 인슐린, 관리",easy,문서 존재 확인
+PPTX 파일 중에 제품 내용이 있나요?,document_existence,general,True,a1fd95b6d240479aa1cf053b8031444f_20250821_175103.pptx,확인,"제품, 인슐린, 관리",easy,문서 존재 확인
+업로드된 문서 중에 제품 관련 자료가 있나요?,document_existence,general,True,a1fd95b6d240479aa1cf053b8031444f_20250821_175103.pptx,확인,"제품, 인슐린, 관리",easy,문서 존재 확인
+제품에 대해 알려주세요,content_inquiry,general,True,a1fd95b6d240479aa1cf053b8031444f_20250821_175103.pptx,설명,"제품, 인슐린, 관리",medium,내용 검색 및 설명
+제품 관련 정보를 찾아주세요,content_inquiry,general,True,a1fd95b6d240479aa1cf053b8031444f_20250821_175103.pptx,설명,"제품, 인슐린, 관리",medium,내용 검색 및 설명
+제품의 특징이나 내용을 설명해주세요,content_inquiry,general,True,a1fd95b6d240479aa1cf053b8031444f_20250821_175103.pptx,설명,"제품, 인슐린, 관리",medium,내용 검색 및 설명
+제품 PPT 만들어주세요,ppt_generation,ppt,True,a1fd95b6d240479aa1cf053b8031444f_20250821_175103.pptx,PPT 생성,"제품, 인슐린, 관리",hard,PPT 생성 기능
+제품 발표자료 생성해주세요,ppt_generation,ppt,True,a1fd95b6d240479aa1cf053b8031444f_20250821_175103.pptx,PPT 생성,"제품, 인슐린, 관리",hard,PPT 생성 기능
+제품 프레젠테이션 만들어주세요,ppt_generation,ppt,True,a1fd95b6d240479aa1cf053b8031444f_20250821_175103.pptx,PPT 생성,"제품, 인슐린, 관리",hard,PPT 생성 기능
+b624ac3ac89246a88c2a426928f954cd_20250814_171209.docx 파일이 있나요?,document_existence,general,True,b624ac3ac89246a88c2a426928f954cd_20250814_171209.docx,확인,"설계, 검증, 계획",easy,문서 존재 확인
+DOCX 파일 중에 설계 내용이 있나요?,document_existence,general,True,b624ac3ac89246a88c2a426928f954cd_20250814_171209.docx,확인,"설계, 검증, 계획",easy,문서 존재 확인
+업로드된 문서 중에 설계 관련 자료가 있나요?,document_existence,general,True,b624ac3ac89246a88c2a426928f954cd_20250814_171209.docx,확인,"설계, 검증, 계획",easy,문서 존재 확인
+설계에 대해 알려주세요,content_inquiry,general,True,b624ac3ac89246a88c2a426928f954cd_20250814_171209.docx,설명,"설계, 검증, 계획",medium,내용 검색 및 설명
+설계 관련 정보를 찾아주세요,content_inquiry,general,True,b624ac3ac89246a88c2a426928f954cd_20250814_171209.docx,설명,"설계, 검증, 계획",medium,내용 검색 및 설명
+설계의 특징이나 내용을 설명해주세요,content_inquiry,general,True,b624ac3ac89246a88c2a426928f954cd_20250814_171209.docx,설명,"설계, 검증, 계획",medium,내용 검색 및 설명
+9b428859b681438b9fb95a6358d50f87_20250814_171210.docx 파일이 있나요?,document_existence,general,True,9b428859b681438b9fb95a6358d50f87_20250814_171210.docx,확인,"가정, 부록, 사용자",easy,문서 존재 확인
+DOCX 파일 중에 가정 내용이 있나요?,document_existence,general,True,9b428859b681438b9fb95a6358d50f87_20250814_171210.docx,확인,"가정, 부록, 사용자",easy,문서 존재 확인
+업로드된 문서 중에 가정 관련 자료가 있나요?,document_existence,general,True,9b428859b681438b9fb95a6358d50f87_20250814_171210.docx,확인,"가정, 부록, 사용자",easy,문서 존재 확인
+가정에 대해 알려주세요,content_inquiry,general,True,9b428859b681438b9fb95a6358d50f87_20250814_171210.docx,설명,"가정, 부록, 사용자",medium,내용 검색 및 설명
+가정 관련 정보를 찾아주세요,content_inquiry,general,True,9b428859b681438b9fb95a6358d50f87_20250814_171210.docx,설명,"가정, 부록, 사용자",medium,내용 검색 및 설명
+가정의 특징이나 내용을 설명해주세요,content_inquiry,general,True,9b428859b681438b9fb95a6358d50f87_20250814_171210.docx,설명,"가정, 부록, 사용자",medium,내용 검색 및 설명
+c52c407d4156413996d24e170af8559b_20250814_171209.docx 파일이 있나요?,document_existence,general,True,c52c407d4156413996d24e170af8559b_20250814_171209.docx,확인,"릴리즈, 규제, 예시",easy,문서 존재 확인
+DOCX 파일 중에 릴리즈 내용이 있나요?,document_existence,general,True,c52c407d4156413996d24e170af8559b_20250814_171209.docx,확인,"릴리즈, 규제, 예시",easy,문서 존재 확인
+업로드된 문서 중에 릴리즈 관련 자료가 있나요?,document_existence,general,True,c52c407d4156413996d24e170af8559b_20250814_171209.docx,확인,"릴리즈, 규제, 예시",easy,문서 존재 확인
+릴리즈에 대해 알려주세요,content_inquiry,general,True,c52c407d4156413996d24e170af8559b_20250814_171209.docx,설명,"릴리즈, 규제, 예시",medium,내용 검색 및 설명
+릴리즈 관련 정보를 찾아주세요,content_inquiry,general,True,c52c407d4156413996d24e170af8559b_20250814_171209.docx,설명,"릴리즈, 규제, 예시",medium,내용 검색 및 설명
+릴리즈의 특징이나 내용을 설명해주세요,content_inquiry,general,True,c52c407d4156413996d24e170af8559b_20250814_171209.docx,설명,"릴리즈, 규제, 예시",medium,내용 검색 및 설명
+929a34e3a92545dc8950ce92c5eba021_20250908_165335.pdf 파일이 있나요?,document_existence,general,True,929a34e3a92545dc8950ce92c5eba021_20250908_165335.pdf,확인,,easy,문서 존재 확인
+PDF 파일 중에 관련 내용이 있나요?,document_existence,general,True,929a34e3a92545dc8950ce92c5eba021_20250908_165335.pdf,확인,,easy,문서 존재 확인
+업로드된 문서 중에 특정 관련 자료가 있나요?,document_existence,general,True,929a34e3a92545dc8950ce92c5eba021_20250908_165335.pdf,확인,,easy,문서 존재 확인
+91108485628a41c885b097e42171f4d6_20250814_171207.docx 파일이 있나요?,document_existence,general,True,91108485628a41c885b097e42171f4d6_20250814_171207.docx,확인,"위험, 잔여, 설계",easy,문서 존재 확인
+DOCX 파일 중에 위험 내용이 있나요?,document_existence,general,True,91108485628a41c885b097e42171f4d6_20250814_171207.docx,확인,"위험, 잔여, 설계",easy,문서 존재 확인
+업로드된 문서 중에 위험 관련 자료가 있나요?,document_existence,general,True,91108485628a41c885b097e42171f4d6_20250814_171207.docx,확인,"위험, 잔여, 설계",easy,문서 존재 확인
+위험에 대해 알려주세요,content_inquiry,general,True,91108485628a41c885b097e42171f4d6_20250814_171207.docx,설명,"위험, 잔여, 설계",medium,내용 검색 및 설명
+위험 관련 정보를 찾아주세요,content_inquiry,general,True,91108485628a41c885b097e42171f4d6_20250814_171207.docx,설명,"위험, 잔여, 설계",medium,내용 검색 및 설명
+위험의 특징이나 내용을 설명해주세요,content_inquiry,general,True,91108485628a41c885b097e42171f4d6_20250814_171207.docx,설명,"위험, 잔여, 설계",medium,내용 검색 및 설명
+35d67255476b49aaa822bf6acf5472c1_20250814_171207.docx 파일이 있나요?,document_existence,general,True,35d67255476b49aaa822bf6acf5472c1_20250814_171207.docx,확인,"규제, 전략, 목차",easy,문서 존재 확인
+DOCX 파일 중에 규제 내용이 있나요?,document_existence,general,True,35d67255476b49aaa822bf6acf5472c1_20250814_171207.docx,확인,"규제, 전략, 목차",easy,문서 존재 확인
+업로드된 문서 중에 규제 관련 자료가 있나요?,document_existence,general,True,35d67255476b49aaa822bf6acf5472c1_20250814_171207.docx,확인,"규제, 전략, 목차",easy,문서 존재 확인
+규제에 대해 알려주세요,content_inquiry,general,True,35d67255476b49aaa822bf6acf5472c1_20250814_171207.docx,설명,"규제, 전략, 목차",medium,내용 검색 및 설명
+규제 관련 정보를 찾아주세요,content_inquiry,general,True,35d67255476b49aaa822bf6acf5472c1_20250814_171207.docx,설명,"규제, 전략, 목차",medium,내용 검색 및 설명
+규제의 특징이나 내용을 설명해주세요,content_inquiry,general,True,35d67255476b49aaa822bf6acf5472c1_20250814_171207.docx,설명,"규제, 전략, 목차",medium,내용 검색 및 설명
+11176121f1cc4d329b29699c325d6815_20250814_171208.docx 파일이 있나요?,document_existence,general,True,11176121f1cc4d329b29699c325d6815_20250814_171208.docx,확인,"이벤트, 요약, cgm",easy,문서 존재 확인
+DOCX 파일 중에 이벤트 내용이 있나요?,document_existence,general,True,11176121f1cc4d329b29699c325d6815_20250814_171208.docx,확인,"이벤트, 요약, cgm",easy,문서 존재 확인
+업로드된 문서 중에 이벤트 관련 자료가 있나요?,document_existence,general,True,11176121f1cc4d329b29699c325d6815_20250814_171208.docx,확인,"이벤트, 요약, cgm",easy,문서 존재 확인
+이벤트에 대해 알려주세요,content_inquiry,general,True,11176121f1cc4d329b29699c325d6815_20250814_171208.docx,설명,"이벤트, 요약, cgm",medium,내용 검색 및 설명
+이벤트 관련 정보를 찾아주세요,content_inquiry,general,True,11176121f1cc4d329b29699c325d6815_20250814_171208.docx,설명,"이벤트, 요약, cgm",medium,내용 검색 및 설명
+이벤트의 특징이나 내용을 설명해주세요,content_inquiry,general,True,11176121f1cc4d329b29699c325d6815_20250814_171208.docx,설명,"이벤트, 요약, cgm",medium,내용 검색 및 설명
+6956672296cf4dd2a7dbb5f37ab44d5a_20250814_171208.docx 파일이 있나요?,document_existence,general,True,6956672296cf4dd2a7dbb5f37ab44d5a_20250814_171208.docx,확인,"에셋, 사진, 부록",easy,문서 존재 확인
+DOCX 파일 중에 에셋 내용이 있나요?,document_existence,general,True,6956672296cf4dd2a7dbb5f37ab44d5a_20250814_171208.docx,확인,"에셋, 사진, 부록",easy,문서 존재 확인
+업로드된 문서 중에 에셋 관련 자료가 있나요?,document_existence,general,True,6956672296cf4dd2a7dbb5f37ab44d5a_20250814_171208.docx,확인,"에셋, 사진, 부록",easy,문서 존재 확인
+에셋에 대해 알려주세요,content_inquiry,general,True,6956672296cf4dd2a7dbb5f37ab44d5a_20250814_171208.docx,설명,"에셋, 사진, 부록",medium,내용 검색 및 설명
+에셋 관련 정보를 찾아주세요,content_inquiry,general,True,6956672296cf4dd2a7dbb5f37ab44d5a_20250814_171208.docx,설명,"에셋, 사진, 부록",medium,내용 검색 및 설명
+에셋의 특징이나 내용을 설명해주세요,content_inquiry,general,True,6956672296cf4dd2a7dbb5f37ab44d5a_20250814_171208.docx,설명,"에셋, 사진, 부록",medium,내용 검색 및 설명
+13d36bbda3384e659b86551e575727ed_20250814_171209.docx 파일이 있나요?,document_existence,general,True,13d36bbda3384e659b86551e575727ed_20250814_171209.docx,확인,"릴리즈, 제품, 계획",easy,문서 존재 확인
+DOCX 파일 중에 릴리즈 내용이 있나요?,document_existence,general,True,13d36bbda3384e659b86551e575727ed_20250814_171209.docx,확인,"릴리즈, 제품, 계획",easy,문서 존재 확인
+업로드된 문서 중에 릴리즈 관련 자료가 있나요?,document_existence,general,True,13d36bbda3384e659b86551e575727ed_20250814_171209.docx,확인,"릴리즈, 제품, 계획",easy,문서 존재 확인
+릴리즈에 대해 알려주세요,content_inquiry,general,True,13d36bbda3384e659b86551e575727ed_20250814_171209.docx,설명,"릴리즈, 제품, 계획",medium,내용 검색 및 설명
+릴리즈 관련 정보를 찾아주세요,content_inquiry,general,True,13d36bbda3384e659b86551e575727ed_20250814_171209.docx,설명,"릴리즈, 제품, 계획",medium,내용 검색 및 설명
+릴리즈의 특징이나 내용을 설명해주세요,content_inquiry,general,True,13d36bbda3384e659b86551e575727ed_20250814_171209.docx,설명,"릴리즈, 제품, 계획",medium,내용 검색 및 설명
+a4694d4f5da9432ca11f08f4253bf8b0_20250814_171209.docx 파일이 있나요?,document_existence,general,True,a4694d4f5da9432ca11f08f4253bf8b0_20250814_171209.docx,확인,"릴리즈, 제품, 계획",easy,문서 존재 확인
+DOCX 파일 중에 릴리즈 내용이 있나요?,document_existence,general,True,a4694d4f5da9432ca11f08f4253bf8b0_20250814_171209.docx,확인,"릴리즈, 제품, 계획",easy,문서 존재 확인
+업로드된 문서 중에 릴리즈 관련 자료가 있나요?,document_existence,general,True,a4694d4f5da9432ca11f08f4253bf8b0_20250814_171209.docx,확인,"릴리즈, 제품, 계획",easy,문서 존재 확인
+릴리즈에 대해 알려주세요,content_inquiry,general,True,a4694d4f5da9432ca11f08f4253bf8b0_20250814_171209.docx,설명,"릴리즈, 제품, 계획",medium,내용 검색 및 설명
+릴리즈 관련 정보를 찾아주세요,content_inquiry,general,True,a4694d4f5da9432ca11f08f4253bf8b0_20250814_171209.docx,설명,"릴리즈, 제품, 계획",medium,내용 검색 및 설명
+릴리즈의 특징이나 내용을 설명해주세요,content_inquiry,general,True,a4694d4f5da9432ca11f08f4253bf8b0_20250814_171209.docx,설명,"릴리즈, 제품, 계획",medium,내용 검색 및 설명
+6c8ce576bb1249519850d2a0df68f59f_20250814_151909.pptx 파일이 있나요?,document_existence,general,True,6c8ce576bb1249519850d2a0df68f59f_20250814_151909.pptx,확인,"시스템, 관리, 대한",easy,문서 존재 확인
+PPTX 파일 중에 시스템 내용이 있나요?,document_existence,general,True,6c8ce576bb1249519850d2a0df68f59f_20250814_151909.pptx,확인,"시스템, 관리, 대한",easy,문서 존재 확인
+업로드된 문서 중에 시스템 관련 자료가 있나요?,document_existence,general,True,6c8ce576bb1249519850d2a0df68f59f_20250814_151909.pptx,확인,"시스템, 관리, 대한",easy,문서 존재 확인
+시스템에 대해 알려주세요,content_inquiry,general,True,6c8ce576bb1249519850d2a0df68f59f_20250814_151909.pptx,설명,"시스템, 관리, 대한",medium,내용 검색 및 설명
+시스템 관련 정보를 찾아주세요,content_inquiry,general,True,6c8ce576bb1249519850d2a0df68f59f_20250814_151909.pptx,설명,"시스템, 관리, 대한",medium,내용 검색 및 설명
+시스템의 특징이나 내용을 설명해주세요,content_inquiry,general,True,6c8ce576bb1249519850d2a0df68f59f_20250814_151909.pptx,설명,"시스템, 관리, 대한",medium,내용 검색 및 설명
+시스템 PPT 만들어주세요,ppt_generation,ppt,True,6c8ce576bb1249519850d2a0df68f59f_20250814_151909.pptx,PPT 생성,"시스템, 관리, 대한",hard,PPT 생성 기능
+시스템 발표자료 생성해주세요,ppt_generation,ppt,True,6c8ce576bb1249519850d2a0df68f59f_20250814_151909.pptx,PPT 생성,"시스템, 관리, 대한",hard,PPT 생성 기능
+시스템 프레젠테이션 만들어주세요,ppt_generation,ppt,True,6c8ce576bb1249519850d2a0df68f59f_20250814_151909.pptx,PPT 생성,"시스템, 관리, 대한",hard,PPT 생성 기능
+c1fa519ca0624143aeda6dcc78838fa0_20250814_171208.docx 파일이 있나요?,document_existence,general,True,c1fa519ca0624143aeda6dcc78838fa0_20250814_171208.docx,확인,"가정, 그림, som",easy,문서 존재 확인
+DOCX 파일 중에 가정 내용이 있나요?,document_existence,general,True,c1fa519ca0624143aeda6dcc78838fa0_20250814_171208.docx,확인,"가정, 그림, som",easy,문서 존재 확인
+업로드된 문서 중에 가정 관련 자료가 있나요?,document_existence,general,True,c1fa519ca0624143aeda6dcc78838fa0_20250814_171208.docx,확인,"가정, 그림, som",easy,문서 존재 확인
+가정에 대해 알려주세요,content_inquiry,general,True,c1fa519ca0624143aeda6dcc78838fa0_20250814_171208.docx,설명,"가정, 그림, som",medium,내용 검색 및 설명
+가정 관련 정보를 찾아주세요,content_inquiry,general,True,c1fa519ca0624143aeda6dcc78838fa0_20250814_171208.docx,설명,"가정, 그림, som",medium,내용 검색 및 설명
+가정의 특징이나 내용을 설명해주세요,content_inquiry,general,True,c1fa519ca0624143aeda6dcc78838fa0_20250814_171208.docx,설명,"가정, 그림, som",medium,내용 검색 및 설명
+e3655e4d2f254f2180d0c5047d7b24d4_20250814_171208.docx 파일이 있나요?,document_existence,general,True,e3655e4d2f254f2180d0c5047d7b24d4_20250814_171208.docx,확인,"가정, 사례, 개입",easy,문서 존재 확인
+DOCX 파일 중에 가정 내용이 있나요?,document_existence,general,True,e3655e4d2f254f2180d0c5047d7b24d4_20250814_171208.docx,확인,"가정, 사례, 개입",easy,문서 존재 확인
+업로드된 문서 중에 가정 관련 자료가 있나요?,document_existence,general,True,e3655e4d2f254f2180d0c5047d7b24d4_20250814_171208.docx,확인,"가정, 사례, 개입",easy,문서 존재 확인
+가정에 대해 알려주세요,content_inquiry,general,True,e3655e4d2f254f2180d0c5047d7b24d4_20250814_171208.docx,설명,"가정, 사례, 개입",medium,내용 검색 및 설명
+가정 관련 정보를 찾아주세요,content_inquiry,general,True,e3655e4d2f254f2180d0c5047d7b24d4_20250814_171208.docx,설명,"가정, 사례, 개입",medium,내용 검색 및 설명
+가정의 특징이나 내용을 설명해주세요,content_inquiry,general,True,e3655e4d2f254f2180d0c5047d7b24d4_20250814_171208.docx,설명,"가정, 사례, 개입",medium,내용 검색 및 설명
+b38d782b72ff412c97d48e1ee53764b5_20250809_110606.pptx 파일이 있나요?,document_existence,general,True,b38d782b72ff412c97d48e1ee53764b5_20250809_110606.pptx,확인,"데이터, 분석, 모델",easy,문서 존재 확인
+PPTX 파일 중에 데이터 내용이 있나요?,document_existence,general,True,b38d782b72ff412c97d48e1ee53764b5_20250809_110606.pptx,확인,"데이터, 분석, 모델",easy,문서 존재 확인
+업로드된 문서 중에 데이터 관련 자료가 있나요?,document_existence,general,True,b38d782b72ff412c97d48e1ee53764b5_20250809_110606.pptx,확인,"데이터, 분석, 모델",easy,문서 존재 확인
+데이터에 대해 알려주세요,content_inquiry,general,True,b38d782b72ff412c97d48e1ee53764b5_20250809_110606.pptx,설명,"데이터, 분석, 모델",medium,내용 검색 및 설명
+데이터 관련 정보를 찾아주세요,content_inquiry,general,True,b38d782b72ff412c97d48e1ee53764b5_20250809_110606.pptx,설명,"데이터, 분석, 모델",medium,내용 검색 및 설명
+데이터의 특징이나 내용을 설명해주세요,content_inquiry,general,True,b38d782b72ff412c97d48e1ee53764b5_20250809_110606.pptx,설명,"데이터, 분석, 모델",medium,내용 검색 및 설명
+데이터 PPT 만들어주세요,ppt_generation,ppt,True,b38d782b72ff412c97d48e1ee53764b5_20250809_110606.pptx,PPT 생성,"데이터, 분석, 모델",hard,PPT 생성 기능
+데이터 발표자료 생성해주세요,ppt_generation,ppt,True,b38d782b72ff412c97d48e1ee53764b5_20250809_110606.pptx,PPT 생성,"데이터, 분석, 모델",hard,PPT 생성 기능
+데이터 프레젠테이션 만들어주세요,ppt_generation,ppt,True,b38d782b72ff412c97d48e1ee53764b5_20250809_110606.pptx,PPT 생성,"데이터, 분석, 모델",hard,PPT 생성 기능
+quick_presentation_스마트_인슐린_펌프_제품_소개자료_backup.pptx 파일이 있나요?,document_existence,general,True,quick_presentation_스마트_인슐린_펌프_제품_소개자료_backup.pptx,확인,"인슐린, 혈당, 기능",easy,문서 존재 확인
+PPTX 파일 중에 인슐린 내용이 있나요?,document_existence,general,True,quick_presentation_스마트_인슐린_펌프_제품_소개자료_backup.pptx,확인,"인슐린, 혈당, 기능",easy,문서 존재 확인
+업로드된 문서 중에 인슐린 관련 자료가 있나요?,document_existence,general,True,quick_presentation_스마트_인슐린_펌프_제품_소개자료_backup.pptx,확인,"인슐린, 혈당, 기능",easy,문서 존재 확인
+인슐린에 대해 알려주세요,content_inquiry,general,True,quick_presentation_스마트_인슐린_펌프_제품_소개자료_backup.pptx,설명,"인슐린, 혈당, 기능",medium,내용 검색 및 설명
+인슐린 관련 정보를 찾아주세요,content_inquiry,general,True,quick_presentation_스마트_인슐린_펌프_제품_소개자료_backup.pptx,설명,"인슐린, 혈당, 기능",medium,내용 검색 및 설명
+인슐린의 특징이나 내용을 설명해주세요,content_inquiry,general,True,quick_presentation_스마트_인슐린_펌프_제품_소개자료_backup.pptx,설명,"인슐린, 혈당, 기능",medium,내용 검색 및 설명
+인슐린 PPT 만들어주세요,ppt_generation,ppt,True,quick_presentation_스마트_인슐린_펌프_제품_소개자료_backup.pptx,PPT 생성,"인슐린, 혈당, 기능",hard,PPT 생성 기능
+인슐린 발표자료 생성해주세요,ppt_generation,ppt,True,quick_presentation_스마트_인슐린_펌프_제품_소개자료_backup.pptx,PPT 생성,"인슐린, 혈당, 기능",hard,PPT 생성 기능
+인슐린 프레젠테이션 만들어주세요,ppt_generation,ppt,True,quick_presentation_스마트_인슐린_펌프_제품_소개자료_backup.pptx,PPT 생성,"인슐린, 혈당, 기능",hard,PPT 생성 기능
+dbe6c8422af6464eb2c2d92e71f6e539_20250910_162933.pdf 파일이 있나요?,document_existence,general,True,dbe6c8422af6464eb2c2d92e71f6e539_20250910_162933.pdf,확인,"technology, technologies, adoption",easy,문서 존재 확인
+PDF 파일 중에 technology 내용이 있나요?,document_existence,general,True,dbe6c8422af6464eb2c2d92e71f6e539_20250910_162933.pdf,확인,"technology, technologies, adoption",easy,문서 존재 확인
+업로드된 문서 중에 technology 관련 자료가 있나요?,document_existence,general,True,dbe6c8422af6464eb2c2d92e71f6e539_20250910_162933.pdf,확인,"technology, technologies, adoption",easy,문서 존재 확인
+technology에 대해 알려주세요,content_inquiry,general,True,dbe6c8422af6464eb2c2d92e71f6e539_20250910_162933.pdf,설명,"technology, technologies, adoption",medium,내용 검색 및 설명
+technology 관련 정보를 찾아주세요,content_inquiry,general,True,dbe6c8422af6464eb2c2d92e71f6e539_20250910_162933.pdf,설명,"technology, technologies, adoption",medium,내용 검색 및 설명
+technology의 특징이나 내용을 설명해주세요,content_inquiry,general,True,dbe6c8422af6464eb2c2d92e71f6e539_20250910_162933.pdf,설명,"technology, technologies, adoption",medium,내용 검색 및 설명
+양자컴퓨터 기술에 대해 알려주세요,non_existent_content,general,False,없음,자료 없음 안내,존재하지 않는 내용,medium,부정확한 응답 방지
+블록체인 암호화폐 투자 전략을 설명해주세요,non_existent_content,general,False,없음,자료 없음 안내,존재하지 않는 내용,medium,부정확한 응답 방지
+우주항공 기술의 최신 동향은 어떤가요?,non_existent_content,general,False,없음,자료 없음 안내,존재하지 않는 내용,medium,부정확한 응답 방지
+심해 생물의 진화 과정을 설명해주세요,non_existent_content,general,False,없음,자료 없음 안내,존재하지 않는 내용,medium,부정확한 응답 방지

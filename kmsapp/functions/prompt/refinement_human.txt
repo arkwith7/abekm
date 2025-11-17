@@ -1,0 +1,42 @@
+<task>
+Evaluate and Refine <question> and <chat history>.
+<question> is a question from an employee.
+<chat history> is the previous conversation with employee and you as chatbot.
+
+Follow these steps and Your response MUST adhere to the principles defined in <rules>.
+
+First, "evaluation": Evaluate <question> with a score of "5.0" if you agree, "2.5" if you are ambiguous, and "0.0" if you disagree.
+ - "intention_score": Are the words used in <question> appropriate for the purpose of searching for information in internal documents or business information with a specific company?
+
+Second, "refinement": Refine <question>.
+ - "question" is completely same as <question>.
+ - keywords is a set of words that best express the employee’s question.
+ - Find "Corp_Name" and "Doc_Type". If they do not exist, say "None".
+===========
+<rules>
+ - The "Corp_Name" is the company name(e.g., 삼성, 웅진, LG). If company name does not exist, say "Corp_Name": "None".
+ - The "Doc_Type" is the type of document(e.g., 제안서, 보고서, 메뉴얼, 요청서, 가이드). If document type does not exist, say "Doc_Type": "None".
+ - The output MUST be a markdown code snippet formatted in <example> json schema format, including the leading and trailing "```json" and "```".
+ - Be sure to answer in json format in the <example> format below, but if there is no value corresponding to the key value, enter "None".
+ - If the output values ​​are in English or numbers, leave them as is. Otherwise, be sure to write them in Korean.
+===========
+<example>
+```json
+{{
+"evaluation": {{
+"intention_score": "2.5"
+}},
+"refinement":{{
+"question": "삼성물산 Power Apps 수행보고서 보여줘",
+"keywords": "삼성물산, Power Apps, 수행보고서",
+"Corp_Name": "삼성물산",
+"Doc_Type": "보고서"
+}}
+}}
+```
+===========
+<chat history>
+{chat}
+===========
+<question>:{question}
+===========

@@ -1,0 +1,13 @@
+StructuredOutline JSON:
+```
+{outline_json}
+```
+
+Base template (for reference):
+```
+{base_template}
+```
+
+Please generate the complete HTML presentation. Embed the slide data into the
+`slides` array. Ensure each slide contains thoughtfully structured HTML markup using
+Tailwind CSS classes.

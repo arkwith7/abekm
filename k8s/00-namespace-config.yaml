@@ -1,0 +1,41 @@
+# 네임스페이스
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wkms
+---
+# ConfigMap - 설정 정보
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wkms-config
+  namespace: wkms
+data:
+  DATABASE_URL: "postgresql+asyncpg://wkms:wkms123@wkms-postgres:5432/wkms"
+  REDIS_URL: "redis://wkms-redis:6379"
+  CORS_ORIGINS: '["http://localhost","http://127.0.0.1","http://wkms-frontend"]'
+  ENVIRONMENT: "production"
+  JWT_SECRET_KEY: "CHANGE_ME_SUPER_SECURE_JWT_SECRET_KEY"
+  SECRET_KEY: "CHANGE_ME_VERY_SECURE_SECRET_KEY"
+  LLM_PROVIDERS: '["bedrock", "azure_openai", "openai"]'
+  DEFAULT_LLM_PROVIDER: "bedrock"
+  DEFAULT_EMBEDDING_PROVIDER: "bedrock"
+  BEDROCK_LLM_MODEL_ID: "anthropic.claude-3-haiku-20240307-v1:0"
+  BEDROCK_EMBEDDING_MODEL_ID: "amazon.titan-embed-text-v2:0"
+  # 프론트엔드용 설정
+  REACT_APP_API_URL: "http://wkms-backend:8000"
+  REACT_APP_ENV: "production"
+  REACT_APP_BACKEND_SERVICE_NAME: "wkms-backend"
+  REACT_APP_BACKEND_PORT: "8000"
+---
+# Secret - 민감한 정보
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wkms-secrets
+  namespace: wkms
+type: Opaque
+data:
+  # Base64 인코딩된 값들
+  postgres-password: d2ttczEyMw==  # wkms123
+  pgadmin-password: YWRtaW4xMjM=   # admin123

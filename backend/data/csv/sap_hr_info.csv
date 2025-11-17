@@ -1,0 +1,11 @@
+emp_no,emp_nm,dept_cd,dept_nm,postn_cd,postn_nm,email,telno,mbtlno,entrps_de,rsgntn_de,emp_stats_cd,del_yn,created_by,created_date
+ADMIN001,김관리자,CEO000,CEO직속,CEO001,시스템관리자,admin@woongjin.co.kr,02-1234-5678,,20200101,,ACTIVE,N,SYSTEM,2025-09-30 13:00:00
+HR001,이인사,HR100,인사전략팀,MGR001,팀장,hr.manager@woongjin.co.kr,02-1234-5679,,20180301,,ACTIVE,N,SYSTEM,2025-09-30 13:00:00
+REC001,박채용,HR110,채용팀,MGR002,과장,recruit@woongjin.co.kr,02-1234-5680,,20190615,,ACTIVE,N,SYSTEM,2025-09-30 13:00:00
+TRN001,최교육,HR120,교육팀,MGR003,과장,training@woongjin.co.kr,02-1234-5681,,20190801,,ACTIVE,N,SYSTEM,2025-09-30 13:00:00
+PLN001,정기획,PLN100,기획팀,MGR004,팀장,planning@woongjin.co.kr,02-1234-5682,,20170901,,ACTIVE,N,SYSTEM,2025-09-30 13:00:00
+CLD001,김클라우드,CLD100,클라우드서비스팀,MGR005,팀장,cloud@woongjin.co.kr,02-1234-5683,,20190701,,ACTIVE,N,SYSTEM,2025-09-30 13:00:00
+MSS001,정MS,MSS100,MS서비스팀,MGR006,팀장,ms.service@woongjin.co.kr,02-1234-5684,,20200215,,ACTIVE,N,SYSTEM,2025-09-30 13:00:00
+77107791,홍길동,MSS100,MS서비스팀,MGR006,팀원,ms.staff@woongjin.co.kr,02-1234-5684,,20200215,,ACTIVE,N,SYSTEM,2025-09-30 13:00:00
+INF001,한인프라,INF100,인프라컨설팅팀,MGR007,팀장,infra@woongjin.co.kr,02-1234-5685,,20181101,,ACTIVE,N,SYSTEM,2025-09-30 13:00:00
+BIZ001,오비즈,BIZ100,Biz운영1팀,MGR008,팀장,biz.ops@woongjin.co.kr,02-1234-5686,,20190401,,ACTIVE,N,SYSTEM,2025-09-30 13:00:00

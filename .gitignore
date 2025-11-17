@@ -1,0 +1,185 @@
+# 바이트 컴파일된 / 최적화된 / DLL 파일
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.pyd
+
+# C 확장
+*.so
+
+# 배포
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# 단위 테스트 / 커버리지 리포트
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# 환경
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Python 타입 체커
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pytype/
+pyrightconfig.json
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# 로그
+*.log
+tmp/
+# 업로드된 파일
+uploads/
+temp/
+
+# 데이터베이스
+*.db
+*.sqlite
+
+# 의존성 디렉토리
+node_modules/
+
+# 프로덕션 빌드
+/build
+/dist
+
+# misc
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 로그
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TailwindCSS
+*.tsbuildinfo
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Alembic
+alembic/versions/*.py
+
+# 임시 파일
+*.tmp
+*.temp
+
+# VS Code 자동 생성 파일들
+*_clean.*
+*_backup.*
+*_temp.*
+*_old.*
+*_new.*
+Untitled-*
+untitled-*
+*.backup
+*.bak
+.vscode-upload.json
+
+# Python 관련 임시 파일
+*.orig
+*.rej
+*.swp
+*.tmp
+*.temp
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# 썸네일
+._*
+
+# 휴지통 폴더
+.Trashes
+
+# iCloud
+*.icloud
+
+# 환경변수 파일들
+.env.production
+.env.development
+*/.env.production
+*/.env.development
+deployment/docker/environments/.env.production
+deployment/docker/environments/.env.development
+
+
+# 자동 생성된 알렘빅 파일 패턴
+backend/alembic/versions/*_create_unified_*.py
+backend/alembic/versions/*_merge_unified_*.py
+backend/alembic/versions/*_modify_vs_*.py
+
+# 더미 데이터 파일
+jupyter_notebook/data/input_docs
+jupyter_notebook/data/output_texts
+jupyter_notebook/data/azure_di_output
+jupyter_notebook/data/opensource_output
+jupyter_notebook/data/textract_output
+jupyter_notebook/data/extracted_objects
+# Environment backup files
+*.env.backup*

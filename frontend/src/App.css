@@ -1,0 +1,20 @@
+/* TailwindCSS를 사용하므로 기본 스타일만 유지 */
+.App {
+  text-align: center;
+}
+
+/* 애니메이션 추가 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}

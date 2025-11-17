@@ -1,0 +1,77 @@
+# EKS 전용 설정
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wkms-config-eks
+  namespace: wkms
+data:
+  # EKS 최적화 설정
+  DATABASE_URL: "postgresql+asyncpg://wkms:wkms123@wkms-postgres:5432/wkms"
+  REDIS_URL: "redis://wkms-redis:6379"
+  CORS_ORIGINS: '["https://your-domain.com","https://api.your-domain.com"]'
+  ENVIRONMENT: "production"
+  JWT_SECRET_KEY: "CHANGE_ME_SUPER_SECURE_JWT_SECRET_KEY"
+  SECRET_KEY: "CHANGE_ME_VERY_SECURE_SECRET_KEY"
+  LLM_PROVIDERS: '["bedrock", "azure_openai", "openai"]'
+  DEFAULT_LLM_PROVIDER: "bedrock"
+  DEFAULT_EMBEDDING_PROVIDER: "bedrock"
+  BEDROCK_LLM_MODEL_ID: "anthropic.claude-3-haiku-20240307-v1:0"
+  BEDROCK_EMBEDDING_MODEL_ID: "amazon.titan-embed-text-v2:0"
+  # AWS 특화 설정
+  AWS_REGION: "us-west-2"  # 필요시 변경
+  # 프론트엔드용 설정 (EKS ALB 사용시)
+  REACT_APP_API_URL: "https://api.your-domain.com"
+  REACT_APP_ENV: "production"
+  REACT_APP_BACKEND_SERVICE_NAME: "wkms-backend"
+  REACT_APP_BACKEND_PORT: "8000"
+---
+# EKS 전용 스토리지 클래스 (gp3 사용)
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: wkms-gp3
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  iops: "3000"
+  throughput: "125"
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+# EKS ALB Ingress (선택사항)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wkms-ingress-alb
+  namespace: wkms
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:region:account:certificate/xxx
+spec:
+  ingressClassName: alb
+  rules:
+  - host: your-domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wkms-frontend
+            port:
+              number: 80
+  - host: api.your-domain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wkms-backend
+            port:
+              number: 8000

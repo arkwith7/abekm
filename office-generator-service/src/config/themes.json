@@ -1,0 +1,86 @@
+{
+  "corporate_blue": {
+    "primary": "0066CC",
+    "secondary": "6699FF",
+    "accent": "FF9900",
+    "text": "333333",
+    "background": "F8F9FA",
+    "chartColors": [
+      "0066CC",
+      "6699FF",
+      "FF9900",
+      "00B050",
+      "7030A0"
+    ]
+  },
+  "modern_green": {
+    "primary": "228B22",
+    "secondary": "90EE90",
+    "accent": "FFD700",
+    "text": "2F4F4F",
+    "background": "F8FFF8",
+    "chartColors": [
+      "228B22",
+      "3CB371",
+      "8FBC8F",
+      "FFD700",
+      "2E8B57"
+    ]
+  },
+  "professional_gray": {
+    "primary": "464646",
+    "secondary": "A9A9A9",
+    "accent": "DC143C",
+    "text": "000000",
+    "background": "F5F5F5",
+    "chartColors": [
+      "464646",
+      "787878",
+      "A9A9A9",
+      "DC143C",
+      "6495ED"
+    ]
+  },
+  "playful_violet": {
+    "primary": "6F2DA8",
+    "secondary": "B57EDC",
+    "accent": "FFB547",
+    "text": "3C3C3C",
+    "background": "FAF8FF",
+    "chartColors": [
+      "6F2DA8",
+      "B57EDC",
+      "FFB547",
+      "0099FF",
+      "FF69B4"
+    ]
+  },
+  "minimal": {
+    "primary": "000000",
+    "secondary": "666666",
+    "accent": "0088CC",
+    "text": "333333",
+    "background": "FFFFFF",
+    "chartColors": [
+      "000000",
+      "666666",
+      "999999",
+      "CCCCCC",
+      "0088CC"
+    ]
+  },
+  "business": {
+    "primary": "1F4788",
+    "secondary": "4472C4",
+    "accent": "ED7D31",
+    "text": "404040",
+    "background": "F2F2F2",
+    "chartColors": [
+      "1F4788",
+      "4472C4",
+      "70AD47",
+      "FFC000",
+      "5B9BD5"
+    ]
+  }
+}

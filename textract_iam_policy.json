@@ -1,0 +1,17 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "textract:DetectDocumentText",
+        "textract:AnalyzeDocument",
+        "textract:GetDocumentAnalysis",
+        "textract:GetDocumentTextDetection",
+        "textract:StartDocumentAnalysis",
+        "textract:StartDocumentTextDetection"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

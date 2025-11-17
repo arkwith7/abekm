@@ -1,0 +1,121 @@
+# 백엔드 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wkms-backend
+  namespace: wkms
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wkms-backend
+  template:
+    metadata:
+      labels:
+        app: wkms-backend
+    spec:
+      # 백엔드 보안 컨텍스트
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: backend
+        image: wkms-backend:latest
+        ports:
+        - containerPort: 8000
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: DATABASE_URL
+        - name: REDIS_URL
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: REDIS_URL
+        - name: CORS_ORIGINS
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: CORS_ORIGINS
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: ENVIRONMENT
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: JWT_SECRET_KEY
+        - name: SECRET_KEY
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: SECRET_KEY
+        - name: LLM_PROVIDERS
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: LLM_PROVIDERS
+        - name: DEFAULT_LLM_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: DEFAULT_LLM_PROVIDER
+        - name: DEFAULT_EMBEDDING_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: DEFAULT_EMBEDDING_PROVIDER
+        - name: BEDROCK_LLM_MODEL_ID
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: BEDROCK_LLM_MODEL_ID
+        - name: BEDROCK_EMBEDDING_MODEL_ID
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: BEDROCK_EMBEDDING_MODEL_ID
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+# 백엔드 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wkms-backend
+  namespace: wkms
+spec:
+  selector:
+    app: wkms-backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP

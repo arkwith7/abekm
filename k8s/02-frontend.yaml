@@ -1,0 +1,86 @@
+# 프론트엔드 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wkms-frontend
+  namespace: wkms
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: wkms-frontend
+  template:
+    metadata:
+      labels:
+        app: wkms-frontend
+    spec:
+      # 프론트엔드 보안 컨텍스트
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        fsGroup: 101
+      containers:
+      - name: frontend
+        image: wkms-frontend:latest
+        ports:
+        - containerPort: 80
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 101
+        env:
+        - name: REACT_APP_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: REACT_APP_API_URL
+        - name: REACT_APP_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: REACT_APP_ENV
+        - name: REACT_APP_BACKEND_SERVICE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: REACT_APP_BACKEND_SERVICE_NAME
+        - name: REACT_APP_BACKEND_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: wkms-config
+              key: REACT_APP_BACKEND_PORT
+        resources:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+# 프론트엔드 Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wkms-frontend
+  namespace: wkms
+spec:
+  selector:
+    app: wkms-frontend
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+  type: ClusterIP

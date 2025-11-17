@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1d4ed8"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#g)" stroke="#0f296c" stroke-width="2"/>
+  <!-- Stylized WIKL monogram: W + I + K + L combined -->
+  <path d="M14 44 L20 20 L28 40 L32 28 L36 40 L44 20 L50 44" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Vertical I accent -->
+  <line x1="32" y1="18" x2="32" y2="24" stroke="#a5b4fc" stroke-width="3" stroke-linecap="round"/>
+  <!-- Knowledge spark -->
+  <circle cx="48" cy="16" r="4" fill="#fbbf24" stroke="#fff" stroke-width="2"/>
+</svg>

@@ -1,0 +1,13 @@
+Convert the following markdown content into a structured presentation outline.
+
+**Markdown Content:**
+```markdown
+{markdown}
+```
+
+**Requirements:**
+- Maximum slides: {max_slides}
+- Target audience: {audience}
+- Presentation style: {style}
+
+Analyze the content and create an engaging, well-structured presentation outline.

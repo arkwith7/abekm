@@ -1,0 +1,30 @@
+{
+  "validation_date": "2025-09-16T13:45:21.010356",
+  "project_root": "/home/admin/wkms-aws",
+  "jupyter_directory": "/home/admin/wkms-aws/jupyter_notebook",
+  "structure_validation": {
+    "directories_checked": true,
+    "files_checked": true,
+    "ground_truth_validated": true
+  },
+  "statistics": {
+    "total_test_cases": 130,
+    "categories": {
+      "document_existence": 57,
+      "content_inquiry": 54,
+      "ppt_generation": 15,
+      "non_existent_content": 4
+    },
+    "file_sizes": {
+      "utils/analyze_uploads_documents.py": 14930,
+      "utils/common_test_utils.py": 12657,
+      "tests/rag_chat/automated_rag_tester.py": 19905,
+      "data/ground_truth/ground_truth_criteria.csv": 25936
+    }
+  },
+  "next_steps": [
+    "RAG 채팅 테스트 실행: cd tests/rag_chat && python automated_rag_tester.py",
+    "문서 분석 업데이트: cd utils && python analyze_uploads_documents.py",
+    "설정 파일 커스터마이징: config/test_config.yaml 수정"
+  ]
+}

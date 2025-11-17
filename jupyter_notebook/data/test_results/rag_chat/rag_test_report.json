@@ -1,0 +1,228 @@
+{
+  "테스트_실행_정보": {
+    "실행_시간": "2025-09-17T14:42:20.423861",
+    "총_테스트_케이스": 13,
+    "성공_케이스": 0,
+    "실패_케이스": 13
+  },
+  "성능_지표": {
+    "총_테스트_수": 13,
+    "전체_평균_점수": 0.0,
+    "참고자료_정확도": 0.0,
+    "내용_관련성_평균": 0.0,
+    "답변_유형_정확도": 0.0,
+    "평균_응답_시간": 0.0029937120584341195,
+    "카테고리별_성능": {
+      "document_existence": {
+        "테스트_수": 6,
+        "평균_점수": 0.0,
+        "참고자료_정확도": 0.0,
+        "내용_관련성": 0.0
+      },
+      "content_inquiry": {
+        "테스트_수": 4,
+        "평균_점수": 0.0,
+        "참고자료_정확도": 0.0,
+        "내용_관련성": 0.0
+      },
+      "ppt_generation": {
+        "테스트_수": 3,
+        "평균_점수": 0.0,
+        "참고자료_정확도": 0.0,
+        "내용_관련성": 0.0
+      }
+    },
+    "API_타입별_성능": {
+      "general": {
+        "테스트_수": 10,
+        "평균_점수": 0.0,
+        "참고자료_정확도": 0.0,
+        "내용_관련성": 0.0
+      },
+      "ppt": {
+        "테스트_수": 3,
+        "평균_점수": 0.0,
+        "참고자료_정확도": 0.0,
+        "내용_관련성": 0.0
+      }
+    },
+    "통계_검정_결과": {
+      "카테고리_간_차이": {
+        "F_통계량": NaN,
+        "p_값": NaN,
+        "유의미함": false
+      }
+    }
+  },
+  "상세_결과": [
+    {
+      "question": "17db2889d66949e78844a2e30ce4fce3_20250812_141241.pptx 파일이 있나요?",
+      "category": "document_existence",
+      "api_type": "general",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.004553794860839844,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "PPTX 파일 중에 데이터 내용이 있나요?",
+      "category": "document_existence",
+      "api_type": "general",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.00293731689453125,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "업로드된 문서 중에 데이터 관련 자료가 있나요?",
+      "category": "document_existence",
+      "api_type": "general",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.0029609203338623047,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "데이터에 대해 알려주세요",
+      "category": "content_inquiry",
+      "api_type": "general",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.0029578208923339844,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "데이터 관련 정보를 찾아주세요",
+      "category": "content_inquiry",
+      "api_type": "general",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.0028448104858398438,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "데이터의 특징이나 내용을 설명해주세요",
+      "category": "content_inquiry",
+      "api_type": "general",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.002800464630126953,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "데이터 PPT 만들어주세요",
+      "category": "ppt_generation",
+      "api_type": "ppt",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.002834796905517578,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "데이터 발표자료 생성해주세요",
+      "category": "ppt_generation",
+      "api_type": "ppt",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.002860546112060547,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "데이터 프레젠테이션 만들어주세요",
+      "category": "ppt_generation",
+      "api_type": "ppt",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.0026807785034179688,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "bc013ed9f7574691a01e2d327c3ea830_20250814_171208.docx 파일이 있나요?",
+      "category": "document_existence",
+      "api_type": "general",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.003143310546875,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "DOCX 파일 중에 시험 내용이 있나요?",
+      "category": "document_existence",
+      "api_type": "general",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.0027608871459960938,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "업로드된 문서 중에 시험 관련 자료가 있나요?",
+      "category": "document_existence",
+      "api_type": "general",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.0026655197143554688,
+      "actual_response": "API 오류: HTTP 403"
+    },
+    {
+      "question": "시험에 대해 알려주세요",
+      "category": "content_inquiry",
+      "api_type": "general",
+      "expected_has_reference": true,
+      "actual_has_reference": false,
+      "reference_accuracy": false,
+      "content_relevance_score": 0.0,
+      "answer_type_correct": false,
+      "overall_score": 0.0,
+      "response_time": 0.0029172897338867188,
+      "actual_response": "API 오류: HTTP 403"
+    }
+  ]
+}

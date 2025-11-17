@@ -1,0 +1,120 @@
+"""
+권한 요청 관련 SQLAlchemy 모델
+"""
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import JSONB
+from app.core.database import Base
+
+
+class TbPermissionRequests(Base):
+    """권한 요청 테이블 - 사용자 권한 요청 및 승인 워크플로우"""
+    __tablename__ = "tb_permission_requests"
+    __table_args__ = {'extend_existing': True}
+    
+    # 기본 정보
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    request_id = Column(String(50), unique=True, nullable=False, comment="요청 ID (REQ-20251030-001)")
+    
+    # 요청자 정보
+    requester_emp_no = Column(String(20), ForeignKey('tb_user.emp_no', ondelete='CASCADE'), nullable=False, comment="요청자 사번")
+    requester_name = Column(String(100), nullable=True, comment="요청자 이름")
+    requester_department = Column(String(100), nullable=True, comment="요청자 부서")
+    
+    # 대상 컨테이너 및 권한
+    container_id = Column(String(50), ForeignKey('tb_knowledge_containers.container_id', ondelete='CASCADE'), nullable=False, comment="컨테이너 ID")
+    container_name = Column(String(200), nullable=True, comment="컨테이너 이름")
+    current_permission_level = Column(String(50), nullable=True, comment="현재 권한 레벨")
+    requested_permission_level = Column(String(50), nullable=False, comment="요청 권한 레벨")
+    
+    # 요청 상세
+    request_reason = Column(Text, nullable=False, comment="요청 사유")
+    business_justification = Column(Text, nullable=True, comment="업무 근거")
+    expected_usage_period = Column(String(100), nullable=True, comment="사용 예정 기간")
+    urgency_level = Column(String(20), server_default='normal', comment="긴급도 (urgent, high, normal, low)")
+    
+    # 상태 관리
+    status = Column(String(20), server_default='pending', nullable=False, comment="상태 (pending, approved, rejected, cancelled)")
+    
+    # 처리 정보
+    approver_emp_no = Column(String(20), ForeignKey('tb_user.emp_no', ondelete='SET NULL'), nullable=True, comment="승인자 사번")
+    approver_name = Column(String(100), nullable=True, comment="승인자 이름")
+    approval_comment = Column(Text, nullable=True, comment="승인 코멘트")
+    rejection_reason = Column(Text, nullable=True, comment="거부 사유")
+    auto_approved = Column(Boolean, server_default='false', comment="자동 승인 여부")
+    
+    # 일시 정보
+    requested_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="요청 일시")
+    processed_at = Column(DateTime(timezone=True), nullable=True, comment="처리 일시")
+    expires_at = Column(DateTime(timezone=True), nullable=True, comment="만료 일시")
+    
+    # 관계 정의
+    requester = relationship("TbUser", foreign_keys=[requester_emp_no])
+    container = relationship("TbKnowledgeContainers")
+    approver = relationship("TbUser", foreign_keys=[approver_emp_no])
+
+
+class TbPermissionAuditLog(Base):
+    """권한 감사 로그 - 모든 권한 관련 작업 기록"""
+    __tablename__ = "tb_permission_audit_log"
+    __table_args__ = {'extend_existing': True}
+    
+    # 기본 정보
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    log_id = Column(String(50), unique=True, nullable=False, comment="로그 ID")
+    
+    # 작업 정보
+    action_type = Column(String(50), nullable=False, comment="작업 타입 (request_created, approved, rejected, cancelled)")
+    actor_emp_no = Column(String(20), ForeignKey('tb_user.emp_no', ondelete='CASCADE'), nullable=False, comment="작업 수행자 사번")
+    actor_name = Column(String(100), nullable=True, comment="작업 수행자 이름")
+    
+    # 대상 정보
+    target_emp_no = Column(String(20), nullable=True, comment="대상 사용자 사번")
+    container_id = Column(String(50), nullable=True, comment="컨테이너 ID")
+    permission_level = Column(String(50), nullable=True, comment="권한 레벨")
+    
+    # 요청 관련
+    request_id = Column(String(50), ForeignKey('tb_permission_requests.request_id', ondelete='SET NULL'), nullable=True, comment="요청 ID")
+    
+    # 상세 정보
+    action_details = Column(JSONB, nullable=True, comment="작업 상세 정보")
+    ip_address = Column(String(45), nullable=True, comment="IP 주소")
+    user_agent = Column(Text, nullable=True, comment="User Agent")
+    
+    # 일시
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성 일시")
+    
+    # 관계 정의
+    actor = relationship("TbUser", foreign_keys=[actor_emp_no])
+    request = relationship("TbPermissionRequests")
+
+
+class TbAutoApprovalRules(Base):
+    """자동 승인 규칙 - 권한 요청 자동 승인 조건"""
+    __tablename__ = "tb_auto_approval_rules"
+    __table_args__ = {'extend_existing': True}
+    
+    # 기본 정보
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    rule_id = Column(String(50), unique=True, nullable=False, comment="규칙 ID")
+    
+    # 규칙 정보
+    rule_name = Column(String(200), nullable=False, comment="규칙 이름")
+    description = Column(Text, nullable=True, comment="규칙 설명")
+    is_active = Column(Boolean, server_default='true', nullable=False, comment="활성 상태")
+    priority = Column(Integer, server_default='0', nullable=False, comment="우선순위 (높을수록 먼저 적용)")
+    
+    # 조건
+    conditions = Column(JSONB, nullable=False, comment="승인 조건 (JSON)")
+    
+    # 작업
+    action = Column(String(50), server_default='auto_approve', nullable=False, comment="작업 (auto_approve, require_approval)")
+    
+    # 생성 정보
+    created_by = Column(String(20), ForeignKey('tb_user.emp_no', ondelete='SET NULL'), nullable=True, comment="생성자 사번")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성 일시")
+    updated_at = Column(DateTime(timezone=True), nullable=True, comment="수정 일시")
+    
+    # 관계 정의
+    creator = relationship("TbUser", foreign_keys=[created_by])

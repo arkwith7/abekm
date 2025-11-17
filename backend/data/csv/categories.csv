@@ -1,0 +1,14 @@
+category_id,category_name,parent_id,description,sort_order,is_active
+CAT001,기술문서,,기술 관련 문서 카테고리,1,true
+CAT001001,개발가이드,CAT001,개발 가이드 문서,1,true
+CAT001002,API문서,CAT001,API 관련 문서,2,true
+CAT001003,아키텍처,CAT001,시스템 아키텍처 문서,3,true
+CAT002,업무문서,,업무 관련 문서 카테고리,2,true
+CAT002001,프로세스,CAT002,업무 프로세스 문서,1,true
+CAT002002,매뉴얼,CAT002,업무 매뉴얼,2,true
+CAT003,교육자료,,교육 관련 자료 카테고리,3,true
+CAT003001,온보딩,CAT003,신입사원 온보딩 자료,1,true
+CAT003002,기술교육,CAT003,기술 교육 자료,2,true
+CAT004,참고자료,,참고용 자료 카테고리,4,true
+CAT004001,템플릿,CAT004,문서 템플릿,1,true
+CAT004002,체크리스트,CAT004,업무 체크리스트,2,true

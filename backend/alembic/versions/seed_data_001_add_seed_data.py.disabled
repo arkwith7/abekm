@@ -1,0 +1,125 @@
+"""Add seed data migration
+
+Revision ID: seed_data_001
+Revises: 3e19d6566abb
+Create Date: 2025-09-30 13:00:00.000000
+
+"""
+from typing import Sequence, Union
+from alembic import op
+import sqlalchemy as sa
+import asyncio
+import sys
+from pathlib import Path
+
+# Import seed system
+project_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+# revision identifiers, used by Alembic.
+revision: str = 'seed_data_001'
+down_revision: Union[str, None] = '3e19d6566abb'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Run upgrade migrations with seed data."""
+    print("🌱 시드 데이터 마이그레이션 시작...")
+    
+    # 동기적으로 시드 데이터 실행
+    import subprocess
+    import os
+    
+    # 현재 디렉터리를 백엔드 루트로 변경
+    backend_dir = Path(__file__).parent.parent.parent
+    original_dir = os.getcwd()
+    
+    try:
+        os.chdir(backend_dir)
+        
+        # 시드 데이터 실행
+        result = subprocess.run([
+            sys.executable, "-m", "data.seeds.run_all_seeders"
+        ], input="y\n", text=True, capture_output=True)
+        
+        if result.returncode == 0:
+            print("✅ 시드 데이터 마이그레이션 완료!")
+            print(result.stdout)
+        else:
+            print("❌ 시드 데이터 마이그레이션 실패!")
+            print(result.stderr)
+            raise Exception(f"시드 데이터 로드 실패: {result.stderr}")
+            
+    finally:
+        os.chdir(original_dir)
+
+
+def downgrade() -> None:
+    """Run downgrade migrations."""
+    print("🔄 시드 데이터 다운그레이드...")
+    
+    # 다운그레이드 시에는 데이터만 삭제 (테이블 구조는 유지)
+    import subprocess
+    import os
+    
+    backend_dir = Path(__file__).parent.parent.parent
+    original_dir = os.getcwd()
+    
+    try:
+        os.chdir(backend_dir)
+        
+        # 개별 테이블 데이터 삭제 스크립트 실행
+        cleanup_script = """
+import asyncio
+import sys
+from pathlib import Path
+
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+
+from app.core.database import get_async_session_local
+from data.seeds.base_seeder import BaseSeeder
+
+async def cleanup_seed_data():
+    async_session = get_async_session_local()
+    async with async_session() as session:
+        seeder = BaseSeeder(session)
+        
+        tables = [
+            "tb_user_permissions",
+            "tb_user", 
+            "tb_sap_hr_info",
+            "tb_knowledge_categories",
+            "tb_cmns_cd_grp_item"
+        ]
+        
+        for table in tables:
+            await seeder.clear_table(table)
+        
+        await session.commit()
+        print("✅ 시드 데이터 정리 완료!")
+
+if __name__ == "__main__":
+    asyncio.run(cleanup_seed_data())
+"""
+        
+        # 임시 스크립트 파일 생성 및 실행
+        temp_script = backend_dir / "temp_cleanup.py"
+        with open(temp_script, 'w', encoding='utf-8') as f:
+            f.write(cleanup_script)
+        
+        result = subprocess.run([sys.executable, str(temp_script)], 
+                              capture_output=True, text=True)
+        
+        # 임시 파일 삭제
+        temp_script.unlink()
+        
+        if result.returncode == 0:
+            print("✅ 시드 데이터 정리 완료!")
+        else:
+            print("❌ 시드 데이터 정리 실패!")
+            print(result.stderr)
+            
+    finally:
+        os.chdir(original_dir)

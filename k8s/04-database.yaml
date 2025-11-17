@@ -1,0 +1,132 @@
+# 데이터베이스 StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wkms-postgres
+  namespace: wkms
+spec:
+  serviceName: wkms-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wkms-postgres
+  template:
+    metadata:
+      labels:
+        app: wkms-postgres
+    spec:
+      # 보안 컨텍스트 추가 (EKS/AKS 보안 정책 준수)
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+      containers:
+      - name: postgres
+        image: ankane/pgvector:latest
+        ports:
+        - containerPort: 5432
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 999
+        env:
+        - name: POSTGRES_DB
+          value: "wkms"
+        - name: POSTGRES_USER
+          value: "wkms"
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wkms-secrets
+              key: postgres-password
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        resources:
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      # 클라우드별 스토리지 클래스 (환경에 맞게 선택)
+      # EKS: gp3 (권장) 또는 gp2
+      # AKS: managed-csi (기본)
+      # storageClassName: "gp3"      # EKS용
+      # storageClassName: "managed-csi"  # AKS용
+      resources:
+        requests:
+          storage: 20Gi
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wkms-postgres
+  namespace: wkms
+spec:
+  selector:
+    app: wkms-postgres
+  ports:
+  - port: 5432
+    targetPort: 5432
+  type: ClusterIP
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wkms-redis
+  namespace: wkms
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wkms-redis
+  template:
+    metadata:
+      labels:
+        app: wkms-redis
+    spec:
+      # Redis 보안 컨텍스트
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsNonRoot: true
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 999
+        resources:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 250m
+            memory: 512Mi
+---
+# Redis Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: wkms-redis
+  namespace: wkms
+spec:
+  selector:
+    app: wkms-redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+  type: ClusterIP

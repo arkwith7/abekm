@@ -1,0 +1,32 @@
+# PostgreSQL with pgvector and kor_search extension (Simplified)
+FROM ankane/pgvector:latest
+
+# Switch to root to install packages
+USER root
+
+# 필요한 패키지 설치
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    postgresql-server-dev-all \
+    git \
+    make \
+    python3 \
+    python3-pip \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# PGXN 클라이언트 설치
+RUN pip3 install pgxnclient
+
+# kor_search 확장 소스 다운로드 및 컴파일
+RUN git clone https://github.com/junhkang/kor_search.git /tmp/kor_search \
+    && cd /tmp/kor_search \
+    && make \
+    && make install \
+    && rm -rf /tmp/kor_search
+
+# 초기화 스크립트 복사
+COPY init.sql /docker-entrypoint-initdb.d/
+
+# postgres 유저로 다시 전환
+USER postgres

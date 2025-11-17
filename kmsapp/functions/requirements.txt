@@ -1,0 +1,33 @@
+# DO NOT include azure-functions-worker in this file
+# The Python Worker is managed by Azure Functions platform
+# Manually managing azure-functions-worker may cause unexpected issues
+azure-functions
+azure-storage-blob
+PyYAML
+pytz
+azure-ai-formrecognizer
+azure-ai-documentintelligence
+azure-search-documents
+retry
+azure-identity
+tiktoken
+pandas
+openai
+azure-cosmos
+tenacity
+langchain
+langchain-openai
+pptx2md
+markdown
+beautifulsoup4
+requests
+msal
+kiwipiepy
+mysql-connector-python
+docx2pdf
+matplotlib
+fpdf
+python-pptx
+reportlab
+pydantic
+./pyrfc-3.3.1-cp311-cp311-linux_x86_64.whl 

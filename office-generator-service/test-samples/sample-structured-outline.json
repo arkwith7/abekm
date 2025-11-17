@@ -1,0 +1,120 @@
+{
+  "title": "2025 Q4 비즈니스 전략",
+  "theme": "business",
+  "slides": [
+    {
+      "title": "2025 Q4 비즈니스 전략",
+      "content": "성장을 위한 혁신적 접근",
+      "layout": "title",
+      "visual_elements": null
+    },
+    {
+      "title": "주요 목표",
+      "content": "",
+      "layout": "title-and-bullets",
+      "visual_elements": {
+        "icons": [
+          "target",
+          "trending-up",
+          "award",
+          "users"
+        ],
+        "bullets": [
+          "매출 30% 성장 달성",
+          "신규 고객 1,000명 확보",
+          "고객 만족도 95% 이상",
+          "시장 점유율 15% 달성"
+        ],
+        "grid": null,
+        "image": null
+      }
+    },
+    {
+      "title": "핵심 전략",
+      "content": "",
+      "layout": "two-column-grid",
+      "visual_elements": {
+        "icons": [],
+        "bullets": [],
+        "grid": {
+          "cols": 2,
+          "items": [
+            {
+              "title": "디지털 전환",
+              "description": "AI 기반 자동화 도입",
+              "bg_color": "blue-50"
+            },
+            {
+              "title": "고객 경험",
+              "description": "맞춤형 서비스 제공",
+              "bg_color": "green-50"
+            },
+            {
+              "title": "시장 확대",
+              "description": "신규 지역 진출",
+              "bg_color": "purple-50"
+            },
+            {
+              "title": "인재 육성",
+              "description": "전문가 양성 프로그램",
+              "bg_color": "orange-50"
+            }
+          ]
+        },
+        "image": null
+      }
+    },
+    {
+      "title": "실행 계획",
+      "content": "단계별 로드맵",
+      "layout": "divider",
+      "visual_elements": null
+    },
+    {
+      "title": "1단계: 준비 (11-12월)",
+      "content": "",
+      "layout": "title-and-bullets",
+      "visual_elements": {
+        "icons": [
+          "check-circle",
+          "check-circle",
+          "check-circle"
+        ],
+        "bullets": [
+          "팀 구성 및 역할 분담",
+          "예산 확보 및 자원 배분",
+          "KPI 설정 및 측정 체계 구축"
+        ],
+        "grid": null,
+        "image": null
+      }
+    },
+    {
+      "title": "예상 성과",
+      "content": "",
+      "layout": "image-placeholder",
+      "visual_elements": {
+        "icons": [],
+        "bullets": [],
+        "grid": null,
+        "image": {
+          "url": "placeholder",
+          "alt": "분기별 성장 그래프",
+          "width": null,
+          "height": null
+        }
+      }
+    },
+    {
+      "title": "감사합니다",
+      "content": "함께 성장하는 미래",
+      "layout": "title",
+      "visual_elements": null
+    }
+  ],
+  "metadata": {
+    "author": "WKMS AI Agent",
+    "company": "WKMS",
+    "created_at": "2025-11-13T10:00:00Z"
+  }
+}

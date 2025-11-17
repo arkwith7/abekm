@@ -1,0 +1,11 @@
+emp_no,username,email,password_plain,password_hash,is_active,is_admin,failed_login_attempts,created_date,last_modified_date
+ADMIN001,admin,admin@woongjin.co.kr,admin123!,$2b$12$ifjU9hRi.6knt0u8YxxTA.htowHgD22YuEK0i0JFKRGJdXpmKbdTu,true,true,0,2025-09-30 13:00:00,2025-09-30 13:00:00
+HR001,hr.manager,hr.manager@woongjin.co.kr,hr2025!,$2b$12$vhNW.t/60S/MqxvpSOjc3.UsAQ00ParpsKnVd7Cmo2nTeP/zh5TXe,true,false,0,2025-09-30 13:00:00,2025-09-30 13:00:00
+REC001,recruit,recruit@woongjin.co.kr,recruit123,$2b$12$Vfmli7TMFX9YIUh8olxAPeipFxXCXAyeHrCAR5BaSvoFMqTCM8gjG,true,false,0,2025-09-30 13:00:00,2025-09-30 13:00:00
+TRN001,training,training@woongjin.co.kr,train2025,$2b$12$g2BP0b8PzbFcnHsWJhIiEuOAFeVTc0A.09zzjp2nIV6kp/6oyemSy,true,false,0,2025-09-30 13:00:00,2025-09-30 13:00:00
+PLN001,planning,planning@woongjin.co.kr,plan123!,$2b$12$TzFBBOX.QUKomX/G5u6dpeY2a0jnhLNDWa3DP9ABvptqGPp4OJ4qa,true,false,0,2025-09-30 13:00:00,2025-09-30 13:00:00
+CLD001,cloud,cloud@woongjin.co.kr,cloud2025,$2b$12$LIsrGcDk.1xVriLr2aqSLuTRyy4JlXEJNBpMBZGPr/tFEsLU2X0.S,true,false,0,2025-09-30 13:00:00,2025-09-30 13:00:00
+MSS001,ms.service,ms.service@woongjin.co.kr,msservice123,$2b$12$qa3h3ZGMCl/4R2gqWK7F/uqK/EQcnxuFl/vRuIKeCnzoXePhZiZ2G,true,false,0,2025-09-30 13:00:00,2025-09-30 13:00:00
+77107791,ms.staff,ms.staff@woongjin.co.kr,staff2025,$2b$12$827TH742tcb52VwixUyjtefayKyMTGEVmIFiW77IHLj/azU5c24cm,true,false,0,2025-09-30 13:00:00,2025-09-30 13:00:00
+INF001,infra,infra@woongjin.co.kr,infra123!,$2b$12$nwYrM3fPldbx9pwHkmOox.wV.zypi/aDOi08n6UnkZQ.XNfEAtU6a,true,false,0,2025-09-30 13:00:00,2025-09-30 13:00:00
+BIZ001,biz.ops,biz.ops@woongjin.co.kr,bizops2025,$2b$12$2O4Ccu0I7FVr8RGjEOuE1OJIXFcpWKoTm7hs469H54qF0AFcaOLK6,true,false,0,2025-09-30 13:00:00,2025-09-30 13:00:00

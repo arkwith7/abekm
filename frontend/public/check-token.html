@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <title>토큰 확인</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+        }
+
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+        }
+
+        .expired {
+            color: red;
+        }
+
+        .valid {
+            color: green;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🔐 인증 토큰 확인</h1>
+    <div id="output"></div>
+
+    <script>
+        const output = document.getElementById('output');
+
+        function parseJwt(token) {
+            try {
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(atob(base64).split('').map(function (c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+                return JSON.parse(jsonPayload);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        const token = localStorage.getItem('wikl_token');
+
+        if (!token) {
+            output.innerHTML = '<p class="expired">❌ 토큰이 없습니다. 로그인이 필요합니다.</p>';
+        } else {
+            const payload = parseJwt(token);
+
+            if (!payload) {
+                output.innerHTML = '<p class="expired">❌ 유효하지 않은 토큰 형식입니다.</p>';
+            } else {
+                const now = Math.floor(Date.now() / 1000);
+                const exp = payload.exp;
+                const isExpired = exp < now;
+
+                const html = `
+                    <h2 class="${isExpired ? 'expired' : 'valid'}">
+                        ${isExpired ? '❌ 토큰 만료됨' : '✅ 토큰 유효'}
+                    </h2>
+                    <pre>${JSON.stringify(payload, null, 2)}</pre>
+                    <p><strong>토큰 길이:</strong> ${token.length} characters</p>
+                    <p><strong>현재 시간:</strong> ${new Date().toLocaleString('ko-KR')}</p>
+                    <p><strong>만료 시간:</strong> ${new Date(exp * 1000).toLocaleString('ko-KR')}</p>
+                    ${isExpired ? '<p class="expired"><strong>⚠️ 로그인 페이지로 이동하여 다시 로그인하세요.</strong></p>' : ''}
+                `;
+
+                output.innerHTML = html;
+            }
+        }
+    </script>
+</body>
+
+</html>

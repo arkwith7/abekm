@@ -1,0 +1,120 @@
+# WKMS 테스트 시스템 설정 파일
+
+# API 설정
+api:
+  base_url: "http://localhost:8000"
+  timeout: 30
+  retry_count: 3
+  endpoints:
+    chat_message: "/api/v1/chat/message"
+    chat_stream: "/api/v1/chat/stream"
+    health: "/health"
+
+# 테스트 설정
+test:
+  max_test_cases: 100
+  parallel_workers: 4
+  result_retention_days: 30
+  sample_size_for_quick_test: 20
+  delay_between_requests: 0.5  # 초
+  
+  # 테스트 카테고리별 가중치
+  category_weights:
+    document_existence: 1.0
+    content_inquiry: 1.2
+    ppt_generation: 1.5
+    non_existent_content: 1.0
+
+# 성능 임계값
+thresholds:
+  overall_score: 0.75
+  reference_accuracy: 0.85
+  content_relevance: 0.70
+  response_time: 2.0  # 초
+  
+  # 알람 임계값
+  alert_levels:
+    critical: 0.60  # 심각
+    warning: 0.65   # 경고
+    notice: 0.70    # 주의
+
+# 평가 가중치
+evaluation_weights:
+  reference_accuracy: 0.4
+  content_relevance: 0.4
+  answer_type_correct: 0.2
+
+# 파일 경로 설정
+paths:
+  uploads_dir: "/home/admin/wkms-aws/backend/uploads"
+  ground_truth_dir: "../data/ground_truth"
+  test_results_dir: "../data/test_results"
+  logs_dir: "../logs"
+  
+  # 그라운드 트루스 파일
+  ground_truth_file: "../data/ground_truth/ground_truth_criteria.csv"
+  documents_analysis_file: "../data/ground_truth/documents_analysis.csv"
+
+# 키워드 추출 설정
+keyword_extraction:
+  max_keywords: 10
+  min_keyword_length: 2
+  stopwords:
+    korean: ["있는", "하는", "되는", "같은", "이런", "그런", "어떤", "수도", "때문", "그리고", "또한", "하지만", "그러나", "따라서", "그래서", "이것", "그것"]
+    english: ["the", "and", "are", "for", "with", "can", "you", "have", "what", "this", "that", "will", "from", "they", "been", "said", "each"]
+
+# 로깅 설정
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file_format: "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
+  
+# 멀티턴 대화 개선 설정
+multiturn:
+  relevance_threshold: 0.25
+  intent_specific_thresholds:
+    ppt: 0.15
+    greeting: 0.1
+    general: 0.25
+  
+  max_context_messages: 4
+  max_included_context: 2
+  
+  # 가중치 설정
+  weights:
+    semantic_similarity: 0.5
+    intent_continuity: 0.3
+    temporal_factor: 0.2
+
+# 문서 처리 설정
+document_processing:
+  supported_formats: ["docx", "pdf", "pptx", "txt"]
+  max_file_size_mb: 50
+  text_extraction:
+    max_chars_per_summary: 200
+    min_meaningful_sentence_length: 10
+  
+# 통계 분석 설정
+statistics:
+  confidence_level: 0.95
+  significance_threshold: 0.05
+  min_sample_size: 10
+  
+# 시각화 설정
+visualization:
+  figure_size: [12, 8]
+  dpi: 300
+  style: "seaborn-v0_8"
+  colors:
+    primary: "#2E86C1"
+    secondary: "#F39C12"
+    success: "#27AE60"
+    danger: "#E74C3C"
+    warning: "#F1C40F"
+
+# 개발/디버그 설정
+debug:
+  verbose_logging: false
+  save_intermediate_results: true
+  skip_api_calls: false  # 테스트 시 실제 API 호출 생략
+  mock_responses: false

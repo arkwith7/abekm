@@ -1,0 +1,973 @@
+{
+  "template_name": "Ultra Clean 제품소개서 샘플",
+  "total_slides": 9,
+  "slide_templates": [
+    {
+      "slide_number": 1,
+      "title": "슬라이드 256",
+      "layout_type": "title-content",
+      "layout_boxes": [
+        {
+          "x": 0.3367344706911636,
+          "y": 1.4547517497812774,
+          "width": 9.367346894138233,
+          "height": 0.7741535433070866,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 5.0017366579177605,
+          "y": 2.5655238407699037,
+          "width": 4.702344706911636,
+          "height": 0.9564031058617672,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": "right",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 5.421841644794401,
+          "y": 4.600445100612424,
+          "width": 0.65625,
+          "height": 0.0,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 5.384126202974628,
+          "y": 5.480521653543307,
+          "width": 3.3550349956255467,
+          "height": 0.6979166666666666,
+          "type": "group",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.17564851268591425,
+          "y": 0.15013560804899387,
+          "width": 2.0847703412073493,
+          "height": 0.5048829833770778,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 9.177083333333334,
+          "y": 0.15013560804899387,
+          "width": 0.6252963692038496,
+          "height": 0.3029297900262467,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": "right",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 7.857752624671916,
+          "y": 5.0056157042869645,
+          "width": 1.8463287401574804,
+          "height": 0.37024715660542434,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        }
+      ],
+      "background_color": null,
+      "suggested_content_type": "text"
+    },
+    {
+      "slide_number": 2,
+      "title": "슬라이드 257",
+      "layout_type": "title-content",
+      "layout_boxes": [
+        {
+          "x": 2.004583333333333,
+          "y": 0.49566601049868764,
+          "width": 4.053798118985127,
+          "height": 0.7741535433070866,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.0913648293963254,
+          "y": 2.21876312335958,
+          "width": 0.5186034558180227,
+          "height": 0.5186034558180227,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.122002405949256,
+          "y": 2.3186187664041995,
+          "width": 0.44036964129483813,
+          "height": 0.3365890201224847,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.664682852143482,
+          "y": 2.2761100174978126,
+          "width": 3.0087871828521435,
+          "height": 0.4039063867016623,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.0913648293963254,
+          "y": 3.0589545056867893,
+          "width": 0.5186034558180227,
+          "height": 0.5186034558180227,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.1043033683289587,
+          "y": 3.1588101487314084,
+          "width": 0.419332895888014,
+          "height": 0.3365890201224847,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.664682852143482,
+          "y": 3.116301399825022,
+          "width": 3.0087871828521435,
+          "height": 0.4039063867016623,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.0913648293963254,
+          "y": 3.899145888013998,
+          "width": 0.5186034558180227,
+          "height": 0.5186034558180227,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.1043033683289587,
+          "y": 3.999002624671916,
+          "width": 0.419332895888014,
+          "height": 0.3365890201224847,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.664682852143482,
+          "y": 3.956492782152231,
+          "width": 3.0087871828521435,
+          "height": 0.4039063867016623,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.1591557305336835,
+          "y": 1.5469083552055993,
+          "width": 1.7446511373578302,
+          "height": 0.3029297900262467,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.7033573928258967,
+          "y": 1.3764884076990376,
+          "width": 0.65625,
+          "height": 0.0,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.0922331583552056,
+          "y": 4.739337270341207,
+          "width": 0.5186034558180227,
+          "height": 0.5186034558180227,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.1228707349081364,
+          "y": 4.839192913385827,
+          "width": 0.44036964129483813,
+          "height": 0.3365890201224847,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.665551181102362,
+          "y": 4.79668416447944,
+          "width": 3.0087871828521435,
+          "height": 0.4039063867016623,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.0922331583552056,
+          "y": 5.579528652668416,
+          "width": 0.5186034558180227,
+          "height": 0.5186034558180227,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.105171697287839,
+          "y": 5.679384295713036,
+          "width": 0.419332895888014,
+          "height": 0.3365890201224847,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.665551181102362,
+          "y": 5.63687554680665,
+          "width": 3.0087871828521435,
+          "height": 0.4039063867016623,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.0922331583552056,
+          "y": 6.419720034995626,
+          "width": 0.5186034558180227,
+          "height": 0.5186034558180227,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.105171697287839,
+          "y": 6.5195767716535435,
+          "width": 0.419332895888014,
+          "height": 0.3365890201224847,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.665551181102362,
+          "y": 6.4770669291338585,
+          "width": 3.0087871828521435,
+          "height": 0.4039063867016623,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        }
+      ],
+      "background_color": null,
+      "suggested_content_type": "text"
+    },
+    {
+      "slide_number": 3,
+      "title": "슬라이드 258",
+      "layout_type": "image-focus",
+      "layout_boxes": [
+        {
+          "x": 0.3669083552055993,
+          "y": 0.18968175853018374,
+          "width": 7.7861537620297465,
+          "height": 0.5048829833770778,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.17564851268591425,
+          "y": 7.047954943132108,
+          "width": 2.0847703412073493,
+          "height": 0.5048829833770778,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 9.177083333333334,
+          "y": 7.047954943132108,
+          "width": 0.6252963692038496,
+          "height": 0.3029297900262467,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": "right",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.32125218722659665,
+          "y": 1.3616076115485565,
+          "width": 8.997087707786527,
+          "height": 1.0236220472440944,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.34665791776028,
+          "y": 1.3900492125984252,
+          "width": 0.08191272965879265,
+          "height": 0.9448818897637795,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 5.001735564304462,
+          "y": 2.6122462817147856,
+          "width": 4.518671259842519,
+          "height": 3.1302734033245843,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.34665791776028,
+          "y": 2.6122462817147856,
+          "width": 4.561504811898513,
+          "height": 4.275509623797025,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.37227471566054243,
+          "y": 2.642404855643045,
+          "width": 4.518670166229222,
+          "height": 4.214739720034996,
+          "type": "image",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        }
+      ],
+      "background_color": null,
+      "suggested_content_type": "image"
+    },
+    {
+      "slide_number": 4,
+      "title": "슬라이드 260",
+      "layout_type": "title-content",
+      "layout_boxes": [
+        {
+          "x": 0.3669083552055993,
+          "y": 0.18968175853018374,
+          "width": 7.7861537620297465,
+          "height": 0.5048829833770778,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.17564851268591425,
+          "y": 7.047954943132108,
+          "width": 2.0847703412073493,
+          "height": 0.5048829833770778,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 9.177083333333334,
+          "y": 7.047954943132108,
+          "width": 0.6252963692038496,
+          "height": 0.3029297900262467,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": "right",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.32125218722659665,
+          "y": 2.6655555555555557,
+          "width": 4.433850612423447,
+          "height": 1.393069772528434,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 4.932597331583552,
+          "y": 2.6655555555555557,
+          "width": 4.433849518810149,
+          "height": 1.393069772528434,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.32125218722659665,
+          "y": 4.196992563429571,
+          "width": 4.433850612423447,
+          "height": 1.393069772528434,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 4.932597331583552,
+          "y": 4.196992563429571,
+          "width": 4.433849518810149,
+          "height": 1.393069772528434,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.32125109361329834,
+          "y": 5.728431758530184,
+          "width": 9.045194663167104,
+          "height": 1.1695275590551182,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.32125218722659665,
+          "y": 1.3616076115485565,
+          "width": 8.997087707786527,
+          "height": 1.0236220472440944,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.34665791776028,
+          "y": 1.3900492125984252,
+          "width": 0.08191272965879265,
+          "height": 0.9448818897637795,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        }
+      ],
+      "background_color": null,
+      "suggested_content_type": "text"
+    },
+    {
+      "slide_number": 5,
+      "title": "슬라이드 261",
+      "layout_type": "table-focus",
+      "layout_boxes": [
+        {
+          "x": 0.3669083552055993,
+          "y": 0.18968175853018374,
+          "width": 7.7861537620297465,
+          "height": 0.5048829833770778,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.32125218722659665,
+          "y": 1.3616076115485565,
+          "width": 8.997087707786527,
+          "height": 1.0236220472440944,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.34665791776028,
+          "y": 1.3900492125984252,
+          "width": 0.08191272965879265,
+          "height": 0.9448818897637795,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.32125109361329834,
+          "y": 2.6734700349956255,
+          "width": 8.997086614173229,
+          "height": 4.291486220472441,
+          "type": "table",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        }
+      ],
+      "background_color": null,
+      "suggested_content_type": "table"
+    },
+    {
+      "slide_number": 6,
+      "title": "슬라이드 262",
+      "layout_type": "image-focus",
+      "layout_boxes": [
+        {
+          "x": 0.3669083552055993,
+          "y": 0.18968175853018374,
+          "width": 7.7861537620297465,
+          "height": 0.5048829833770778,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.32125218722659665,
+          "y": 1.3616076115485565,
+          "width": 8.997087707786527,
+          "height": 1.0236220472440944,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.34665791776028,
+          "y": 1.3900492125984252,
+          "width": 0.08191272965879265,
+          "height": 0.9448818897637795,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.4687871828521435,
+          "y": 4.325975503062117,
+          "width": 5.0,
+          "height": 1.8651924759405074,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 1.388821084864392,
+          "y": 2.6687970253718287,
+          "width": 0.8661417322834646,
+          "height": 0.8661417322834646,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 2.9430008748906387,
+          "y": 2.7366491688538934,
+          "width": 0.706836176727909,
+          "height": 0.706836176727909,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 1.1349245406824147,
+          "y": 3.728503937007874,
+          "width": 1.1836701662292213,
+          "height": 0.4039063867016623,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 4.181503718285215,
+          "y": 3.728503937007874,
+          "width": 1.2765813648293962,
+          "height": 0.4039063867016623,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 6.98703302712161,
+          "y": 3.728503937007874,
+          "width": 1.465913167104112,
+          "height": 0.4039063867016623,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 5.892049431321085,
+          "y": 2.7366491688538934,
+          "width": 0.706836176727909,
+          "height": 0.706836176727909,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 4.337870734908137,
+          "y": 2.6687970253718287,
+          "width": 0.8661417322834646,
+          "height": 0.8661417322834646,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 5.749508967629047,
+          "y": 4.325976596675416,
+          "width": 3.270900043744532,
+          "height": 2.1806003937007876,
+          "type": "image",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 7.286920384951881,
+          "y": 2.6687970253718287,
+          "width": 0.8661417322834646,
+          "height": 0.8661417322834646,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        }
+      ],
+      "background_color": null,
+      "suggested_content_type": "image"
+    },
+    {
+      "slide_number": 7,
+      "title": "슬라이드 263",
+      "layout_type": "title-content",
+      "layout_boxes": [
+        {
+          "x": 0.3669083552055993,
+          "y": 0.18968175853018374,
+          "width": 7.7861537620297465,
+          "height": 0.5048829833770778,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.32125218722659665,
+          "y": 1.3616076115485565,
+          "width": 8.997087707786527,
+          "height": 1.0236220472440944,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.34665791776028,
+          "y": 1.3900492125984252,
+          "width": 0.08191272965879265,
+          "height": 0.9448818897637795,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.3859448818897638,
+          "y": 3.10964457567804,
+          "width": 2.756913823272091,
+          "height": 2.7168864829396324,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.384390857392826,
+          "y": 3.10964457567804,
+          "width": 2.756913823272091,
+          "height": 2.7168864829396324,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 6.38283573928259,
+          "y": 3.10964457567804,
+          "width": 2.756913823272091,
+          "height": 2.7168864829396324,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        }
+      ],
+      "background_color": null,
+      "suggested_content_type": "text"
+    },
+    {
+      "slide_number": 8,
+      "title": "슬라이드 264",
+      "layout_type": "title-content",
+      "layout_boxes": [
+        {
+          "x": 0.3669083552055993,
+          "y": 0.18968175853018374,
+          "width": 7.7861537620297465,
+          "height": 0.5048829833770778,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.32125218722659665,
+          "y": 1.3616076115485565,
+          "width": 8.997087707786527,
+          "height": 1.0236220472440944,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.34665791776028,
+          "y": 1.3900492125984252,
+          "width": 0.08191272965879265,
+          "height": 0.9448818897637795,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.6157130358705162,
+          "y": 5.936439195100612,
+          "width": 8.408162729658793,
+          "height": 0.4039063867016623,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 0.3859448818897638,
+          "y": 3.109645669291339,
+          "width": 2.756913823272091,
+          "height": 1.941375765529309,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.384390857392826,
+          "y": 3.109645669291339,
+          "width": 2.756913823272091,
+          "height": 1.941375765529309,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 6.38283573928259,
+          "y": 3.109645669291339,
+          "width": 2.756913823272091,
+          "height": 1.941375765529309,
+          "type": "shape",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        }
+      ],
+      "background_color": null,
+      "suggested_content_type": "text"
+    },
+    {
+      "slide_number": 9,
+      "title": "슬라이드 259",
+      "layout_type": "title-content",
+      "layout_boxes": [
+        {
+          "x": 2.973970909886264,
+          "y": 2.182225503062117,
+          "width": 4.053798118985127,
+          "height": 1.2790365266841646,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": "center",
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 4.668937007874016,
+          "y": 3.631030183727034,
+          "width": 0.6638648293963254,
+          "height": 0.0,
+          "type": "unknown",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        },
+        {
+          "x": 3.323351924759405,
+          "y": 4.6198589238845145,
+          "width": 3.3550349956255467,
+          "height": 0.6979166666666666,
+          "type": "group",
+          "placeholder_type": null,
+          "text_align": null,
+          "font_size": null,
+          "font_color": null
+        }
+      ],
+      "background_color": null,
+      "suggested_content_type": "text"
+    }
+  ],
+  "color_scheme": {
+    "primary": "#1f4e79",
+    "secondary": "#70ad47",
+    "accent": "#ffc000",
+    "background": "#ffffff",
+    "text": "#000000"
+  },
+  "font_scheme": {
+    "title": "맑은 고딕",
+    "body": "맑은 고딕",
+    "accent": "맑은 고딕"
+  },
+  "layout_types": [
+    "table-focus",
+    "image-focus",
+    "title-content"
+  ]
+}

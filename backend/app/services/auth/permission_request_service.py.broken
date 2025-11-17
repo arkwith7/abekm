@@ -1,0 +1,1043 @@
+""""""
+
+권한 요청 관리 서비스WKMS 권한 요청 관리 서비스
+
+사용자 권한 요청 및 승인/거부 워크플로우 처리승인 워크플로우 및 자동화 처리
+
+""""""
+
+from typing import List, Optional, Dict, Anyfrom typing import List, Optional, Dict, Any, AsyncGenerator
+
+from datetime import datetime, timedeltafrom sqlalchemy.ext.asyncio import AsyncSession
+
+from sqlalchemy.ext.asyncio import AsyncSessionfrom sqlalchemy.orm import selectinload, joinedload
+
+from sqlalchemy import select, and_, or_, func, descfrom sqlalchemy import select, and_, or_, func, text, update
+
+from sqlalchemy.orm import selectinloadfrom app.models import (
+
+import logging    TbPermissionRequests,
+
+import uuid    TbKnowledgeContainers,
+
+    TbUserPermissions,
+
+from app.models.auth.permission_request_models import (    TbSapHrInfo,
+
+    TbPermissionRequests,    TbPermissionAuditLog,
+
+    TbPermissionAuditLog,    TbPermissionManagementInfo,
+
+    TbAutoApprovalRules    TbUserPermissionView
+
+))
+
+from app.models import TbKnowledgeContainers, User, TbUserPermissionsfrom app.services.auth.permission_service import PermissionService
+
+from app.services.auth.permission_service import PermissionServicefrom app.core.database import get_db
+
+from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)import logging
+
+
+
+logger = logging.getLogger(__name__)
+
+class PermissionRequestService:
+
+    """권한 요청 관리 핵심 서비스"""
+
+    class PermissionRequestService:
+
+    def __init__(self, session: AsyncSession):    """권한 요청 관리 서비스"""
+
+        self.session = session    
+
+        self.permission_service = PermissionService(session)    def __init__(self, session: AsyncSession):
+
+            self.session = session
+
+    async def create_request(        self.permission_service = PermissionService(session)
+
+        self,    
+
+        requester_emp_no: str,    async def create_permission_request(
+
+        container_id: str,        self,
+
+        requested_permission_level: str,        requester_emp_no: str,
+
+        request_reason: str,        container_id: str,
+
+        business_justification: Optional[str] = None,        requested_permission_level: str,
+
+        expected_usage_period: Optional[str] = None,        request_reason: str,
+
+        urgency_level: str = "normal"        business_justification: Optional[str] = None,
+
+    ) -> TbPermissionRequests:        expected_usage_period: Optional[str] = None,
+
+        """권한 요청 생성"""        priority_level: str = 'normal'
+
+        try:    ) -> Optional[int]:
+
+            # 1. 요청자 정보 조회        """권한 요청 생성"""
+
+            user_result = await self.session.execute(        try:
+
+                select(User).where(User.emp_no == requester_emp_no)            # 컨테이너 존재 확인
+
+            )            container_query = select(TbKnowledgeContainers).where(
+
+            requester = user_result.scalar_one_or_none()                and_(
+
+            if not requester:                    TbKnowledgeContainers.container_id == container_id,
+
+                raise ValueError(f"사용자를 찾을 수 없습니다: {requester_emp_no}")                    TbKnowledgeContainers.is_active == True
+
+                            )
+
+            # 2. 컨테이너 정보 조회            )
+
+            container_result = await self.session.execute(            container_result = await self.session.execute(container_query)
+
+                select(TbKnowledgeContainers).where(            container = container_result.scalar_one_or_none()
+
+                    TbKnowledgeContainers.container_id == container_id            
+
+                )            if not container:
+
+            )                logger.warning(f"존재하지 않는 컨테이너: {container_id}")
+
+            container = container_result.scalar_one_or_none()                return None
+
+            if not container:            
+
+                raise ValueError(f"컨테이너를 찾을 수 없습니다: {container_id}")            # 현재 권한 레벨 확인
+
+                        current_permission = await self.permission_service.get_user_permission_level(
+
+            # 3. 현재 권한 확인                requester_emp_no, container_id
+
+            current_permission = await self.permission_service.get_user_permission_level(            )
+
+                requester_emp_no, container_id            
+
+            )            # 자동 승인 대상 확인
+
+                        auto_approval_eligible = await self._check_auto_approval_eligibility(
+
+            # 4. 중복 요청 확인                requester_emp_no, container_id, requested_permission_level
+
+            existing_request = await self._check_duplicate_request(            )
+
+                requester_emp_no, container_id, requested_permission_level            
+
+            )            # 담당 승인자 결정
+
+            if existing_request:            assigned_approver = await self._determine_approver(container, requested_permission_level)
+
+                raise ValueError("이미 동일한 권한 요청이 대기 중입니다.")            
+
+                        # 요청 생성
+
+            # 5. 요청 ID 생성            request = TbPermissionRequests(
+
+            request_id = self._generate_request_id()                requester_emp_no=requester_emp_no,
+
+                            knowledge_container_id=container_id,
+
+            # 6. 요청 생성                request_type='access',
+
+            request = TbPermissionRequests(                requested_permission_level=requested_permission_level,
+
+                request_id=request_id,                current_permission_level=current_permission,
+
+                requester_emp_no=requester_emp_no,                request_reason=request_reason,
+
+                requester_name=requester.user_name,                business_justification=business_justification,
+
+                requester_department=requester.department,                expected_usage_period=expected_usage_period,
+
+                container_id=container_id,                request_status='pending',
+
+                container_name=container.container_name,                priority_level=priority_level,
+
+                current_permission_level=current_permission,                assigned_approver=assigned_approver,
+
+                requested_permission_level=requested_permission_level,                workflow_step=1,
+
+                request_reason=request_reason,                auto_approval_eligible=auto_approval_eligible,
+
+                business_justification=business_justification,                created_date=datetime.now()
+
+                expected_usage_period=expected_usage_period,            )
+
+                urgency_level=urgency_level,            
+
+                status='pending',            self.session.add(request)
+
+                requested_at=datetime.now(),            await self.session.flush()  # ID 생성을 위해
+
+                expires_at=datetime.now() + timedelta(days=30)  # 30일 후 만료            
+
+            )            # 자동 승인 처리
+
+                        if auto_approval_eligible:
+
+            self.session.add(request)                await self._process_auto_approval(request)
+
+                        
+
+            # 7. 감사 로그 기록            await self.session.commit()
+
+            await self._create_audit_log(            
+
+                action_type='request_created',            # 감사 로그
+
+                actor_emp_no=requester_emp_no,            await self.permission_service._log_permission_audit(
+
+                actor_name=requester.user_name,                user_emp_no=requester_emp_no,
+
+                target_emp_no=requester_emp_no,                container_id=container_id,
+
+                container_id=container_id,                action_type='request',
+
+                permission_level=requested_permission_level,                resource_type='permission',
+
+                request_id=request_id,                new_permission=requested_permission_level,
+
+                action_details={                action_result='success'
+
+                    'reason': request_reason,            )
+
+                    'urgency': urgency_level            
+
+                }            return request.request_id
+
+            )            
+
+                    except Exception as e:
+
+            # 8. 자동 승인 확인            await self.session.rollback()
+
+            auto_approved = await self._check_auto_approval(request)            logger.error(f"권한 요청 생성 실패: {requester_emp_no}, {container_id}, {str(e)}")
+
+            if auto_approved:            return None
+
+                await self.approve_request(    
+
+                    request_id=request_id,    async def _check_auto_approval_eligibility(
+
+                    approver_emp_no='SYSTEM',        self,
+
+                    approval_comment='자동 승인 규칙에 따라 승인되었습니다.'        requester_emp_no: str,
+
+                )        container_id: str,
+
+                    requested_permission_level: str
+
+            await self.session.commit()    ) -> bool:
+
+            await self.session.refresh(request)        """자동 승인 대상 여부 확인"""
+
+                    try:
+
+            logger.info(f"권한 요청 생성 완료: {request_id}")            # VIEWER 권한은 자동 승인 가능
+
+            return request            if requested_permission_level == 'VIEWER':
+
+                            return True
+
+        except Exception as e:            
+
+            await self.session.rollback()            # 컨테이너 설정 확인
+
+            logger.error(f"권한 요청 생성 실패: {e}")            container_query = select(TbKnowledgeContainers).where(
+
+            raise                TbKnowledgeContainers.container_id == container_id
+
+                )
+
+    async def approve_request(            container_result = await self.session.execute(container_query)
+
+        self,            container = container_result.scalar_one_or_none()
+
+        request_id: str,            
+
+        approver_emp_no: str,            if not container:
+
+        approval_comment: Optional[str] = None                return False
+
+    ) -> bool:            
+
+        """권한 요청 승인 및 권한 부여"""            # 승인 워크플로우가 비활성화된 경우
+
+        try:            if not container.approval_workflow_enabled:
+
+            # 1. 요청 조회                return True
+
+            result = await self.session.execute(            
+
+                select(TbPermissionRequests).where(            # 조직 기반 자동 할당이 활성화된 경우
+
+                    TbPermissionRequests.request_id == request_id            if container.auto_assign_by_org:
+
+                )                user_dept = await self._get_user_department(requester_emp_no)
+
+            )                container_org = container.sap_org_code
+
+            request = result.scalar_one_or_none()                
+
+            if not request:                if user_dept and container_org and user_dept == container_org:
+
+                raise ValueError(f"요청을 찾을 수 없습니다: {request_id}")                    return True
+
+                        
+
+            if request.status != 'pending':            return False
+
+                raise ValueError(f"이미 처리된 요청입니다: {request.status}")            
+
+                    except Exception as e:
+
+            # 2. 승인자 정보 조회 (SYSTEM이 아닌 경우)            logger.error(f"자동 승인 대상 확인 실패: {str(e)}")
+
+            approver_name = 'SYSTEM'            return False
+
+            if approver_emp_no != 'SYSTEM':    
+
+                user_result = await self.session.execute(    async def _get_user_department(self, emp_no: str) -> Optional[str]:
+
+                    select(User).where(User.emp_no == approver_emp_no)        """사용자 부서 정보 조회"""
+
+                )        try:
+
+                approver = user_result.scalar_one_or_none()            user_query = select(TbSapHrInfo).where(TbSapHrInfo.emp_no == emp_no)
+
+                if approver:            user_result = await self.session.execute(user_query)
+
+                    approver_name = approver.user_name            user = user_result.scalar_one_or_none()
+
+                        
+
+            # 3. 권한 부여            return user.dept_cd if user else None
+
+            await self._grant_permission(            
+
+                user_emp_no=request.requester_emp_no,        except Exception as e:
+
+                container_id=request.container_id,            logger.error(f"사용자 부서 조회 실패: {emp_no}, {str(e)}")
+
+                permission_level=request.requested_permission_level,            return None
+
+                granted_by=approver_emp_no    
+
+            )    async def _determine_approver(
+
+                    self,
+
+            # 4. 요청 상태 업데이트        container: TbKnowledgeContainers,
+
+            request.status = 'approved'        requested_permission_level: str
+
+            request.approver_emp_no = approver_emp_no    ) -> Optional[str]:
+
+            request.approver_name = approver_name        """승인자 결정"""
+
+            request.approval_comment = approval_comment        try:
+
+            request.processed_at = datetime.now()            # 컨테이너 소유자가 우선
+
+            request.auto_approved = (approver_emp_no == 'SYSTEM')            if container.container_owner:
+
+                            return container.container_owner
+
+            # 5. 감사 로그 기록            
+
+            await self._create_audit_log(            # 권한 관리자 목록에서 선택
+
+                action_type='approved',            if container.permission_managers:
+
+                actor_emp_no=approver_emp_no,                return container.permission_managers[0]  # 첫 번째 관리자
+
+                actor_name=approver_name,            
+
+                target_emp_no=request.requester_emp_no,            # 승인자 목록에서 선택
+
+                container_id=request.container_id,            if container.approvers:
+
+                permission_level=request.requested_permission_level,                return container.approvers[0]  # 첫 번째 승인자
+
+                request_id=request_id,            
+
+                action_details={            return None
+
+                    'comment': approval_comment,            
+
+                    'auto_approved': (approver_emp_no == 'SYSTEM')        except Exception as e:
+
+                }            logger.error(f"승인자 결정 실패: {str(e)}")
+
+            )            return None
+
+                
+
+            await self.session.commit()    async def _process_auto_approval(self, request: TbPermissionRequests):
+
+            logger.info(f"권한 요청 승인 완료: {request_id}")        """자동 승인 처리"""
+
+            return True        try:
+
+                        # 권한 부여
+
+        except Exception as e:            success = await self.permission_service.grant_permission(
+
+            await self.session.rollback()                grantor_emp_no='SYSTEM',
+
+            logger.error(f"권한 요청 승인 실패: {e}")                user_emp_no=request.requester_emp_no,
+
+            raise                container_id=request.knowledge_container_id,
+
+                    permission_level=request.requested_permission_level,
+
+    async def reject_request(                granted_by='SYSTEM'
+
+        self,            )
+
+        request_id: str,            
+
+        rejector_emp_no: str,            if success:
+
+        rejection_reason: str                request.request_status = 'approved'
+
+    ) -> bool:                request.auto_approved = True
+
+        """권한 요청 거부"""                request.approved_by = 'SYSTEM'
+
+        try:                request.approved_date = datetime.now()
+
+            # 1. 요청 조회                
+
+            result = await self.session.execute(                logger.info(f"자동 승인 완료: {request.request_id}")
+
+                select(TbPermissionRequests).where(            else:
+
+                    TbPermissionRequests.request_id == request_id                request.request_status = 'failed'
+
+                )                request.rejection_reason = '자동 승인 처리 중 오류 발생'
+
+            )                
+
+            request = result.scalar_one_or_none()        except Exception as e:
+
+            if not request:            logger.error(f"자동 승인 처리 실패: {request.request_id}, {str(e)}")
+
+                raise ValueError(f"요청을 찾을 수 없습니다: {request_id}")            request.request_status = 'failed'
+
+                        request.rejection_reason = f'자동 승인 오류: {str(e)}'
+
+            if request.status != 'pending':    
+
+                raise ValueError(f"이미 처리된 요청입니다: {request.status}")    async def approve_request(
+
+                    self,
+
+            # 2. 거부자 정보 조회        request_id: int,
+
+            user_result = await self.session.execute(        approver_emp_no: str,
+
+                select(User).where(User.emp_no == rejector_emp_no)        approval_reason: Optional[str] = None
+
+            )    ) -> bool:
+
+            rejector = user_result.scalar_one_or_none()        """권한 요청 승인"""
+
+            rejector_name = rejector.user_name if rejector else rejector_emp_no        try:
+
+                        # 요청 조회
+
+            # 3. 요청 상태 업데이트            request_query = select(TbPermissionRequests).where(
+
+            request.status = 'rejected'                TbPermissionRequests.request_id == request_id
+
+            request.approver_emp_no = rejector_emp_no            )
+
+            request.approver_name = rejector_name            request_result = await self.session.execute(request_query)
+
+            request.rejection_reason = rejection_reason            request = request_result.scalar_one_or_none()
+
+            request.processed_at = datetime.now()            
+
+                        if not request:
+
+            # 4. 감사 로그 기록                logger.warning(f"존재하지 않는 요청: {request_id}")
+
+            await self._create_audit_log(                return False
+
+                action_type='rejected',            
+
+                actor_emp_no=rejector_emp_no,            if request.request_status != 'pending':
+
+                actor_name=rejector_name,                logger.warning(f"승인 불가능한 상태: {request.request_status}")
+
+                target_emp_no=request.requester_emp_no,                return False
+
+                container_id=request.container_id,            
+
+                permission_level=request.requested_permission_level,            # 승인자 권한 확인
+
+                request_id=request_id,            if not await self.permission_service.check_permission(
+
+                action_details={                approver_emp_no, request.knowledge_container_id, 'MANAGER'
+
+                    'reason': rejection_reason            ):
+
+                }                logger.warning(f"승인 권한 없음: {approver_emp_no}")
+
+            )                return False
+
+                        
+
+            await self.session.commit()            # 권한 부여
+
+            logger.info(f"권한 요청 거부 완료: {request_id}")            success = await self.permission_service.grant_permission(
+
+            return True                grantor_emp_no=approver_emp_no,
+
+                            user_emp_no=request.requester_emp_no,
+
+        except Exception as e:                container_id=request.knowledge_container_id,
+
+            await self.session.rollback()                permission_level=request.requested_permission_level,
+
+            logger.error(f"권한 요청 거부 실패: {e}")                granted_by=approver_emp_no
+
+            raise            )
+
+                
+
+    async def cancel_request(            if success:
+
+        self,                request.request_status = 'approved'
+
+        request_id: str,                request.approved_by = approver_emp_no
+
+        requester_emp_no: str                request.approved_date = datetime.now()
+
+    ) -> bool:                
+
+        """권한 요청 취소 (요청자만 가능)"""                await self.session.commit()
+
+        try:                
+
+            result = await self.session.execute(                # 감사 로그
+
+                select(TbPermissionRequests).where(                await self.permission_service._log_permission_audit(
+
+                    and_(                    user_emp_no=approver_emp_no,
+
+                        TbPermissionRequests.request_id == request_id,                    target_user_emp_no=request.requester_emp_no,
+
+                        TbPermissionRequests.requester_emp_no == requester_emp_no                    container_id=request.knowledge_container_id,
+
+                    )                    action_type='approve',
+
+                )                    resource_type='permission',
+
+            )                    new_permission=request.requested_permission_level,
+
+            request = result.scalar_one_or_none()                    action_result='success'
+
+            if not request:                )
+
+                raise ValueError("요청을 찾을 수 없거나 취소 권한이 없습니다.")                
+
+                            return True
+
+            if request.status != 'pending':            else:
+
+                raise ValueError(f"대기 중인 요청만 취소할 수 있습니다: {request.status}")                return False
+
+                            
+
+            request.status = 'cancelled'        except Exception as e:
+
+            request.processed_at = datetime.now()            await self.session.rollback()
+
+                        logger.error(f"요청 승인 실패: {request_id}, {str(e)}")
+
+            await self._create_audit_log(            return False
+
+                action_type='cancelled',    
+
+                actor_emp_no=requester_emp_no,    async def reject_request(
+
+                actor_name=request.requester_name,        self,
+
+                target_emp_no=requester_emp_no,        request_id: int,
+
+                container_id=request.container_id,        rejector_emp_no: str,
+
+                permission_level=request.requested_permission_level,        rejection_reason: str
+
+                request_id=request_id    ) -> bool:
+
+            )        """권한 요청 거부"""
+
+                    try:
+
+            await self.session.commit()            # 요청 조회
+
+            logger.info(f"권한 요청 취소 완료: {request_id}")            request_query = select(TbPermissionRequests).where(
+
+            return True                TbPermissionRequests.request_id == request_id
+
+                        )
+
+        except Exception as e:            request_result = await self.session.execute(request_query)
+
+            await self.session.rollback()            request = request_result.scalar_one_or_none()
+
+            logger.error(f"권한 요청 취소 실패: {e}")            
+
+            raise            if not request:
+
+                    return False
+
+    async def get_pending_requests(            
+
+        self,            # 승인자 권한 확인
+
+        approver_emp_no: Optional[str] = None,            if not await self.permission_service.check_permission(
+
+        limit: int = 50                rejector_emp_no, request.knowledge_container_id, 'MANAGER'
+
+    ) -> List[Dict[str, Any]]:            ):
+
+        """대기 중인 권한 요청 목록 조회"""                return False
+
+        try:            
+
+            query = select(TbPermissionRequests).where(            request.request_status = 'rejected'
+
+                TbPermissionRequests.status == 'pending'            request.approved_by = rejector_emp_no
+
+            ).order_by(            request.approved_date = datetime.now()
+
+                desc(TbPermissionRequests.urgency_level),            request.rejection_reason = rejection_reason
+
+                TbPermissionRequests.requested_at            
+
+            ).limit(limit)            await self.session.commit()
+
+                        
+
+            result = await self.session.execute(query)            # 감사 로그
+
+            requests = result.scalars().all()            await self.permission_service._log_permission_audit(
+
+                            user_emp_no=rejector_emp_no,
+
+            return [self._request_to_dict(req) for req in requests]                target_user_emp_no=request.requester_emp_no,
+
+                            container_id=request.knowledge_container_id,
+
+        except Exception as e:                action_type='reject',
+
+            logger.error(f"대기 중인 요청 조회 실패: {e}")                resource_type='permission',
+
+            raise                old_permission=request.current_permission_level,
+
+                    new_permission=request.requested_permission_level,
+
+    async def get_my_requests(                action_result='rejected',
+
+        self,                failure_reason=rejection_reason
+
+        requester_emp_no: str,            )
+
+        status: Optional[str] = None,            
+
+        limit: int = 50            return True
+
+    ) -> List[Dict[str, Any]]:            
+
+        """내 권한 요청 목록 조회"""        except Exception as e:
+
+        try:            await self.session.rollback()
+
+            query = select(TbPermissionRequests).where(            logger.error(f"요청 거부 실패: {request_id}, {str(e)}")
+
+                TbPermissionRequests.requester_emp_no == requester_emp_no            return False
+
+            )    
+
+                async def get_pending_requests(
+
+            if status:        self,
+
+                query = query.where(TbPermissionRequests.status == status)        approver_emp_no: str,
+
+                    limit: int = 50
+
+            query = query.order_by(    ) -> List[Dict[str, Any]]:
+
+                desc(TbPermissionRequests.requested_at)        """승인 대기 중인 요청 목록 조회"""
+
+            ).limit(limit)        try:
+
+                        # 승인자가 처리해야 할 요청들 조회
+
+            result = await self.session.execute(query)            query = select(
+
+            requests = result.scalars().all()                TbPermissionRequests,
+
+                            TbKnowledgeContainers,
+
+            return [self._request_to_dict(req) for req in requests]                TbSapHrInfo
+
+                        ).join(
+
+        except Exception as e:                TbKnowledgeContainers,
+
+            logger.error(f"내 요청 조회 실패: {e}")                TbPermissionRequests.knowledge_container_id == TbKnowledgeContainers.container_id
+
+            raise            ).join(
+
+                    TbSapHrInfo,
+
+    async def get_request_by_id(                TbPermissionRequests.requester_emp_no == TbSapHrInfo.emp_no
+
+        self,            ).where(
+
+        request_id: str                and_(
+
+    ) -> Optional[Dict[str, Any]]:                    TbPermissionRequests.request_status == 'pending',
+
+        """요청 상세 정보 조회"""                    or_(
+
+        try:                        TbPermissionRequests.assigned_approver == approver_emp_no,
+
+            result = await self.session.execute(                        TbKnowledgeContainers.container_owner == approver_emp_no,
+
+                select(TbPermissionRequests).where(                        TbKnowledgeContainers.permission_managers.any(approver_emp_no)
+
+                    TbPermissionRequests.request_id == request_id                    )
+
+                )                )
+
+            )            ).order_by(
+
+            request = result.scalar_one_or_none()                TbPermissionRequests.priority_level.desc(),
+
+                            TbPermissionRequests.created_date.asc()
+
+            return self._request_to_dict(request) if request else None            ).limit(limit)
+
+                        
+
+        except Exception as e:            result = await self.session.execute(query)
+
+            logger.error(f"요청 조회 실패: {e}")            
+
+            raise            requests = []
+
+                for request, container, requester in result:
+
+    async def get_statistics(self) -> Dict[str, Any]:                requests.append({
+
+        """권한 요청 통계"""                    'request_id': request.request_id,
+
+        try:                    'requester_emp_no': requester.emp_no,
+
+            # 전체 요청 수                    'requester_name': requester.emp_nm,
+
+            total_result = await self.session.execute(                    'requester_dept': requester.dept_nm,
+
+                select(func.count(TbPermissionRequests.id))                    'container_id': container.container_id,
+
+            )                    'container_name': container.container_name,
+
+            total_count = total_result.scalar()                    'requested_permission_level': request.requested_permission_level,
+
+                                'current_permission_level': request.current_permission_level,
+
+            # 상태별 카운트                    'request_reason': request.request_reason,
+
+            status_result = await self.session.execute(                    'business_justification': request.business_justification,
+
+                select(                    'priority_level': request.priority_level,
+
+                    TbPermissionRequests.status,                    'created_date': request.created_date,
+
+                    func.count(TbPermissionRequests.id)                    'expected_usage_period': request.expected_usage_period
+
+                ).group_by(TbPermissionRequests.status)                })
+
+            )            
+
+            status_counts = {row[0]: row[1] for row in status_result}            return requests
+
+                        
+
+            # 평균 처리 시간 (승인된 요청만)        except Exception as e:
+
+            avg_time_result = await self.session.execute(            logger.error(f"대기 요청 조회 실패: {approver_emp_no}, {str(e)}")
+
+                select(            return []
+
+                    func.avg(    
+
+                        func.extract('epoch', TbPermissionRequests.processed_at - TbPermissionRequests.requested_at)    async def get_user_requests(
+
+                    )        self,
+
+                ).where(TbPermissionRequests.status == 'approved')        user_emp_no: str,
+
+            )        status: Optional[str] = None,
+
+            avg_processing_time_seconds = avg_time_result.scalar() or 0        limit: int = 50
+
+            avg_processing_hours = avg_processing_time_seconds / 3600    ) -> List[Dict[str, Any]]:
+
+                    """사용자의 권한 요청 이력 조회"""
+
+            return {        try:
+
+                'total_requests': total_count,            query = select(
+
+                'pending': status_counts.get('pending', 0),                TbPermissionRequests,
+
+                'approved': status_counts.get('approved', 0),                TbKnowledgeContainers
+
+                'rejected': status_counts.get('rejected', 0),            ).join(
+
+                'cancelled': status_counts.get('cancelled', 0),                TbKnowledgeContainers,
+
+                'avg_processing_hours': round(avg_processing_hours, 2)                TbPermissionRequests.knowledge_container_id == TbKnowledgeContainers.container_id
+
+            }            ).where(
+
+                            TbPermissionRequests.requester_emp_no == user_emp_no
+
+        except Exception as e:            )
+
+            logger.error(f"통계 조회 실패: {e}")            
+
+            raise            if status:
+
+                    query = query.where(TbPermissionRequests.request_status == status)
+
+    # ==================== Private Methods ====================            
+
+                query = query.order_by(TbPermissionRequests.created_date.desc()).limit(limit)
+
+    async def _check_duplicate_request(            
+
+        self,            result = await self.session.execute(query)
+
+        requester_emp_no: str,            
+
+        container_id: str,            requests = []
+
+        requested_permission_level: str            for request, container in result:
+
+    ) -> Optional[TbPermissionRequests]:                requests.append({
+
+        """중복 요청 확인"""                    'request_id': request.request_id,
+
+        result = await self.session.execute(                    'container_id': container.container_id,
+
+            select(TbPermissionRequests).where(                    'container_name': container.container_name,
+
+                and_(                    'requested_permission_level': request.requested_permission_level,
+
+                    TbPermissionRequests.requester_emp_no == requester_emp_no,                    'current_permission_level': request.current_permission_level,
+
+                    TbPermissionRequests.container_id == container_id,                    'request_status': request.request_status,
+
+                    TbPermissionRequests.requested_permission_level == requested_permission_level,                    'request_reason': request.request_reason,
+
+                    TbPermissionRequests.status == 'pending'                    'rejection_reason': request.rejection_reason,
+
+                )                    'created_date': request.created_date,
+
+            )                    'approved_date': request.approved_date,
+
+        )                    'auto_approved': request.auto_approved
+
+        return result.scalar_one_or_none()                })
+
+                
+
+    async def _check_auto_approval(            return requests
+
+        self,            
+
+        request: TbPermissionRequests        except Exception as e:
+
+    ) -> bool:            logger.error(f"사용자 요청 이력 조회 실패: {user_emp_no}, {str(e)}")
+
+        """자동 승인 규칙 확인"""            return []
+
+        try:
+
+            # 활성화된 규칙을 우선순위 순으로 조회
+
+            result = await self.session.execute(async def get_permission_request_service() -> AsyncGenerator[PermissionRequestService, None]:
+
+                select(TbAutoApprovalRules).where(    """권한 요청 서비스 의존성 주입"""
+
+                    TbAutoApprovalRules.is_active == True    async for session in get_db():
+
+                ).order_by(desc(TbAutoApprovalRules.priority))        yield PermissionRequestService(session)
+
+            )
+            rules = result.scalars().all()
+            
+            for rule in rules:
+                if self._match_rule_conditions(request, rule.conditions):
+                    return rule.action == 'auto_approve'
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"자동 승인 확인 실패: {e}")
+            return False
+    
+    def _match_rule_conditions(
+        self,
+        request: TbPermissionRequests,
+        conditions: Dict[str, Any]
+    ) -> bool:
+        """규칙 조건 매칭"""
+        try:
+            # permission_level 조건
+            if 'permission_level' in conditions:
+                allowed_levels = conditions['permission_level']
+                if isinstance(allowed_levels, str):
+                    allowed_levels = [allowed_levels]
+                if request.requested_permission_level not in allowed_levels:
+                    return False
+            
+            # department 조건
+            if 'department' in conditions:
+                allowed_depts = conditions['department']
+                if isinstance(allowed_depts, str):
+                    allowed_depts = [allowed_depts]
+                if request.requester_department not in allowed_depts:
+                    return False
+            
+            # urgency_level 조건
+            if 'urgency_level' in conditions:
+                allowed_urgencies = conditions['urgency_level']
+                if isinstance(allowed_urgencies, str):
+                    allowed_urgencies = [allowed_urgencies]
+                if request.urgency_level not in allowed_urgencies:
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"규칙 조건 매칭 실패: {e}")
+            return False
+    
+    async def _grant_permission(
+        self,
+        user_emp_no: str,
+        container_id: str,
+        permission_level: str,
+        granted_by: str
+    ) -> None:
+        """권한 부여"""
+        # 기존 권한 확인
+        result = await self.session.execute(
+            select(TbUserPermissions).where(
+                and_(
+                    TbUserPermissions.user_emp_no == user_emp_no,
+                    TbUserPermissions.container_id == container_id
+                )
+            )
+        )
+        existing_permission = result.scalar_one_or_none()
+        
+        if existing_permission:
+            # 기존 권한 업데이트
+            existing_permission.permission_level = permission_level
+            existing_permission.granted_by = granted_by
+            existing_permission.granted_at = datetime.now()
+        else:
+            # 새 권한 생성
+            new_permission = TbUserPermissions(
+                user_emp_no=user_emp_no,
+                container_id=container_id,
+                permission_level=permission_level,
+                granted_by=granted_by,
+                granted_at=datetime.now()
+            )
+            self.session.add(new_permission)
+    
+    async def _create_audit_log(
+        self,
+        action_type: str,
+        actor_emp_no: str,
+        actor_name: str,
+        target_emp_no: Optional[str] = None,
+        container_id: Optional[str] = None,
+        permission_level: Optional[str] = None,
+        request_id: Optional[str] = None,
+        action_details: Optional[Dict[str, Any]] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> None:
+        """감사 로그 생성"""
+        log = TbPermissionAuditLog(
+            log_id=f"LOG-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}",
+            action_type=action_type,
+            actor_emp_no=actor_emp_no,
+            actor_name=actor_name,
+            target_emp_no=target_emp_no,
+            container_id=container_id,
+            permission_level=permission_level,
+            request_id=request_id,
+            action_details=action_details,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            created_at=datetime.now()
+        )
+        self.session.add(log)
+    
+    def _generate_request_id(self) -> str:
+        """요청 ID 생성"""
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        random_suffix = uuid.uuid4().hex[:6].upper()
+        return f"REQ-{timestamp}-{random_suffix}"
+    
+    def _request_to_dict(self, request: TbPermissionRequests) -> Dict[str, Any]:
+        """요청 객체를 딕셔너리로 변환"""
+        return {
+            'id': request.id,
+            'request_id': request.request_id,
+            'requester_emp_no': request.requester_emp_no,
+            'requester_name': request.requester_name,
+            'requester_department': request.requester_department,
+            'container_id': request.container_id,
+            'container_name': request.container_name,
+            'current_permission_level': request.current_permission_level,
+            'requested_permission_level': request.requested_permission_level,
+            'request_reason': request.request_reason,
+            'business_justification': request.business_justification,
+            'expected_usage_period': request.expected_usage_period,
+            'urgency_level': request.urgency_level,
+            'status': request.status,
+            'approver_emp_no': request.approver_emp_no,
+            'approver_name': request.approver_name,
+            'approval_comment': request.approval_comment,
+            'rejection_reason': request.rejection_reason,
+            'auto_approved': request.auto_approved,
+            'requested_at': request.requested_at.isoformat() if request.requested_at else None,
+            'processed_at': request.processed_at.isoformat() if request.processed_at else None,
+            'expires_at': request.expires_at.isoformat() if request.expires_at else None
+        }

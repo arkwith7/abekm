@@ -1,0 +1,22 @@
+<task>
+주어지는 텍스트를 아래 조건에 따라 분석해 주세요:
+
+    0. 문장부호가 누락된 경우 <question>에 적절한 문장부호를 추가해주세요.
+    1. <chat history>에서 <question>의 질의가 원하는 문서를 추출해주세요.
+    2. 문장의 의도를 'Search', 'Service Request', 'Q&A', 'Others' 중 하나로 분석하세요.
+
+결과는 <example>과 같은 형식으로 반환하세요
+==============
+<example>
+```json
+{{
+  "file_physical_name": ["1189_20231009_제안서_삼성SDS유럽법인_ERP_구축사업(웅진)_final.pptx", "..."],
+  "intent": "Others"
+}}
+```
+==============
+<chat history>
+{chat_history}
+==============
+<question>
+{question}

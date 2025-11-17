@@ -1,0 +1,37 @@
+(주)웅진	NNP
+웅진	NNP
+지식관리시스템	NNG
+WKMS	NNG
+Azure Functions	NNG
+AWS Bedrock	NNG
+SharePoint	NNG
+아래아한글	NNG
+HWP	NNG
+SAP RFC	NNG
+pgvector	NNG
+PostgreSQL	NNG
+Redis Stack	NNG
+FastAPI	NNG
+React	NNG
+kiwipiepy	NNG
+tiktoken	NNG
+Claude	NNP
+Cohere	NNP
+Titan	NNP
+Anthropic	NNP
+OpenAI	NNP
+MS Office	NNG
+Word	NNG
+Excel	NNG
+PowerPoint	NNG
+Elasticsearch	NNG
+Nori	NNG
+Grafana	NNG
+Prometheus	NNG
+CloudWatch	NNG
+Docker	NNG
+Kubernetes	NNG
+EKS	NNG
+RDS	NNG
+S3	NNG
+Lambda	NNG
