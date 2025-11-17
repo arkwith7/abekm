@@ -173,9 +173,9 @@ export const agentService = {
       // 에러 처리
       if (error.response?.status === 401) {
         console.warn('🔐 인증 실패 - 로그인 페이지로 리다이렉트');
-        localStorage.removeItem('wikl_token');
-        localStorage.removeItem('wikl_refresh_token');
-        localStorage.removeItem('wikl_user');
+        localStorage.removeItem('ABEKM_token');
+        localStorage.removeItem('ABEKM_refresh_token');
+        localStorage.removeItem('ABEKM_user');
         window.location.href = '/login';
       }
 

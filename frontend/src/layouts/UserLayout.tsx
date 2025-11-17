@@ -295,7 +295,7 @@ export const UserLayout: React.FC = () => {
                     <span className="text-white font-bold">W</span>
                   </div>
                   <div>
-                    <h1 className="text-lg font-bold text-gray-900">WIKL</h1>
+                    <h1 className="text-lg font-bold text-gray-900">ABEKM</h1>
                     <p className="text-xs text-gray-500">지식관리시스템</p>
                   </div>
                 </div>

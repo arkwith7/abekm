@@ -626,7 +626,7 @@ export const useChat = (options: UseChatOptions = {}) => {
         console.log('🎯 실시간 선택된 문서 사용:', selectedDocumentsPayload);
       } else {
         try {
-          const storedData = localStorage.getItem('wikl_workContext');
+          const storedData = localStorage.getItem('ABEKM_workContext');
           if (storedData) {
             const parsed = JSON.parse(storedData);
             const chatDocs = parsed?.pageStates?.chat?.selectedDocuments || [];
@@ -687,9 +687,9 @@ export const useChat = (options: UseChatOptions = {}) => {
         if (!response.ok) {
           if (response.status === 401) {
             console.warn('🔐 인증 실패 - 로그인 페이지로 리다이렉트');
-            localStorage.removeItem('wikl_token');
-            localStorage.removeItem('wikl_refresh_token');
-            localStorage.removeItem('wikl_user');
+            localStorage.removeItem('ABEKM_token');
+            localStorage.removeItem('ABEKM_refresh_token');
+            localStorage.removeItem('ABEKM_user');
             localStorage.removeItem('csrf_token');
 
             const evt = new CustomEvent('session:invalid', { detail: { status: 401 } });

@@ -517,7 +517,7 @@ export const saveStateToLocalStorage = (state: GlobalAppState) => {
       workContext: state.workContext,
       pageStates: state.pageStates
     };
-    localStorage.setItem('wikl-app-state', JSON.stringify(stateToSave));
+    localStorage.setItem('ABEKM-app-state', JSON.stringify(stateToSave));
   } catch (error) {
     console.warn('상태를 로컬 스토리지에 저장할 수 없습니다:', error);
   }
@@ -525,7 +525,7 @@ export const saveStateToLocalStorage = (state: GlobalAppState) => {
 
 export const loadStateFromLocalStorage = (): Partial<GlobalAppState> | null => {
   try {
-    const savedState = localStorage.getItem('wikl-app-state');
+    const savedState = localStorage.getItem('ABEKM-app-state');
     if (savedState) {
       return JSON.parse(savedState);
     }
@@ -537,7 +537,7 @@ export const loadStateFromLocalStorage = (): Partial<GlobalAppState> | null => {
 
 export const clearLocalStorageState = () => {
   try {
-    localStorage.removeItem('wikl-app-state');
+    localStorage.removeItem('ABEKM-app-state');
   } catch (error) {
     console.warn('로컬 스토리지 상태를 삭제할 수 없습니다:', error);
   }

@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 
 # 데이터베이스 연결 설정
-DATABASE_URL = "postgresql+asyncpg://wikl_user:wikl_password@localhost:5432/wikl_chat"
+DATABASE_URL = "postgresql+asyncpg://ABEKM_user:ABEKM_password@localhost:5432/ABEKM_chat"
 
 async def test_reference_restoration():
     """최근 채팅 세션의 참고자료 복원 테스트"""

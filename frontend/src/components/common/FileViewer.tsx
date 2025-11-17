@@ -48,23 +48,23 @@ const FileViewer: React.FC<FileViewerProps> = ({
     const baseUrl = '';
     const fileExt = document.file_extension?.toLowerCase() || '';
 
-    // 토큰 가져오기 - 우선순위: wikl_token (최신) > access_token > token (오래된)
-    let token = localStorage.getItem('wikl_token') ||
+    // 토큰 가져오기 - 우선순위: ABEKM_token (최신) > access_token > token (오래된)
+    let token = localStorage.getItem('ABEKM_token') ||
       localStorage.getItem('access_token') ||
       localStorage.getItem('token');
 
-    // wikl_user 정보 확인하여 HR001 사용자인지 확인
-    const wiklUser = localStorage.getItem('wikl_user');
-    if (wiklUser) {
+    // ABEKM_user 정보 확인하여 HR001 사용자인지 확인
+    const ABEKMUser = localStorage.getItem('ABEKM_user');
+    if (ABEKMUser) {
       try {
-        const userData = JSON.parse(wiklUser);
-        console.log('Current wikl_user:', userData);
-        // HR001 사용자인 경우 wikl_token을 우선 사용
+        const userData = JSON.parse(ABEKMUser);
+        console.log('Current ABEKM_user:', userData);
+        // HR001 사용자인 경우 ABEKM_token을 우선 사용
         if (userData.emp_no === 'HR001' || userData.username === 'hr.manager') {
-          token = localStorage.getItem('wikl_token') || token;
+          token = localStorage.getItem('ABEKM_token') || token;
         }
       } catch (e) {
-        console.warn('Failed to parse wikl_user:', e);
+        console.warn('Failed to parse ABEKM_user:', e);
       }
     }
 
@@ -88,11 +88,11 @@ const FileViewer: React.FC<FileViewerProps> = ({
     console.log('Document file name:', document.file_name);
     console.log('Document container_path:', document.container_path);
     console.log('File extension:', fileExt);
-    console.log('wikl_token:', localStorage.getItem('wikl_token') ? 'available' : 'not found');
+    console.log('ABEKM_token:', localStorage.getItem('ABEKM_token') ? 'available' : 'not found');
     console.log('access_token:', localStorage.getItem('access_token') ? 'available' : 'not found');
     console.log('token:', localStorage.getItem('token') ? 'available' : 'not found');
     console.log('Selected token source:',
-      token === localStorage.getItem('wikl_token') ? 'wikl_token' :
+      token === localStorage.getItem('ABEKM_token') ? 'ABEKM_token' :
         token === localStorage.getItem('access_token') ? 'access_token' : 'token');
     console.log('Token available:', !!token);
     console.log('Token preview:', token ? token.substring(0, 50) + '...' : 'null');
@@ -418,7 +418,7 @@ const TextViewer: React.FC<TextViewerProps> = ({ fileUrl, zoom, onLoad, onError 
 
   useEffect(() => {
     const token = localStorage.getItem('access_token') ||
-      localStorage.getItem('wikl_token') ||
+      localStorage.getItem('ABEKM_token') ||
       localStorage.getItem('token');
     const headers: HeadersInit = {};
 

@@ -148,7 +148,7 @@ const PresentationOutlineModal: React.FC<Props> = ({
                     `/api/v1/chat/presentation/templates/${encodeURIComponent(selectedTemplateId)}/simple-metadata`,
                     {
                         headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('wikl_token')}`
+                            'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
                         }
                     }
                 );
@@ -179,7 +179,7 @@ const PresentationOutlineModal: React.FC<Props> = ({
                 `/api/v1/chat/presentation/templates`,
                 {
                     headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('wikl_token')}`
+                        'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
                     }
                 }
             );

@@ -37,7 +37,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
                 {
                     method: 'POST',
                     headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('wikl_token')}`
+                        'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
                     }
                 }
             );
@@ -62,7 +62,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
     // 현재 사용자가 관리자인지 확인
     const isAdmin = () => {
         try {
-            const userInfo = localStorage.getItem('wikl_user');
+            const userInfo = localStorage.getItem('ABEKM_user');
             if (userInfo) {
                 const user = JSON.parse(userInfo);
                 return user.is_admin === true;
@@ -85,7 +85,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
                 {
                     method: 'GET',
                     headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('wikl_token')}`
+                        'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
                     }
                 }
             );
@@ -105,7 +105,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
 
     // 템플릿 파일 다운로드/미리보기
     const handleDownloadTemplate = (template: Template) => {
-        const token = localStorage.getItem('wikl_token');
+        const token = localStorage.getItem('ABEKM_token');
         const downloadUrl = `/api/v1/chat/presentation/templates/${encodeURIComponent(template.id)}/download?token=${token}`;
 
         // 새 창에서 다운로드 (PowerPoint 파일이므로 자동으로 다운로드됨)
@@ -134,7 +134,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
                     method: 'POST',
                     body: formData,
                     headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('wikl_token')}`
+                        'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
                     }
                 }
             );
@@ -169,7 +169,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
                 {
                     method: 'DELETE',
                     headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('wikl_token')}`
+                        'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
                     }
                 }
             );
@@ -481,7 +481,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
                                         <h4 className="text-sm font-medium text-gray-800 mb-3">템플릿 파일 미리보기</h4>
                                         <div className="border border-gray-200 rounded-lg bg-gray-50" style={{ height: '400px' }}>
                                             <iframe
-                                                src={`/api/v1/chat/presentation/templates/${encodeURIComponent(previewTemplate.id)}/file?token=${localStorage.getItem('wikl_token')}`}
+                                                src={`/api/v1/chat/presentation/templates/${encodeURIComponent(previewTemplate.id)}/file?token=${localStorage.getItem('ABEKM_token')}`}
                                                 className="w-full h-full rounded-lg"
                                                 title="템플릿 미리보기"
                                                 onLoad={() => console.log('템플릿 PDF 로드 완료')}

@@ -39,7 +39,7 @@ const parseTtlMinutes = (value: string | undefined): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
 };
 
-export const AGENT_CHAT_STATE_STORAGE_KEY = 'wikl_agent_chat_state';
+export const AGENT_CHAT_STATE_STORAGE_KEY = 'ABEKM_agent_chat_state';
 export const AGENT_CHAT_SESSION_TTL_MS = parseTtlMinutes(AGENT_CHAT_TTL_ENV) * 60 * 1000;
 
 export interface PersistedAgentChatState {

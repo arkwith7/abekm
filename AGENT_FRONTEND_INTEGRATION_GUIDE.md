@@ -405,7 +405,7 @@ setContainerFilter([]);
 - 로그인 상태 확인: `/user` 경로는 인증 필요
 
 ### 2. API 호출 실패 (401 Unauthorized)
-- JWT 토큰 확인: `localStorage.getItem('wikl_token')`
+- JWT 토큰 확인: `localStorage.getItem('ABEKM_token')`
 - 백엔드 실행 확인: `http://localhost:8000/docs`
 
 ### 3. 빈 응답 또는 에러

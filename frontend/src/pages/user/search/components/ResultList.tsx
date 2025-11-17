@@ -2,7 +2,7 @@ import { Image } from 'lucide-react';
 import React from 'react';
 import { SearchResult } from '../types';
 
-const TOKEN_STORAGE_KEYS = ['wikl_token', 'access_token', 'token'];
+const TOKEN_STORAGE_KEYS = ['ABEKM_token', 'access_token', 'token'];
 
 const resolveAuthToken = (): string | null => {
   if (typeof window === 'undefined') {

@@ -1,8 +1,8 @@
-const ACCESS_TOKEN_KEYS = ['abkms_token', 'wikl_token'] as const;
-const ACCESS_TOKEN_EXPIRY_KEYS = ['abkms_token_expiry', 'wikl_token_expiry'] as const;
-const REFRESH_TOKEN_KEYS = ['abkms_refresh_token', 'wikl_refresh_token'] as const;
-const REFRESH_TOKEN_EXPIRY_KEYS = ['abkms_refresh_token_expiry', 'wikl_refresh_token_expiry'] as const;
-const USER_INFO_KEYS = ['abkms_user', 'wikl_user'] as const;
+const ACCESS_TOKEN_KEYS = ['abkms_token', 'ABEKM_token'] as const;
+const ACCESS_TOKEN_EXPIRY_KEYS = ['abkms_token_expiry', 'ABEKM_token_expiry'] as const;
+const REFRESH_TOKEN_KEYS = ['abkms_refresh_token', 'ABEKM_refresh_token'] as const;
+const REFRESH_TOKEN_EXPIRY_KEYS = ['abkms_refresh_token_expiry', 'ABEKM_refresh_token_expiry'] as const;
+const USER_INFO_KEYS = ['abkms_user', 'ABEKM_user'] as const;
 
 const setValueForKeys = (keys: readonly string[], value: string | null | undefined) => {
   keys.forEach((key) => {

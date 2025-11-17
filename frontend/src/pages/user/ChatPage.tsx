@@ -386,13 +386,13 @@ const ChatPage: React.FC = () => {
       if (!templatesLoaded || templates.length === 0) {
         try {
           const resp = await fetch(`/api/v1/chat/presentation/templates`, {
-            headers: { 'Authorization': `Bearer ${localStorage.getItem('wikl_token')}` }
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` }
           });
 
           if (resp.status === 401) {
             // 인증 만료 시 로그인 페이지로 리다이렉트
-            localStorage.removeItem('wikl_token');
-            localStorage.removeItem('wikl_refresh_token');
+            localStorage.removeItem('ABEKM_token');
+            localStorage.removeItem('ABEKM_refresh_token');
             window.dispatchEvent(new Event('session:invalid'));
             window.location.href = '/login';
             return;

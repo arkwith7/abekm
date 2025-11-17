@@ -35,7 +35,7 @@ const LayoutSelector: React.FC<Props> = ({
                     `/api/v1/chat/presentation/templates/${encodeURIComponent(templateId)}/layouts`,
                     {
                         headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('wikl_token')}`
+                            'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
                         }
                     }
                 );

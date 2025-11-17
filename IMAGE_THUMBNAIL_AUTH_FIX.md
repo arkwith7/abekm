@@ -20,7 +20,7 @@
 
 #### 3.2 프론트엔드
 
-- 토큰 추출 유틸(`resolveAuthToken`) 추가: `wikl_token`, `access_token`, `token`을 LocalStorage/SessionStorage/쿠키에서 탐색
+- 토큰 추출 유틸(`resolveAuthToken`) 추가: `ABEKM_token`, `access_token`, `token`을 LocalStorage/SessionStorage/쿠키에서 탐색
 - 이미지 로딩 방식을 `fetch + Blob URL`로 변경하여 Authorization 헤더를 수동으로 추가
 - fetch AbortController 및 Blob URL 해제 로직 추가
 - 토큰 미존재 시에도 부드러운 실패 처리를 위해 에러 상태 초기화 로직 개선

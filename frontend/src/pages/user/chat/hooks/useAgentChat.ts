@@ -229,7 +229,7 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
 
       console.log('🤖 [useAgentChat] SSE 스트리밍 요청:', request);
 
-      const token = localStorage.getItem('wikl_token');
+      const token = localStorage.getItem('ABEKM_token');
       const response = await fetch('/api/v1/agent/chat/stream', {
         method: 'POST',
         headers: {
@@ -469,7 +469,7 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     try {
       console.log('🔄 [useAgentChat] 세션 복원 시작:', sessionIdToLoad);
 
-      const token = localStorage.getItem('wikl_token');
+      const token = localStorage.getItem('ABEKM_token');
       const response = await fetch(`/api/v1/agent/sessions/${sessionIdToLoad}`, {
         method: 'GET',
         headers: {
@@ -539,7 +539,7 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
    */
   const listSessions = useCallback(async (limit: number = 20, offset: number = 0) => {
     try {
-      const token = localStorage.getItem('wikl_token');
+      const token = localStorage.getItem('ABEKM_token');
       const response = await fetch(`/api/v1/agent/sessions?limit=${limit}&offset=${offset}`, {
         method: 'GET',
         headers: {

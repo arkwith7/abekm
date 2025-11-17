@@ -13,7 +13,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  title = 'WIKL',
+  title = 'ABEKM',
   showUserInfo = true,
   className = ''
 }) => {

@@ -36,7 +36,7 @@ export function usePresentation(sessionId: string) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('wikl_token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`,
         },
         body: JSON.stringify({
           session_id: sessionId,
@@ -49,8 +49,8 @@ export function usePresentation(sessionId: string) {
       if (!response.ok || !response.body) {
         if (response.status === 401) {
           // 인증 만료 시 로그인 페이지로 리다이렉트
-          localStorage.removeItem('wikl_token');
-          localStorage.removeItem('wikl_refresh_token');
+          localStorage.removeItem('ABEKM_token');
+          localStorage.removeItem('ABEKM_refresh_token');
           window.dispatchEvent(new Event('session:invalid'));
           window.location.href = '/login';
           return;
@@ -104,7 +104,7 @@ export function usePresentation(sessionId: string) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('wikl_token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`,
         },
         body: JSON.stringify({
           session_id: sessionId,
@@ -115,8 +115,8 @@ export function usePresentation(sessionId: string) {
       if (!res.ok) {
         if (res.status === 401) {
           // 인증 만료 시 로그인 페이지로 리다이렉트
-          localStorage.removeItem('wikl_token');
-          localStorage.removeItem('wikl_refresh_token');
+          localStorage.removeItem('ABEKM_token');
+          localStorage.removeItem('ABEKM_refresh_token');
           window.dispatchEvent(new Event('session:invalid'));
           window.location.href = '/login';
           return null;
@@ -159,7 +159,7 @@ export function usePresentation(sessionId: string) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('wikl_token')}`,
+          'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`,
         },
         body: JSON.stringify({
           session_id: sessionId,
@@ -175,8 +175,8 @@ export function usePresentation(sessionId: string) {
       if (!response.ok || !response.body) {
         if (response.status === 401) {
           // 인증 만료 시 로그인 페이지로 리다이렉트
-          localStorage.removeItem('wikl_token');
-          localStorage.removeItem('wikl_refresh_token');
+          localStorage.removeItem('ABEKM_token');
+          localStorage.removeItem('ABEKM_refresh_token');
           window.dispatchEvent(new Event('session:invalid'));
           window.location.href = '/login';
           return;

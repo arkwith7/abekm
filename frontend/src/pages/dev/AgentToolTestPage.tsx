@@ -33,7 +33,7 @@ const AgentToolTestPage: React.FC = () => {
     useEffect(() => {
         const fetchCapabilities = async () => {
             try {
-                const token = localStorage.getItem('wikl_token');
+                const token = localStorage.getItem('ABEKM_token');
 
                 // 토큰이 없거나 유효하지 않으면 요청하지 않음
                 if (!token || token === 'undefined' || token === 'null') {
@@ -98,7 +98,7 @@ const AgentToolTestPage: React.FC = () => {
         setTestResult(null);
 
         try {
-            const token = localStorage.getItem('wikl_token');
+            const token = localStorage.getItem('ABEKM_token');
             const response = await fetch('/api/v1/chat/agent-tool/execute', {
                 method: 'POST',
                 headers: {
@@ -312,7 +312,7 @@ const AgentToolTestPage: React.FC = () => {
                                                 if (isDownloading) return;
                                                 try {
                                                     setIsDownloading(true);
-                                                    const token = localStorage.getItem('wikl_token');
+                                                    const token = localStorage.getItem('ABEKM_token');
                                                     const rawName = testResult.tool_execution_result.tool_result.file_name || testResult.tool_execution_result.tool_result.file_path.split('/').pop();
                                                     const url = `/api/v1/chat/presentation/download/${encodeURIComponent(rawName)}`;
                                                     const resp = await fetch(url, {

@@ -476,8 +476,8 @@ export const GlobalAppProvider: React.FC<GlobalAppProviderProps> = ({ children }
             // 🆕 localStorage 정리
             try {
                 localStorage.removeItem('pageStates'); // 페이지별 상태 (선택 문서 포함)
-                localStorage.removeItem('wikl_chat_state'); // 채팅 상태
-                localStorage.removeItem('wikl_agent_chat_state'); // Agent 채팅 상태
+                localStorage.removeItem('ABEKM_chat_state'); // 채팅 상태
+                localStorage.removeItem('ABEKM_agent_chat_state'); // Agent 채팅 상태
                 console.log('🧹 로그아웃: 모든 선택 문서 + localStorage 클리어 완료');
             } catch (error) {
                 console.warn('⚠️ localStorage 정리 실패:', error);
