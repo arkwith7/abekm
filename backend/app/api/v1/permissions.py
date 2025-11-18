@@ -231,21 +231,24 @@ async def get_all_user_permissions(
     """전체 사용자 권한 목록 조회 (관리자용)
     
     - 시스템 관리자: 모든 권한 조회
-    - 지식관리자: 관리 범위 내 권한만 조회
+    - 지식관리자: 403 Forbidden (managed-scope-permissions 사용)
     """
     try:
         permission_service = PermissionService(session)
         
-        # 관리자 권한 확인
-        if not await permission_service.check_admin_permission(current_user.emp_no):
-            raise HTTPException(status_code=403, detail="권한 목록 조회 권한이 없습니다.")
+        # 시스템 관리자만 허용
+        if not await permission_service.is_system_admin(current_user.emp_no):
+            raise HTTPException(
+                status_code=403, 
+                detail="시스템 관리자만 전체 권한을 조회할 수 있습니다. 지식관리자는 /permissions/managed-scope-permissions를 사용하세요."
+            )
         
-        # 전체 권한 목록 조회 (지식관리자는 범위 제한 적용)
+        # 전체 권한 목록 조회
         permissions = await permission_service.list_all_permissions(
             container_id=container_id,
             skip=skip,
             limit=limit,
-            manager_emp_no=current_user.emp_no  # 지식관리자 범위 필터링
+            manager_emp_no=None  # 시스템 관리자는 필터링 없음
         )
         
         return {
@@ -258,6 +261,54 @@ async def get_all_user_permissions(
         raise
     except Exception as e:
         logger.error(f"권한 목록 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/managed-scope-permissions")
+async def get_managed_scope_permissions(
+    current_user = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+    container_id: Optional[str] = Query(None, description="특정 컨테이너 필터링"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000)
+):
+    """관리 범위 내 권한 목록 조회 (지식관리자용)
+    
+    - 시스템 관리자: 모든 권한 조회
+    - 지식관리자: 관리하는 컨테이너 범위 내 권한만 조회
+    """
+    try:
+        permission_service = PermissionService(session)
+        
+        # 시스템 관리자 또는 지식관리자 권한 확인
+        is_system_admin = await permission_service.is_system_admin(current_user.emp_no)
+        managed_containers = await permission_service.get_managed_container_ids(current_user.emp_no)
+        
+        if not is_system_admin and not managed_containers:
+            raise HTTPException(
+                status_code=403, 
+                detail="권한 조회 권한이 없습니다. 지식관리자 역할이 필요합니다."
+            )
+        
+        # 관리 범위 내 권한 목록 조회
+        permissions = await permission_service.list_all_permissions(
+            container_id=container_id,
+            skip=skip,
+            limit=limit,
+            manager_emp_no=current_user.emp_no  # 지식관리자 범위 필터링
+        )
+        
+        return {
+            "success": True,
+            "permissions": permissions,
+            "total_count": len(permissions),
+            "is_system_admin": is_system_admin,
+            "managed_container_count": 0 if is_system_admin else len(managed_containers)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"관리 범위 권한 조회 실패: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================

@@ -51,10 +51,13 @@ coverage.xml
 # 환경
 .env
 .env.local
+.env.development
+.env.production
 .env.development.local
 .env.test.local
 .env.production.local
 .venv/
+.venv.*/
 env/
 venv/
 ENV/
@@ -83,12 +86,15 @@ pyrightconfig.json
 .ipynb_checkpoints/
 */.ipynb_checkpoints/*
 
-# 로그
+# 로그 파일
 *.log
+logs/
 tmp/
+temp/
+
 # 업로드된 파일
 uploads/
-temp/
+backend/uploads/
 
 # 데이터베이스
 *.db
@@ -183,3 +189,172 @@ jupyter_notebook/data/textract_output
 jupyter_notebook/data/extracted_objects
 # Environment backup files
 *.env.backup*
+
+# ============================================================================
+# 프로젝트별 임시/테스트 파일
+# ============================================================================
+
+# 테스트/디버그 스크립트 (루트 디렉토리)
+test_*.py
+test_*.sh
+test_*.txt
+check_*.py
+check_*.sh
+check_*.sql
+analyze_*.py
+debug_*.py
+diagnose_*.py
+verify_*.py
+verify_*.sh
+fix_*.py
+fix_*.sh
+update_*.py
+
+# 마이그레이션/백업 SQL
+*.sql
+!backend/alembic/versions/*.sql
+migration_*.sql
+backup_*.sql
+reset_*.sql
+complete_*.sql
+
+# 임시 분석 파일
+*_analysis.py
+*_analysis.csv
+*_results.json
+*_results.csv
+document_analysis*.csv
+processing_analysis.py
+
+# 개발용 스크립트
+add_*.py
+optimized_*.py
+large_file_*.py
+quick_*.py
+
+# 임시 쿠키/세션 파일
+cookies.txt
+*.cookie
+
+# IPython/Jupyter 노트북 (데이터 제외)
+jupyter_notebook/data/input_docs/
+jupyter_notebook/data/output_texts/
+jupyter_notebook/data/azure_di_output/
+jupyter_notebook/data/opensource_output/
+jupyter_notebook/data/textract_output/
+jupyter_notebook/data/extracted_objects/
+*.ipynb_checkpoints/
+
+# 설계 문서 임시 파일
+*_plan.md
+*_proposal.md
+*_refactoring_plan.md
+design_*.py
+
+# 배포 스크립트 임시 파일
+dev.sh
+dev-*.sh
+deploy-*.sh
+
+# 텍스트 파일 (필요한 것만 추가)
+test_*.txt
+*.txt
+!requirements.txt
+!README.txt
+!LICENSE.txt
+
+# AWS/Azure 정책 파일 임시 버전
+*_iam_policy.json
+*_comparison_results.json
+
+# Celery 예제
+celery_implementation_example.py
+celery_requirements.txt
+
+# 프로젝트별 임시 디렉토리
+kmsapp/
+tmp/
+temp/
+
+# 데이터베이스 덤프
+*.dump
+*.sql.gz
+tb_*.sql
+
+# 쉘 스크립트 (필요한 것만 명시적으로 추가)
+*.sh
+!shell-script/**/*.sh
+!deployment/**/*.sh
+!k8s/**/*.sh
+
+# Package 파일 (루트)
+package.json
+package-lock.json
+
+# Docker override
+docker-compose.override.yml
+docker-compose.*.yml
+!docker-compose.yml
+!docker-compose.prod.yml
+
+# 백엔드 로그
+backend.log
+backend_error.log
+backend/*.log
+
+# 마크다운 리포트/가이드 (선택적)
+# 필요하면 개별적으로 추가 커밋
+*_REPORT.md
+*_GUIDE.md
+*_IMPLEMENTATION*.md
+*_SUMMARY.md
+*_FIX.md
+*_COMPLETE.md
+*_ANALYSIS*.md
+*_STATUS*.md
+*_PLAN.md
+*_ROADMAP.md
+*_TESTING*.md
+*_IMPROVEMENT*.md
+UPSTAGE_*.md
+AGENT_*.md
+ASYNC_*.md
+AWS_*.md
+BACKEND_*.md
+CHAT_*.md
+CLIP_*.md
+CONTAINER_*.md
+DB_*.md
+DEPLOYMENT_*.md
+DOCUMENT_*.md
+ENGLISH_*.md
+ENHANCED_*.md
+ENV_*.md
+FRONTEND_*.md
+GPT5_*.md
+IMAGE_*.md
+LLM_*.md
+LOGIN_*.md
+MANAGER_*.md
+MIGRATION_*.md
+MULTIMODAL_*.md
+NATURAL_*.md
+PERMISSION_*.md
+PHASE_*.md
+PIPELINE_*.md
+PPT_*.md
+PROCESSING_*.md
+RAG_*.md
+RDS_*.md
+REFERENCE_*.md
+SEARCH_*.md
+SESSION_*.md
+SUMMARIZATION_*.md
+TEMPLATE_*.md
+UPLOAD_*.md
+USER_*.md
+VENDOR_*.md
+container_*.md
+document_*.md
+frontend_*.md
+ui_ux_*.md

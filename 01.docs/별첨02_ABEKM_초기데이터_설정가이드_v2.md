@@ -21,12 +21,22 @@ ABEKM(AI Based Enterprise Knowledge Management) 초기 데이터를 **CSV 파일
 
 ### 문서 버전
 
-- **버전**: 3.1
-- **최종 업데이트**: 2025-11-04
+- **버전**: 3.2
+- **최종 업데이트**: 2025-11-17
 - **작성자**: 시스템 관리팀
 - **검토자**: IT운영팀
 
-### 주요 변경 사항 (v3.1)
+### 주요 변경 사항 (v3.2) - 2025-11-17
+
+- ✅ **Alembic 마이그레이션 절차 추가** - 데이터베이스 스키마 생성 가이드
+- ✅ **실제 데이터 로딩 결과 업데이트** - 2025-11-17 실행 결과 반영
+- ✅ **데이터베이스 상태 검증 스크립트 추가** - 38개 테이블 확인 방법
+- ✅ **지식관리자 API 변경사항 반영** - managed-scope-permissions API
+- ✅ **TwelveLabs Marengo 임베딩 모델 정보 추가** - AWS 멀티모달 임베딩
+- ✅ **로그인 계정 정보 업데이트** - 실제 사용 가능한 계정 목록
+- ✅ **로그인 검증 체크리스트 추가** - 권한별 접근 제어 확인
+
+### 주요 변경 사항 (v3.1) - 2025-11-04
 
 - ✅ **권한 검증 체크리스트 추가** - 시스템관리자/지식관리자/사용자 권한 검증
 - ✅ **사용자 컨테이너 자동 권한 부여 규칙 문서화** (OWNER/ADMIN 자동 할당)
@@ -151,18 +161,19 @@ REC001,recruit,recruit@woongjin.co.kr,recruit123!,$2b$12$...,true,false,0,2025-0
 - `emp_no`: SAP HR 정보와 반드시 일치해야 함
 - `password_plain`: 개발용, 운영 환경에서는 제거 권장
 
-**현재 등록된 사용자 (9명)**:
-| emp_no | username | 역할 | 소속 |
-|--------|----------|------|------|
-| ADMIN001 | admin | 시스템 관리자 | IT운영팀 |
-| HR001 | hr.manager | 팀장 | 인사전략팀 |
-| REC001 | recruit | 선임 | 채용팀 |
-| TRN001 | training | 선임 | 교육팀 |
-| PLN001 | planning | 팀장 | 기획팀 |
-| CLD001 | cloud | 팀장 | 클라우드서비스팀 |
-| MSS001 | ms.service | 팀장 | MS서비스팀 |
-| INF001 | infra | 팀장 | 인프라컨설팅팀 |
-| BIZ001 | biz.ops | 팀장 | Biz운영1팀 |
+**현재 등록된 사용자 (10명)** - 2025-11-17 기준:
+| emp_no | username | 역할 | 소속 | 비밀번호 |
+|--------|----------|------|------|---------|
+| ADMIN001 | admin | 시스템 관리자 | IT운영팀 | admin123! |
+| HR001 | hr.manager | 팀장 | 인사전략팀 | hr123! |
+| REC001 | recruit | 선임 | 채용팀 | recruit123! |
+| TRN001 | training | 선임 | 교육팀 | training123! |
+| PLN001 | planning | 팀장 | 기획팀 | planning123! |
+| CLD001 | cloud | 팀장 | 클라우드서비스팀 | cloud123! |
+| MSS001 | ms.service | 팀장 | MS서비스팀 | ms123! |
+| INF001 | infra | 팀장 | 인프라컨설팅팀 | infra123! |
+| BIZ001 | biz.ops | 팀장 | Biz운영1팀 | biz123! |
+| 77107791 | user.staff | 팀원 | MS서비스팀 | staff2025 |
 
 ---
 
@@ -435,46 +446,174 @@ python -m data.seeds.permission_seeder  # 권한
 
 ## ✅ 3. 실행 및 확인
 
-### 3.1 데이터 유효성 검사
+### 3.1 데이터베이스 마이그레이션 (필수 선행 작업)
+
+**목적**: 데이터베이스 스키마 생성 및 테이블 초기화
 
 ```bash
-🚀 ABEKM 마스터 데이터 초기화 시작...
+# 1. 가상환경 활성화
+cd /home/admin/Dev/abekm/backend
+source /home/admin/Dev/abekm/.venv/bin/activate
+
+# 2. Alembic 마이그레이션 실행
+alembic upgrade head
+
+# 3. 마이그레이션 결과 확인
+# ✅ Total tables created: 38
+# ✅ Alembic version: 20251114_003 (최신)
 ```
 
+**마이그레이션 주요 내용**:
+- 초기 스키마 생성 (300c1a2a7c7f)
+- 멀티모달 검색 지원 (CLIP, TwelveLabs Marengo)
+- 벡터 차원 변경 (1024→1536 for text-embedding-3-small)
+- 한국어/영어 혼합 검색 지원
+- 권한 요청 테이블 생성
+- AWS 멀티모달 임베딩 (TwelveLabs Marengo Embed 3.0, 512d)
+
+**⚠️ 주의사항**:
+- pgvector 0.5.1: 최대 2000차원 지원
+- Korean FTS configuration 자동 생성
+- 마이그레이션 실패 시 데이터베이스 완전 초기화 필요
+
+### 3.2 데이터베이스 상태 검증
+
+```bash
+cd /home/admin/Dev/abekm/backend
+source /home/admin/Dev/abekm/.venv/bin/activate
+
+python -c "
+import asyncio
+import asyncpg
+
+async def check():
+    conn = await asyncpg.connect('postgresql://wkms:wkms123@localhost:5432/wkms')
+    
+    # 테이블 개수
+    count = await conn.fetchval('''
+        SELECT COUNT(*) 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+        AND table_type = 'BASE TABLE'
+    ''')
+    print(f'✅ Total tables: {count}')
+    
+    # 주요 테이블 확인
+    key_tables = ['tb_user', 'tb_sap_hr_info', 'tb_knowledge_containers',
+                  'tb_user_permissions', 'doc_chunk', 'doc_embedding']
+    for table in key_tables:
+        exists = await conn.fetchval(f'''
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = '{table}'
+            )
+        ''')
+        print(f'  {\"✓\" if exists else \"✗\"} {table}')
+    
+    await conn.close()
+
+asyncio.run(check())
+"
+
+# 예상 출력:
+# ✅ Total tables: 38
+#   ✓ tb_user
+#   ✓ tb_sap_hr_info
+#   ✓ tb_knowledge_containers
+#   ✓ tb_user_permissions
+#   ✓ doc_chunk
+#   ✓ doc_embedding
+```
+
+### 3.3 초기 데이터 로딩
+
+```bash
+cd /home/admin/Dev/abekm/backend
+source /home/admin/Dev/abekm/.venv/bin/activate
+
+# 전체 시드 데이터 실행
+python data/seeds/run_all_seeders.py
+
+# 실행 시 확인 메시지
+# 기존 데이터를 삭제하고 다시 로드하시겠습니까? (y/N): y
+```
+
+**실제 실행 결과** (2025-11-17 기준):
+
+```
+2025-11-17 17:11:54 - INFO - 🚀 WKMS 마스터 데이터 초기화 시작...
 ============================================================
 📋 1단계: 시스템 기본 데이터 로딩...
-   ✅ 공통 코드 20개 로딩 완료
-   ✅ 지식 카테고리 6개 로딩 완료
+   ✅ common_codes.csv 로드 완료: 36개 레코드
+   ✅ tb_cmns_cd_grp_item: 36개 삽입, 0개 스킵
+   ✅ categories.csv 로드 완료: 13개 레코드
+   ✅ tb_knowledge_categories: 13개 삽입, 0개 스킵
 
 🏢 2단계: SAP HR 조직 정보 로딩...
-   ✅ SAP HR 정보 9명 로딩 완료
+   ✅ sap_hr_info.csv 로드 완료: 10개 레코드
+   ✅ tb_sap_hr_info: 10개 삽입, 0개 스킵
 
 👥 3단계: 사용자 정보 로딩...
-   ✅ 사용자 9명 로딩 완료
-   ✅ 패스워드 bcrypt 암호화 완료
+   ✅ users.csv 로드 완료: 10개 레코드
+   ✅ tb_user: 10개 삽입, 0개 스킵
 
 📁 4단계: 지식 컨테이너 구조 생성...
-   ✅ 컨테이너 12개 생성 완료
-   ✅ 트리 구조 검증 완료
+   ✅ knowledge_containers.csv 로드 완료: 12개 레코드
+   ✅ tb_knowledge_containers: 12개 삽입, 0개 스킵
 
 🔐 5단계: 사용자 권한 및 역할 설정...
-   ✅ 역할 4개 생성 완료
-   ✅ 권한 50개 할당 완료
-   ✅ ADMIN001 전체 권한 검증 완료
+   ✅ user_roles.csv 로드 완료: 10개 레코드
+   ✅ tb_user_roles: 10개 삽입, 0개 스킵
+   ✅ user_permissions.csv 로드 완료: 30개 레코드
+   ✅ tb_user_permissions: 30개 삽입, 0개 스킵
 
 ============================================================
-🎉 ABEKM 마스터 데이터 초기화 완료!
+🎉 WKMS 마스터 데이터 초기화 완료!
 ============================================================
 
 📊 데이터 로딩 결과 요약:
-   - 공통 코드: 20건
-   - 지식 카테고리: 6건
-   - SAP HR 정보: 9건
-   - 사용자: 9건
-   - 지식 컨테이너: 12건
-   - 사용자 역할: 4건
-   - 사용자 권한: 50건
+   ✅ 공통 코드: 36개
+   ✅ 지식 카테고리: 13개
+   ✅ SAP HR 정보: 10개
+   ✅ 사용자: 10개
+   ✅ 지식 컨테이너: 12개
+   ✅ 사용자 역할: 10개
+   ✅ 사용자 권한: 30개
+
+✅ 모든 시드 데이터 로딩이 성공적으로 완료되었습니다!
+
+🔑 기본 로그인 정보:
+   관리자: ADMIN001 / admin123!
+   일반사용자: 77107791 / staff2025
+
+💡 참고: 로그인 시 사번(emp_no)과 비밀번호를 입력하세요
 ```
+
+### 3.4 로그인 테스트
+
+**시스템관리자 로그인**:
+```
+사용자명: ADMIN001
+비밀번호: admin123!
+```
+
+**지식관리자 로그인** (예: MS서비스팀장):
+```
+사용자명: MSS001
+비밀번호: ms123!
+```
+
+**일반 사용자 로그인**:
+```
+사용자명: 77107791
+비밀번호: staff2025
+```
+
+**로그인 검증 항목**:
+- ✅ 인증 성공 (200 OK)
+- ✅ 대시보드 접근
+- ✅ 컨테이너 계층 조회
+- ✅ 권한별 접근 제어 작동
 
 ---
 
@@ -955,19 +1094,26 @@ tb_user_permissions (권한)
 
 ## 📊 설정 완료 현황
 
-### 최종 생성 데이터 통계
+### 최종 생성 데이터 통계 (2025-11-17 실행 결과)
 
-- **SAP HR 정보**: 9명
-- **사용자 계정**: 9개
+- **데이터베이스 테이블**: 38개
+- **공통 코드**: 36개
+- **지식 카테고리**: 13개
+- **SAP HR 정보**: 10명
+- **사용자 계정**: 10개
 - **지식 컨테이너**: 12개
   - COMPANY: 1개 (조직 최상위)
   - DIVISION: 3개 (CEO직속, 클라우드사업본부, CTI사업본부)
   - DEPARTMENT: 6개 (각 팀/부서)
   - TEAM: 2개 (채용팀, 교육팀)
-- **지식 카테고리**: 4개
-- **사용자 역할**: 4개
-- **권한 할당**: 24개
-- **샘플 문서**: 3개
+- **사용자 역할**: 10개
+- **권한 할당**: 30개
+
+**마이그레이션 정보**:
+- Alembic 버전: 20251114_003 (최신)
+- pgvector 버전: 0.5.1 (최대 2000차원 지원)
+- 벡터 차원: 1536d (text-embedding-3-small)
+- 멀티모달 임베딩: 512d (TwelveLabs Marengo)
 
 ### 생성되는 조직구조
 
@@ -1228,6 +1374,41 @@ tar -czf wkms_files_backup_$(date +%Y%m%d).tar.gz /home/admin/wkms-aws/uploads/
 
 **권장**: 현재는 문서 유형(DOCUMENT_TYPE)만 사용하며, 카테고리는 향후 DB 연동 시 활성화 예정
 
+### Q6. 지식관리자가 권한 조회 시 403 에러가 발생합니다.
+
+**A6** (2025-11-17 업데이트):
+- **원인**: 지식관리자는 전체 권한 조회 불가 (보안상 올바른 동작)
+- **해결**: 프론트엔드가 자동으로 `managed-scope-permissions` API 사용
+- **변경 내역**:
+  ```
+  변경 전: GET /api/v1/permissions/all-user-permissions (403 Forbidden)
+  변경 후: GET /api/v1/permissions/managed-scope-permissions (200 OK)
+  ```
+- **동작**:
+  - 시스템 관리자: 모든 권한 조회
+  - 지식관리자: 관리하는 컨테이너 범위 내 권한만 조회
+  - 응답 필드: `is_system_admin`, `managed_container_count`
+
+### Q7. TwelveLabs Marengo 임베딩 모델은 무엇인가요?
+
+**A7** (2025-11-17 추가):
+- **용도**: AWS Bedrock 멀티모달 임베딩 (이미지+텍스트)
+- **모델 ID**: `twelvelabs.marengo-embed-3-0-v1:0`
+- **차원**: 512d (고효율 임베딩)
+- **특징**:
+  - 비디오/이미지/텍스트 멀티모달 지원
+  - Twelve Labs 비디오 AI 전문 기술 기반
+  - 시맨틱 검색, 객체 인식, 장면 이해 최적화
+  - 한국어 텍스트 지원
+  - ap-northeast-2(서울) 리전 교차 추론 지원
+- **이전 모델**: cohere.embed-v4:0 (1024d, 128K 토큰, 128개 언어)
+- **마이그레이션**: 20251114_003 버전에서 추가
+- **환경 변수**: 
+  ```
+  BEDROCK_MULTIMODAL_EMBEDDING_MODEL_ID=twelvelabs.marengo-embed-3-0-v1:0
+  BEDROCK_MULTIMODAL_EMBEDDING_DIMENSION=512
+  ```
+
 ---
 
 ## 📞 문의 및 지원
@@ -1253,6 +1434,7 @@ tar -czf wkms_files_backup_$(date +%Y%m%d).tar.gz /home/admin/wkms-aws/uploads/
 | 2.0 | 2025-07-30 | 통합 스크립트 반영, 중복 파일 정리, 실행 방법 업데이트                            | 시스템관리팀 |
 | 3.0 | 2025-10-27 | CSV 기반 데이터 관리 체계 전환, 문서 유형(DOCUMENT_TYPE) 체계 정립, FAQ 추가 | 시스템관리팀 |
 | 3.1 | 2025-11-04 | 권한 검증 체크리스트 추가, 사용자 컨테이너 자동 권한 부여 규칙 문서화, 권한 검증 결과 추가 | 시스템관리팀 |
+| 3.2 | 2025-11-17 | Alembic 마이그레이션 추가, 실제 실행 결과 업데이트, 지식관리자 API 변경, 데이터베이스 검증 스크립트 추가 | 시스템관리팀 |
 
 ---
 

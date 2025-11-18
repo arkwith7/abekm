@@ -139,12 +139,18 @@ class Settings(BaseSettings):
     # - upstage: Upstage Document Parse (한국어 우수, Azure DI 대안)
     # - aws_textract: AWS Textract (영문 중심, 한국어 제한적)
     # - etc_other: pdfplumber 등 기타 오픈소스 라이브러리
-    document_processing_provider: str = "azure_di"
-    document_processing_fallback: Optional[str] = None  # Fallback provider (예: upstage)
+    document_processing_provider: str = Field(
+        default="azure_di",
+        description="Primary document processing provider"
+    )
+    document_processing_fallback: Optional[str] = Field(
+        default=None,
+        description="Fallback document processing provider"
+    )
     
     # 하위 호환성을 위한 기존 설정 유지 (Deprecated - document_processing_provider 사용 권장)
     use_azure_document_intelligence_pdf: bool = Field(
-        default_factory=lambda: os.getenv("DOCUMENT_PROCESSING_PROVIDER", "azure_di") == "azure_di"
+        default_factory=lambda: os.getenv("DOCUMENT_PROCESSING_PROVIDER", "azure_di").lower() == "azure_di"
     )
     
     # Azure Document Intelligence 설정

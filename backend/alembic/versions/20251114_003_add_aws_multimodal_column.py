@@ -1,16 +1,16 @@
-"""add aws multimodal embedding column (Cohere Embed v4)
+"""add aws multimodal embedding column (TwelveLabs Marengo)
 
 Revision ID: 20251114_003
 Revises: 20251114_002
 Create Date: 2025-11-14 16:45:00.000000
 
 목적:
-- AWS 멀티모달 임베딩 컬럼 추가 (Cohere Embed v4)
+- AWS 멀티모달 임베딩 컬럼 추가 (TwelveLabs Marengo Embed 3.0)
 - Azure CLIP 대응 AWS 버전 구현
 
 변경 사항:
 1. doc_embedding 테이블:
-   - aws_multimodal_vector_1024: Cohere Embed v4 (1024d)
+   - aws_multimodal_vector_1024: TwelveLabs Marengo Embed 3.0 (512d → 1024d 컬럼명 유지)
    
 2. 인덱스 생성:
    - AWS 멀티모달 벡터 전용 IVFFlat 인덱스
@@ -31,10 +31,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """
-    AWS 멀티모달 임베딩 컬럼 추가 (Cohere Embed v4)
+    AWS 멀티모달 임베딩 컬럼 추가 (TwelveLabs Marengo Embed 3.0)
     """
     print("\n" + "="*80)
-    print("🚀 [AWS 멀티모달 임베딩 컬럼 추가 - Cohere Embed v4]")
+    print("🚀 [AWS 멀티모달 임베딩 컬럼 추가 - TwelveLabs Marengo Embed 3.0]")
     print("="*80 + "\n")
     
     connection = op.get_bind()
@@ -44,10 +44,10 @@ def upgrade() -> None:
     # =========================================================================
     print("1️⃣ doc_embedding 테이블에 AWS 멀티모달 컬럼 추가...")
     
-    # AWS 멀티모달 임베딩 컬럼 (Cohere Embed v4)
+    # AWS 멀티모달 임베딩 컬럼 (TwelveLabs Marengo Embed 3.0 - 실제 512d)
     op.add_column('doc_embedding',
         sa.Column('aws_multimodal_vector_1024', Vector(1024), nullable=True,
-                  comment='AWS Cohere Embed v4 multimodal (1024d)')
+                  comment='AWS TwelveLabs Marengo Embed 3.0 multimodal (512d, column name legacy)')
     )
     
     print("   ✅ AWS 멀티모달 벡터 컬럼 추가 완료")
@@ -84,7 +84,7 @@ def upgrade() -> None:
     row = result.fetchone()
     print(f"   📊 총 임베딩: {row[0]}개")
     print(f"   📊 Azure CLIP: {row[1]}개")
-    print(f"   📊 AWS Cohere v4: {row[2]}개")
+    print(f"   📊 AWS TwelveLabs Marengo: {row[2]}개")
     
     print("\n" + "="*80)
     print("✅ [AWS 멀티모달 임베딩 컬럼 추가 완료]")

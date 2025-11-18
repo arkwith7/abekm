@@ -93,6 +93,9 @@ def init_worker_process_handler(**kwargs):
     logger.info("🔧 [WORKER-INIT] Celery Worker 프로세스 초기화 시작...")
     
     try:
+        # 0. Config 로드 (settings 객체는 여기서 import해야 .env를 제대로 읽음)
+        from app.core.config import settings
+        
         # 1. Korean NLP Service (Kiwi, KSS) 프리로드
         from app.services.core.korean_nlp_service import KoreanNLPService
         nlp_start = time.time()
@@ -107,12 +110,24 @@ def init_worker_process_handler(**kwargs):
         emb_time = time.time() - emb_start
         logger.info(f"✅ [WORKER-INIT] EmbeddingService 초기화 완료 ({emb_time:.2f}초)")
         
-        # 3. Azure Document Intelligence Service 프리로드
-        from app.services.document.extraction.azure_document_intelligence_service import AzureDocumentIntelligenceService
-        di_start = time.time()
-        di_service = AzureDocumentIntelligenceService()
-        di_time = time.time() - di_start
-        logger.info(f"✅ [WORKER-INIT] AzureDocumentIntelligenceService 초기화 완료 ({di_time:.2f}초)")
+        # 3. Document Processing Service 프리로드 (provider에 따라 선택)
+        doc_provider = settings.document_processing_provider.lower()
+        logger.info(f"📄 [WORKER-INIT] 문서 처리 제공자: {doc_provider}")
+        
+        if doc_provider == "upstage":
+            from app.services.document.extraction.upstage_document_service import UpstageDocumentParseService
+            doc_start = time.time()
+            doc_service = UpstageDocumentParseService()
+            doc_time = time.time() - doc_start
+            logger.info(f"✅ [WORKER-INIT] UpstageDocumentParseService 초기화 완료 ({doc_time:.2f}초)")
+        elif doc_provider == "azure_di":
+            from app.services.document.extraction.azure_document_intelligence_service import AzureDocumentIntelligenceService
+            doc_start = time.time()
+            doc_service = AzureDocumentIntelligenceService()
+            doc_time = time.time() - doc_start
+            logger.info(f"✅ [WORKER-INIT] AzureDocumentIntelligenceService 초기화 완료 ({doc_time:.2f}초)")
+        else:
+            logger.warning(f"⚠️ [WORKER-INIT] 알 수 없는 문서 처리 제공자: {doc_provider}")
         
         total_time = time.time() - start_time
         logger.info(f"🎉 [WORKER-INIT] 전체 초기화 완료 ({total_time:.2f}초)")

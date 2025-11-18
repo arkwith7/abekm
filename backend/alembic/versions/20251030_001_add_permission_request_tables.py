@@ -21,9 +21,15 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """권한 요청 관리 테이블 생성"""
     
+    # 테이블 존재 여부 확인
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    existing_tables = inspector.get_table_names()
+    
     # 1. 권한 요청 테이블
-    op.create_table(
-        'tb_permission_requests',
+    if 'tb_permission_requests' not in existing_tables:
+        op.create_table(
+            'tb_permission_requests',
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column('request_id', sa.String(length=50), nullable=False, unique=True, comment='요청 ID (REQ-20251030-001)'),
         
@@ -63,18 +69,19 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['requester_emp_no'], ['tb_user.emp_no'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['container_id'], ['tb_knowledge_containers.container_id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['approver_emp_no'], ['tb_user.emp_no'], ondelete='SET NULL'),
-    )
-    
-    # 인덱스
-    op.create_index('idx_permission_requests_requester', 'tb_permission_requests', ['requester_emp_no'])
-    op.create_index('idx_permission_requests_container', 'tb_permission_requests', ['container_id'])
-    op.create_index('idx_permission_requests_status', 'tb_permission_requests', ['status'])
-    op.create_index('idx_permission_requests_requested_at', 'tb_permission_requests', ['requested_at'], postgresql_using='btree', postgresql_ops={'requested_at': 'DESC'})
-    op.create_index('idx_permission_requests_approver', 'tb_permission_requests', ['approver_emp_no'])
+        )
+        
+        # 인덱스
+        op.create_index('idx_permission_requests_requester', 'tb_permission_requests', ['requester_emp_no'])
+        op.create_index('idx_permission_requests_container', 'tb_permission_requests', ['container_id'])
+        op.create_index('idx_permission_requests_status', 'tb_permission_requests', ['status'])
+        op.create_index('idx_permission_requests_requested_at', 'tb_permission_requests', ['requested_at'], postgresql_using='btree', postgresql_ops={'requested_at': 'DESC'})
+        op.create_index('idx_permission_requests_approver', 'tb_permission_requests', ['approver_emp_no'])
     
     # 2. 권한 감사 로그 테이블
-    op.create_table(
-        'tb_permission_audit_log',
+    if 'tb_permission_audit_log' not in existing_tables:
+        op.create_table(
+            'tb_permission_audit_log',
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column('log_id', sa.String(length=50), nullable=False, unique=True, comment='로그 ID'),
         
@@ -102,17 +109,18 @@ def upgrade() -> None:
         # 외래키
         sa.ForeignKeyConstraint(['actor_emp_no'], ['tb_user.emp_no'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['request_id'], ['tb_permission_requests.request_id'], ondelete='SET NULL'),
-    )
-    
-    # 인덱스
-    op.create_index('idx_audit_log_action_type', 'tb_permission_audit_log', ['action_type'])
-    op.create_index('idx_audit_log_actor', 'tb_permission_audit_log', ['actor_emp_no'])
-    op.create_index('idx_audit_log_created_at', 'tb_permission_audit_log', ['created_at'], postgresql_using='btree', postgresql_ops={'created_at': 'DESC'})
-    op.create_index('idx_audit_log_request_id', 'tb_permission_audit_log', ['request_id'])
+        )
+        
+        # 인덱스
+        op.create_index('idx_audit_log_action_type', 'tb_permission_audit_log', ['action_type'])
+        op.create_index('idx_audit_log_actor', 'tb_permission_audit_log', ['actor_emp_no'])
+        op.create_index('idx_audit_log_created_at', 'tb_permission_audit_log', ['created_at'], postgresql_using='btree', postgresql_ops={'created_at': 'DESC'})
+        op.create_index('idx_audit_log_request_id', 'tb_permission_audit_log', ['request_id'])
     
     # 3. 자동 승인 규칙 테이블
-    op.create_table(
-        'tb_auto_approval_rules',
+    if 'tb_auto_approval_rules' not in existing_tables:
+        op.create_table(
+            'tb_auto_approval_rules',
         sa.Column('id', sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column('rule_id', sa.String(length=50), nullable=False, unique=True, comment='규칙 ID'),
         
@@ -135,11 +143,11 @@ def upgrade() -> None:
         
         # 외래키
         sa.ForeignKeyConstraint(['created_by'], ['tb_user.emp_no'], ondelete='SET NULL'),
-    )
-    
-    # 인덱스
-    op.create_index('idx_auto_approval_rules_active', 'tb_auto_approval_rules', ['is_active'])
-    op.create_index('idx_auto_approval_rules_priority', 'tb_auto_approval_rules', ['priority'], postgresql_using='btree', postgresql_ops={'priority': 'DESC'})
+        )
+        
+        # 인덱스
+        op.create_index('idx_auto_approval_rules_active', 'tb_auto_approval_rules', ['is_active'])
+        op.create_index('idx_auto_approval_rules_priority', 'tb_auto_approval_rules', ['priority'], postgresql_using='btree', postgresql_ops={'priority': 'DESC'})
 
 
 def downgrade() -> None:

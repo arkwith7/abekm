@@ -179,10 +179,11 @@ class TextExtractorService:
     async def _extract_pdf_file(self, file_path: str, result: Dict[str, Any]) -> Dict[str, Any]:
         """PDF 파일 텍스트 추출 - Provider 기반 라우팅 + Fallback 로직"""
         
-        provider = settings.document_processing_provider.lower()
-        fallback_provider = settings.document_processing_fallback.lower() if settings.document_processing_fallback else None
+        provider = settings.document_processing_provider.lower().strip()
+        fallback_provider = settings.document_processing_fallback.lower().strip() if settings.document_processing_fallback else None
         
-        logger.info(f"📄 문서 처리 Provider: {provider} (Fallback: {fallback_provider or 'None'})")
+        logger.info(f"📄 [PDF-EXTRACT] 문서 처리 Provider: {provider} (Fallback: {fallback_provider or 'None'})")
+        logger.info(f"📄 [PDF-EXTRACT] 파일: {file_path}")
         
         # Primary Provider 시도
         primary_success = False
@@ -209,21 +210,32 @@ class TextExtractorService:
         # Upstage Document Parse
         elif provider == "upstage":
             try:
+                logger.info(f"🔷 [UPSTAGE] Upstage Document Parse 사용 - 파일: {file_path}")
                 from .upstage_document_service import upstage_document_service
                 
-                logger.info(f"Upstage Document Parse로 PDF 분석 시도: {file_path}")
+                logger.info(f"🔷 [UPSTAGE] upstage_document_service 모듈 로드 완료")
+                logger.info(f"🔷 [UPSTAGE] API 키 설정 여부: {bool(upstage_document_service.api_key)}")
+                
+                logger.info(f"🔷 [UPSTAGE] Document Parse 호출 시작: {file_path}")
                 upstage_result = await upstage_document_service.parse_document(file_path)
                 
+                logger.info(f"🔷 [UPSTAGE] Document Parse 호출 완료 - success: {upstage_result.success}")
+                
                 if upstage_result.success:
-                    logger.info(f"✅ Upstage 성공: {file_path}")
+                    logger.info(f"✅ [UPSTAGE] Upstage 성공: {file_path}")
+                    logger.info(f"✅ [UPSTAGE] 추출된 텍스트 길이: {len(upstage_result.text)}")
+                    logger.info(f"✅ [UPSTAGE] 페이지 수: {len(upstage_result.pages)}")
+                    logger.info(f"✅ [UPSTAGE] 테이블 수: {len(upstage_result.tables)}")
+                    logger.info(f"✅ [UPSTAGE] 이미지 수: {len(upstage_result.figures)}")
+                    
                     converted_result = upstage_document_service.create_internal_extraction_result(upstage_result)
                     result.update(converted_result)
-                    return result
+                    primary_success = True
                 else:
-                    logger.warning(f"⚠️ Upstage 실패: {upstage_result.error}")
-                    
+                    logger.warning(f"⚠️ [UPSTAGE] Upstage 실패: {upstage_result.error}")
+            
             except Exception as e:
-                logger.warning(f"⚠️ Upstage 예외: {e}")
+                logger.error(f"❌ [UPSTAGE] Upstage 예외 발생: {e}", exc_info=True)
         
         # AWS Textract (향후 구현)
         elif provider == "aws_textract":
@@ -245,21 +257,29 @@ class TextExtractorService:
             
             if fallback_provider == "upstage":
                 try:
+                    logger.info(f"🔷 [FALLBACK-UPSTAGE] Upstage Document Parse 사용 - 파일: {file_path}")
                     from .upstage_document_service import upstage_document_service
                     
-                    logger.info(f"[Fallback] Upstage Document Parse로 PDF 분석 시도: {file_path}")
+                    logger.info(f"🔷 [FALLBACK-UPSTAGE] upstage_document_service 모듈 로드 완료")
+                    logger.info(f"🔷 [FALLBACK-UPSTAGE] API 키 설정 여부: {bool(upstage_document_service.api_key)}")
+                    
+                    logger.info(f"🔷 [FALLBACK-UPSTAGE] Document Parse 호출 시작: {file_path}")
                     upstage_result = await upstage_document_service.parse_document(file_path)
                     
+                    logger.info(f"🔷 [FALLBACK-UPSTAGE] Document Parse 호출 완료 - success: {upstage_result.success}")
+                    
                     if upstage_result.success:
-                        logger.info(f"✅ [Fallback] Upstage 성공: {file_path}")
+                        logger.info(f"✅ [FALLBACK-UPSTAGE] Upstage 성공: {file_path}")
+                        logger.info(f"✅ [FALLBACK-UPSTAGE] 추출된 텍스트 길이: {len(upstage_result.text)}")
+                        
                         converted_result = upstage_document_service.create_internal_extraction_result(upstage_result)
                         result.update(converted_result)
                         return result
                     else:
-                        logger.warning(f"⚠️ [Fallback] Upstage 실패: {upstage_result.error}")
+                        logger.warning(f"⚠️ [FALLBACK-UPSTAGE] Upstage 실패: {upstage_result.error}")
                         
                 except Exception as e:
-                    logger.warning(f"⚠️ [Fallback] Upstage 예외: {e}")
+                    logger.error(f"❌ [FALLBACK-UPSTAGE] Upstage 예외 발생: {e}", exc_info=True)
             
             elif fallback_provider == "azure_di":
                 try:

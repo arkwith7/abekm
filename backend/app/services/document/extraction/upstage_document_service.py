@@ -33,7 +33,7 @@ class UpstageResult:
         pages: Optional[List[Dict[str, Any]]] = None,
         tables: Optional[List[Dict[str, Any]]] = None,
         figures: Optional[List[Dict[str, Any]]] = None,
-        metadata: Optional[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
         extraction_method: str = "upstage_document_parse"
     ):
@@ -57,8 +57,18 @@ class UpstageDocumentService:
         self.timeout_seconds = settings.upstage_timeout_seconds
         self.retry_max_attempts = settings.upstage_retry_max_attempts
         
+        # 초기화 로그 (디버깅용)
+        logger.info(f"[UPSTAGE] UpstageDocumentService 초기화")
+        logger.info(f"[UPSTAGE] API Endpoint: {self.api_endpoint}")
+        logger.info(f"[UPSTAGE] API Key 설정 여부: {bool(self.api_key)}")
+        logger.info(f"[UPSTAGE] Max Pages: {self.max_pages}")
+        logger.info(f"[UPSTAGE] Timeout: {self.timeout_seconds}s")
+        logger.info(f"[UPSTAGE] Retry Attempts: {self.retry_max_attempts}")
+        
         if not self.api_key:
-            logger.warning("[UPSTAGE] API 키가 설정되지 않았습니다. UPSTAGE_API_KEY 환경 변수를 확인하세요.")
+            logger.error("[UPSTAGE] ❌ API 키가 설정되지 않았습니다. UPSTAGE_API_KEY 환경 변수를 확인하세요.")
+        else:
+            logger.info(f"[UPSTAGE] ✅ API 키 설정 완료 (길이: {len(self.api_key)}자)")
     
     async def parse_document(self, file_path: str) -> UpstageResult:
         """
@@ -412,4 +422,7 @@ class UpstageDocumentService:
 
 
 # 싱글톤 인스턴스
+# 🎯 싱글톤 인스턴스 생성 (모듈 import 시 자동 초기화)
+logger.info("[UPSTAGE] 🔷 upstage_document_service 싱글톤 인스턴스 생성 시작")
 upstage_document_service = UpstageDocumentService()
+logger.info("[UPSTAGE] 🔷 upstage_document_service 싱글톤 인스턴스 생성 완료")

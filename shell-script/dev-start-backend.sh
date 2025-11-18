@@ -11,18 +11,28 @@ echo "   WKMS 백엔드 개발 서버 시작 (비동기 업로드 지원)"
 echo "==================================================================="
 echo ""
 
-# 가상환경이 활성화되어 있는지 확인
-if [[ "${VIRTUAL_ENV:-}" == "" && -f "../.venv/bin/activate" ]]; then
-    echo "🔧 가상환경을 활성화합니다..."
-    source ../.venv/bin/activate
+# 가상환경이 활성화되어 있는지 확인 (절대경로 사용)
+VENV_PATH="$REPO_ROOT_DIR/.venv"
+if [[ ! -f "$VENV_PATH/bin/activate" ]]; then
+    echo "❌ 가상환경을 찾을 수 없습니다: $VENV_PATH"
+    exit 1
 fi
 
-echo "✅ Python 환경: $(which python)"
+if [[ "${VIRTUAL_ENV:-}" != "$VENV_PATH" ]]; then
+    echo "🔧 가상환경을 활성화합니다..."
+    source "$VENV_PATH/bin/activate"
+fi
+
+PYTHON_CMD="$VENV_PATH/bin/python"
+PIP_CMD="$VENV_PATH/bin/pip"
+CELERY_BIN="$VENV_PATH/bin/celery"
+
+echo "✅ Python 환경: $PYTHON_CMD"
 echo ""
 
 # 필수 의존성 설치 확인
 echo "📦 필수 의존성을 확인하고 설치합니다..."
-pip install PyJWT==2.8.0 passlib[bcrypt]==1.7.4 python-multipart==0.0.12 celery==5.3.4 redis==5.0.1 > /dev/null 2>&1 || true
+"$PIP_CMD" install PyJWT==2.8.0 passlib[bcrypt]==1.7.4 python-multipart==0.0.12 celery==5.3.4 redis==5.0.1 > /dev/null 2>&1 || true
 echo ""
 
 # PID 파일 저장 디렉토리 및 로그 디렉토리 생성
@@ -94,7 +104,7 @@ if [ "$REDIS_AVAILABLE" = true ]; then
     echo "🚀 Celery Worker를 시작합니다..."
     
     # Celery가 설치되어 있는지 확인
-    if ! command -v celery &> /dev/null; then
+    if [ ! -x "$CELERY_BIN" ]; then
         echo "⚠️  Celery가 설치되어 있지 않습니다."
         echo "   비동기 업로드 기능을 사용하려면 설치하세요: pip install celery"
         echo "   계속 진행합니다 (Celery 없이)..."
@@ -104,7 +114,10 @@ if [ "$REDIS_AVAILABLE" = true ]; then
         CELERY_LOG="$LOG_DIR/celery.log"
         CELERY_PID="$PID_DIR/celery.pid"
         
-        celery -A app.core.celery_app worker \
+        # 기존 PID 파일이 남아 있으면 삭제
+        rm -f "$CELERY_PID"
+
+        "$CELERY_BIN" -A app.core.celery_app worker \
             --loglevel=info \
             --logfile="$CELERY_LOG" \
             --detach \
@@ -157,7 +170,7 @@ echo "💡 서버를 중지하려면 Ctrl+C를 누르세요."
 echo ""
 
 # FastAPI 서버 실행 (백그라운드, nest_asyncio 호환을 위해 asyncio loop 사용)
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --loop asyncio &
+"$PYTHON_CMD" -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --loop asyncio &
 FASTAPI_PID=$!
 echo $FASTAPI_PID > "$PID_DIR/fastapi.pid"
 

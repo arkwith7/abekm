@@ -417,7 +417,8 @@ export const searchUsersForPermissions = async (
 // 사용자 권한 관리 API
 export const getUserPermissions = async (containerId?: string): Promise<UserPermission[]> => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/permissions/all-user-permissions`, {
+    // 관리 범위 내 권한 조회 (지식관리자/시스템관리자 공통)
+    const response = await axios.get(`${API_BASE_URL}/permissions/managed-scope-permissions`, {
       headers: getAuthHeader(),
       params: containerId ? { container_id: containerId } : {}
     });

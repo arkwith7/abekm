@@ -146,34 +146,30 @@ async def lifespan(app: FastAPI):
     - Startup: 서버 시작 시 설정 정보 출력
     - Shutdown: 서버 종료 시 깔끔하게 정리
     """
-    # ===== Startup =====
+        # ===== Startup =====
     print("\n" + "="*80)
-    print("🚀 ABKMS API 서버 시작")
+    print("🚀 WKMS 백엔드 서버 시작")
     print("="*80)
-    print("📋 현재 AI 모델 설정 정보:")
-    print(f"   🔧 LLM 공급자: {settings.get_current_llm_provider()}")
-    print(f"   🤖 LLM 모델: {settings.get_current_llm_model()}")
-    print(f"   📊 텍스트 임베딩 모델: {settings.get_current_embedding_model()}")
-    print(f"   📐 텍스트 임베딩 차원: {settings.get_current_embedding_dimension()}")
-    print()
-    print("🎨 멀티모달 설정:")
-    if settings.is_multimodal_enabled():
-        multimodal_model = settings.get_current_multimodal_embedding_model()
-        multimodal_dim = settings.get_current_multimodal_embedding_dimension()
-        multimodal_endpoint = settings.get_current_multimodal_endpoint()
-        print(f"   🖼️  멀티모달 임베딩 모델: {multimodal_model}")
-        print(f"   📐 멀티모달 임베딩 차원: {multimodal_dim}")
-        if multimodal_endpoint:
-            print(f"   🌐 멀티모달 엔드포인트: {multimodal_endpoint[:60]}..." if len(multimodal_endpoint) > 60 else f"   🌐 멀티모달 엔드포인트: {multimodal_endpoint}")
-        print(f"   ✅ 멀티모달 검색: 활성화")
-    else:
-        print(f"   ⚠️  멀티모달 검색: 비활성화 (멀티모달 임베딩 모델 미설정)")
-    print()
-    print(f"   🌍 지원 공급자: {', '.join(settings.llm_providers)}")
-    print(f"   🔧 환경: {settings.environment}")
-    print(f"   🐛 디버그 모드: {settings.debug}")
-    print("="*80)
-    print("✅ 서버가 성공적으로 시작되었습니다!")
+    
+    # 환경 정보 출력
+    print(f"📍 환경: {settings.environment}")
+    print(f"🗄️  데이터베이스: {settings.database_url.split('@')[1] if '@' in settings.database_url else 'N/A'}")
+    print(f"🔴 Redis: {settings.redis_host}:{settings.redis_port}/{settings.redis_db}")
+    print(f"🌐 CORS: {len(settings.cors_origins)}개 origin 허용")
+    print(f"📦 파일 업로드: {settings.upload_dir} (최대 {settings.max_file_size // 1024 // 1024}MB)")
+    print(f"🤖 기본 LLM: {settings.default_llm_provider}")
+    print(f"🧠 임베딩: {settings.default_embedding_provider or settings.default_llm_provider}")
+    print(f"📄 문서 처리: {settings.document_processing_provider} (Fallback: {settings.document_processing_fallback or 'None'})")
+    
+    # Upstage 설정 확인
+    if settings.document_processing_provider.lower() == "upstage" or settings.document_processing_fallback and settings.document_processing_fallback.lower() == "upstage":
+        upstage_configured = bool(settings.upstage_api_key)
+        print(f"🔷 Upstage API: {'✅ 설정됨' if upstage_configured else '❌ 미설정'}")
+        if upstage_configured:
+            print(f"   - Endpoint: {settings.upstage_api_endpoint}")
+            print(f"   - Max Pages: {settings.upstage_max_pages}")
+            print(f"   - Timeout: {settings.upstage_timeout_seconds}s")
+    
     print("="*80 + "\n")
     
     # 로거에도 기록
