@@ -66,6 +66,7 @@ loguru==0.7.3
 konlpy==0.6.0
 JPype1==1.4.1
 kss==6.0.3  # Korean Sentence Splitter
+kiwipiepy==0.18.0  # 한국어 형태소 분석 (Mecab 대안)
 
 # 영어 NLP (다국어 검색 지원)
 nltk==3.8.1  # 경량 영어 NLP 라이브러리

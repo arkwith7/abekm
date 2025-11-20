@@ -23,6 +23,8 @@ export interface SearchResult {
     scores?: any;
     last_updated?: string;
     file_name?: string;
+    image_provider?: string;
+    image_model?: string;
   };
   // 멀티모달 검색 추가 필드
   has_images?: boolean;

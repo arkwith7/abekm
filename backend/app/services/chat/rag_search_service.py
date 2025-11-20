@@ -472,8 +472,28 @@ class RAGSearchService:
         attempts = 0
         all_results: List[Dict[str, Any]] = []
 
+        # 🔷🟧 프로바이더별 벡터 컬럼 동적 선택
+        provider = settings.get_current_embedding_provider()
+        embedding_dim = len(embedding_vector)
+        
+        if provider == 'bedrock' or embedding_dim == 1024:
+            # AWS Bedrock: Titan 1024d
+            vector_column = "tdc.aws_embedding_1024"
+            vector_not_null = "tdc.aws_embedding_1024 IS NOT NULL"
+            logger.info(f"[RAG-SEARCH] 🟧 AWS Bedrock 벡터 검색 (aws_embedding_1024, {embedding_dim}d)")
+        elif provider == 'azure_openai' or embedding_dim == 1536:
+            # Azure OpenAI: text-embedding-3-small 1536d
+            vector_column = "tdc.azure_embedding_1536"
+            vector_not_null = "tdc.azure_embedding_1536 IS NOT NULL"
+            logger.info(f"[RAG-SEARCH] 🔷 Azure OpenAI 벡터 검색 (azure_embedding_1536, {embedding_dim}d)")
+        else:
+            # 레거시 폴백
+            vector_column = "tdc.chunk_embedding"
+            vector_not_null = "tdc.chunk_embedding IS NOT NULL"
+            logger.warning(f"[RAG-SEARCH] ⚠️ 레거시 벡터 컬럼 폴백 ({embedding_dim}d)")
+
         while attempts < 3:
-            base_query = """
+            base_query = f"""
                 SELECT 
                     tdc.file_bss_info_sno,
                     tdc.chunk_index,
@@ -483,14 +503,14 @@ class RAGSearchService:
                     tdc.keywords,
                     tdc.named_entities,
                     tdc.knowledge_container_id,
-                    1 - (tdc.chunk_embedding <=> :embedding_vector) as similarity_score,
+                    1 - ({vector_column} <=> :embedding_vector) as similarity_score,
                     fbi.file_lgc_nm as file_name
                 FROM vs_doc_contents_chunks tdc
                 JOIN tb_file_bss_info fbi ON tdc.file_bss_info_sno = fbi.file_bss_info_sno
-                WHERE tdc.chunk_embedding IS NOT NULL 
+                WHERE {vector_not_null}
                 AND tdc.del_yn = 'N'
                 AND fbi.del_yn = 'N'
-                AND 1 - (tdc.chunk_embedding <=> :embedding_vector) > :threshold
+                AND 1 - ({vector_column} <=> :embedding_vector) > :threshold
             """
 
             conditions = []
@@ -1678,18 +1698,38 @@ class RAGSearchService:
             if session is None:
                 return []
 
+            # 🔷🟧 프로바이더별 벡터 컬럼 동적 선택
+            provider = settings.get_current_embedding_provider()
+            embedding_dim = len(embedding_vector)
+            
+            if provider == 'bedrock' or embedding_dim == 1024:
+                # AWS Bedrock: Titan 1024d
+                vector_column = "tdc.aws_embedding_1024"
+                vector_not_null = "tdc.aws_embedding_1024 IS NOT NULL"
+                logger.info(f"[RAG-DOC-SEARCH] 🟧 AWS Bedrock 벡터 검색 (aws_embedding_1024, {embedding_dim}d)")
+            elif provider == 'azure_openai' or embedding_dim == 1536:
+                # Azure OpenAI: text-embedding-3-small 1536d
+                vector_column = "tdc.azure_embedding_1536"
+                vector_not_null = "tdc.azure_embedding_1536 IS NOT NULL"
+                logger.info(f"[RAG-DOC-SEARCH] 🔷 Azure OpenAI 벡터 검색 (azure_embedding_1536, {embedding_dim}d)")
+            else:
+                # 레거시 폴백
+                vector_column = "tdc.chunk_embedding"
+                vector_not_null = "tdc.chunk_embedding IS NOT NULL"
+                logger.warning(f"[RAG-DOC-SEARCH] ⚠️ 레거시 벡터 컬럼 폴백 ({embedding_dim}d)")
+
             # 후보 청크에서 문서 단위 집계
-            base_sql = """
+            base_sql = f"""
                 SELECT 
                     fbi.file_bss_info_sno AS file_id,
                     fbi.file_lgc_nm AS file_name,
-                    MAX(1 - (tdc.chunk_embedding <=> :embedding_vector)) AS max_similarity,
+                    MAX(1 - ({vector_column} <=> :embedding_vector)) AS max_similarity,
                     COUNT(*) AS matched_chunks
                 FROM vs_doc_contents_chunks tdc
                 JOIN tb_file_bss_info fbi ON tdc.file_bss_info_sno = fbi.file_bss_info_sno
-                WHERE tdc.chunk_embedding IS NOT NULL
+                WHERE {vector_not_null}
                   AND fbi.del_yn = 'N'
-                  AND 1 - (tdc.chunk_embedding <=> :embedding_vector) > :threshold
+                  AND 1 - ({vector_column} <=> :embedding_vector) > :threshold
             """
             conditions = []
             params: Dict[str, Any] = {

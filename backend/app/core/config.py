@@ -180,10 +180,19 @@ class Settings(BaseSettings):
     
     # Upstage Document Parse 설정
     upstage_api_key: Optional[str] = None
-    upstage_api_endpoint: str = "https://api.upstage.ai/v1/document-ai/document-parse"
+    upstage_api_endpoint: str = "https://api.upstage.ai/v1/document-digitization"
     upstage_max_pages: int = 150
     upstage_timeout_seconds: int = 300
     upstage_retry_max_attempts: int = 3
+    upstage_model: str = "document-parse"
+    upstage_ocr_mode: Optional[str] = None
+    upstage_base64_categories: Optional[List[str]] = None
+    upstage_merge_multipage_tables: bool = True
+    upstage_use_async_api: bool = False
+    upstage_async_poll_interval_seconds: int = 5
+    upstage_async_timeout_seconds: int = 900
+    upstage_async_api_endpoint: Optional[str] = None
+    upstage_async_status_endpoint: Optional[str] = None
     
     # OpenAI 설정
     openai_api_key: Optional[str] = None

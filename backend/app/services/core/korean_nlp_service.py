@@ -24,7 +24,7 @@ try:
     KIWI_AVAILABLE = True
 except ImportError:
     KIWI_AVAILABLE = False
-    print("⚠️ kiwipiepy 로드 실패")
+    # 로드 실패는 __init__에서 처리
 
 # 임베딩 서비스 import
 try:
@@ -71,28 +71,41 @@ class KoreanNLPService:
         self.english_nlp = None
         
         # kiwipiepy 초기화
+        kiwi_status = "미사용"
         if KIWI_AVAILABLE:
             try:
                 self.kiwi = Kiwi()
+                kiwi_status = "✅ 사용"
                 logger.info("✅ Kiwi 형태소 분석기 초기화 완료")
-                print("✅ Kiwi 형태소 분석기 초기화 완료")
             except Exception as e:
+                kiwi_status = "❌ 초기화 실패"
                 logger.error(f"Kiwi 초기화 실패: {e}")
                 print(f"❌ Kiwi 초기화 실패: {e}")
         else:
-            logger.warning("kiwipiepy 사용 불가, 규칙 기반 폴백 사용")
+            kiwi_status = "⚠️ 미설치 (규칙 기반 폴백)"
+            logger.warning("⚠️ kiwipiepy 미설치 - 규칙 기반 폴백 사용")
+            print("⚠️ kiwipiepy 미설치 - pip install kiwipiepy")
         
         # 임베딩 서비스 초기화
+        embedding_status = "미사용"
         if EMBEDDING_SERVICE_AVAILABLE:
             try:
                 self.embedding_service = EmbeddingService()
-                logger.info("✅ KoreanNLPService 초기화 완료 (Kiwi + 임베딩)")
-                print("✅ KoreanNLPService 초기화 완료 (Kiwi + 임베딩)")
+                embedding_status = "✅ 사용"
+                logger.info("✅ EmbeddingService 초기화 완료")
             except Exception as e:
+                embedding_status = "❌ 초기화 실패"
                 logger.error(f"EmbeddingService 초기화 실패: {e}")
                 print(f"❌ EmbeddingService 초기화 실패: {e}")
         else:
+            embedding_status = "⚠️ 미사용 (더미 벡터)"
             logger.warning("EmbeddingService 사용 불가, 더미 임베딩 사용")
+        
+        # 최종 상태 로그
+        logger.info(f"✅ KoreanNLPService 초기화 완료 - Kiwi: {kiwi_status}, 임베딩: {embedding_status}")
+        print(f"✅ KoreanNLPService 초기화 완료")
+        print(f"   - Kiwi 형태소 분석: {kiwi_status}")
+        print(f"   - 임베딩 서비스: {embedding_status}")
         
         # 영어 NLP 서비스 초기화
         try:

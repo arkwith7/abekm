@@ -93,14 +93,17 @@ class AdaptiveSectionDetector:
         logger.info("[ADAPTIVE-SECTION] AdaptiveSectionDetector 초기화 완료")
 
     def detect_sections(
-        self, full_text: str, pages: Optional[List[Dict]] = None
+        self, full_text: str, pages: Optional[List[Dict]] = None, markdown_text: Optional[str] = None, 
+        elements: Optional[List[Dict]] = None
     ) -> List[Dict]:
         """
-        적응형 섹션 감지: Azure DI role 우선 → 패턴 매칭 폴백 → 의미 매핑
+        적응형 섹션 감지: Markdown 우선 → Upstage HTML → Azure DI role → 패턴 매칭 폴백 → 의미 매핑
         
         Args:
             full_text: 문서 전체 텍스트
             pages: 페이지 정보 (선택, Azure DI의 section_headers 포함 가능)
+            markdown_text: 마크다운 형식의 텍스트 (선택, Upstage API에서 제공)
+            elements: Upstage HTML elements (선택, Upstage API에서 제공)
         
         Returns:
             섹션 정보 리스트: [{
@@ -109,7 +112,7 @@ class AdaptiveSectionDetector:
                 "normalized_title": str,  # 정규화된 헤더
                 "mapped_type": str,       # 매핑된 표준 타입 (있으면)
                 "confidence": float,      # 매핑 신뢰도 (0~1)
-                "detection_source": str,  # "azure_di_role" | "pattern_match"
+                "detection_source": str,  # "markdown" | "upstage_html" | "azure_di_role" | "pattern_match"
                 "start_pos": int,
                 "end_pos": int,
                 "page_start": int,
@@ -121,8 +124,29 @@ class AdaptiveSectionDetector:
             logger.warning("[ADAPTIVE-SECTION] 텍스트가 비어있음")
             return []
 
-        # 🎯 1단계: Azure DI의 role 기반 섹션 헤더 추출 (우선)
-        if pages:
+        # 🆕 0단계: 마크다운 헤더 추출 (최우선)
+        markdown_headers = []
+        if markdown_text and markdown_text.strip():
+            logger.info(f"[ADAPTIVE-SECTION] 📝 마크다운 텍스트 제공됨 ({len(markdown_text)} 문자)")
+            markdown_headers = self._extract_markdown_headers(markdown_text, full_text)
+            if markdown_headers:
+                logger.info(f"[ADAPTIVE-SECTION] 🎯 마크다운 헤더 {len(markdown_headers)}개 감지")
+                for i, h in enumerate(markdown_headers[:5], 1):
+                    logger.debug(f"  {i}. {h['text'][:50]} (level={h.get('level')}, pos={h['start_pos']})")
+
+        # 🆕 1단계: Upstage HTML elements에서 헤더 추출
+        upstage_headers = []
+        if not markdown_headers and elements:
+            logger.info(f"[ADAPTIVE-SECTION] 🔷 Upstage elements 제공됨 ({len(elements)}개)")
+            upstage_headers = self._extract_headers_from_upstage_elements(elements, full_text)
+            if upstage_headers:
+                logger.info(f"[ADAPTIVE-SECTION] 🎯 Upstage HTML 헤더 {len(upstage_headers)}개 감지")
+                for i, h in enumerate(upstage_headers[:5], 1):
+                    logger.debug(f"  {i}. {h['text'][:50]} (page={h.get('page_no')}, pos={h['start_pos']})")
+
+        # 🎯 2단계: Azure DI의 role 기반 섹션 헤더 추출
+        azure_headers = []
+        if not markdown_headers and not upstage_headers and pages:
             logger.debug(f"[ADAPTIVE-SECTION] 페이지 데이터 제공됨 - {len(pages)}페이지")
             # 디버깅: 첫 페이지의 section_headers 확인
             if pages:
@@ -131,16 +155,22 @@ class AdaptiveSectionDetector:
                 paragraphs_count = len(first_page.get('paragraphs', []))
                 logger.debug(f"[ADAPTIVE-SECTION] 첫 페이지 - section_headers: {section_headers_count}, paragraphs: {paragraphs_count}")
         
-        azure_headers = self._extract_azure_di_headers(pages) if pages else []
+            azure_headers = self._extract_azure_di_headers(pages)
         
-        if azure_headers:
+        if markdown_headers:
+            all_headers = markdown_headers
+            logger.info(f"[ADAPTIVE-SECTION] ✅ 마크다운 기반 섹션 감지 사용")
+        elif upstage_headers:
+            all_headers = upstage_headers
+            logger.info(f"[ADAPTIVE-SECTION] ✅ Upstage HTML 기반 섹션 감지 사용")
+        elif azure_headers:
             logger.info(f"[ADAPTIVE-SECTION] 🎯 Azure DI role 기반 헤더 {len(azure_headers)}개 감지")
             for i, h in enumerate(azure_headers[:5], 1):  # 처음 5개만 로깅
                 logger.debug(f"  {i}. {h['text'][:50]} (page={h.get('page_no')}, pos={h['start_pos']})")
             all_headers = azure_headers
         else:
-            logger.info("[ADAPTIVE-SECTION] Azure DI role 정보 없음, 패턴 매칭으로 폴백")
-            # 2단계: 패턴 기반 헤더 감지 (폴백)
+            logger.info("[ADAPTIVE-SECTION] 구조적 정보 없음, 패턴 매칭으로 폴백")
+            # 3단계: 패턴 기반 헤더 감지 (폴백)
             all_headers = self._detect_all_headers(full_text)
         
         if not all_headers:
@@ -163,8 +193,8 @@ class AdaptiveSectionDetector:
             else:
                 end_pos = len(full_text)
             
-            # 페이지 번호 찾기
-            page_start = self._find_page_number(header["start_pos"], page_boundaries)
+            # 페이지 번호 찾기 (Azure DI에서 제공한 page_no 우선 사용)
+            page_start = header.get("page_no") or self._find_page_number(header["start_pos"], page_boundaries)
             page_end = self._find_page_number(end_pos - 1, page_boundaries) or page_start
             
             # 섹션 텍스트 및 단어 수
@@ -227,9 +257,119 @@ class AdaptiveSectionDetector:
 
         return sections
 
-    def _extract_azure_di_headers(self, pages: List[Dict]) -> List[Dict]:
+    def _extract_markdown_headers(self, markdown_text: str, full_text: str) -> List[Dict]:
         """
-        Azure DI의 role 기반 섹션 헤더 추출
+        마크다운 텍스트에서 헤더 추출
+        
+        Args:
+            markdown_text: 마크다운 형식의 텍스트
+            full_text: 전체 텍스트 (위치 매핑용)
+        
+        Returns:
+            [{"text": str, "start_pos": int, "detection_source": "markdown", "level": int}, ...]
+        """
+        if not markdown_text:
+            return []
+        
+        # 마크다운 ATX 스타일 헤더 패턴: # ~ ######
+        header_pattern = re.compile(r'^(#{1,6})\s+(.+?)(?:\s*#*)$', re.MULTILINE)
+        
+        headers = []
+        for match in header_pattern.finditer(markdown_text):
+            hashes, title = match.groups()
+            level = len(hashes)
+            title = title.strip()
+            
+            # 마크다운 내 위치
+            md_start_pos = match.start()
+            
+            # 전체 텍스트에서 해당 헤더의 위치 찾기 (근사치)
+            # 마크다운과 텍스트가 유사하지만 정확히 일치하지 않을 수 있음
+            text_start_pos = full_text.find(title)
+            if text_start_pos == -1:
+                # 찾지 못하면 마크다운 위치 사용
+                text_start_pos = md_start_pos
+            
+            headers.append({
+                'text': title,
+                'start_pos': text_start_pos,
+                'detection_source': 'markdown',
+                'level': level,
+                'md_position': md_start_pos
+            })
+            
+            logger.debug(
+                f"[MARKDOWN-HEADER] level={level}, title='{title[:50]}', pos={text_start_pos}"
+            )
+        
+        # 위치 순서대로 정렬
+        headers.sort(key=lambda x: x['start_pos'])
+        
+        logger.info(f"[ADAPTIVE-SECTION] 마크다운에서 {len(headers)}개 헤더 추출 완료")
+        return headers
+
+    def _extract_headers_from_upstage_elements(self, elements: List[Dict], full_text: str) -> List[Dict]:
+        """
+        Upstage HTML elements에서 h1, h2, header 태그 추출하여 헤더 감지
+        
+        Args:
+            elements: Upstage가 반환한 elements (HTML 구조)
+            full_text: 전체 텍스트
+        
+        Returns:
+            [{"text": str, "start_pos": int, "detection_source": "upstage_html", "page_no": int}, ...]
+        """
+        headers = []
+        
+        for elem in elements:
+            elem_id = elem.get('id', '')
+            category = elem.get('category', '')
+            html = elem.get('html', '')
+            page = elem.get('page', 1)  # Upstage는 'page' 필드 제공
+            
+            # h1, h2, header 태그를 헤더로 간주
+            is_header = False
+            if '<h1' in html or '<h2' in html or '<header' in html:
+                is_header = True
+            
+            if is_header:
+                # HTML 태그 제거하여 순수 텍스트 추출
+                import re
+                text = re.sub(r'<[^>]+>', '', html).strip()
+                text = re.sub(r'\s+', ' ', text)  # 공백 정규화
+                
+                if not text or len(text) < 3:
+                    continue
+                
+                # full_text에서 위치 찾기
+                start_pos = full_text.find(text)
+                if start_pos == -1:
+                    # 정확히 못 찾으면 첫 30자로 다시 시도
+                    start_pos = full_text.find(text[:30])
+                
+                if start_pos != -1:
+                    headers.append({
+                        'text': text,
+                        'start_pos': start_pos,
+                        'detection_source': 'upstage_html',
+                        'page_no': page,
+                        'element_id': elem_id,
+                        'category': category
+                    })
+                    logger.debug(
+                        f"[UPSTAGE-HEADER] page={page}, id={elem_id}, "
+                        f"text='{text[:50]}', pos={start_pos}"
+                    )
+        
+        # 위치 순서대로 정렬
+        headers.sort(key=lambda x: x['start_pos'])
+        
+        logger.info(f"[ADAPTIVE-SECTION] Upstage HTML 기반 헤더 {len(headers)}개 추출 완료")
+        return headers
+
+    def _extract_headers_from_azure_di(self, pages: List[Dict]) -> List[Dict]:
+        """
+        Azure DI의 section_headers 정보에서 헤더 추출
         
         Args:
             pages: Azure DI가 반환한 페이지 정보 (section_headers 포함)
@@ -452,27 +592,52 @@ class AdaptiveSectionDetector:
             [(start_pos, end_pos, page_no), ...]
         """
         boundaries = []
-        current_pos = 0
+        current_search_pos = 0  # full_text에서 검색 시작 위치
 
         for page in pages:
             page_no = page.get("page_no", 1)
             page_text = page.get("text", "")
             
-            # 페이지 마커가 있는지 확인
+            if not page_text.strip():
+                continue
+            
+            # 1. 페이지 마커가 있는지 확인 (Azure DI)
             page_marker = f"\n[페이지 {page_no}]\n"
-            marker_pos = full_text.find(page_marker, current_pos)
+            marker_pos = full_text.find(page_marker, current_search_pos)
             
             if marker_pos >= 0:
+                # 페이지 마커 발견 (Azure DI 형식)
                 start_pos = marker_pos
+                # 마커 이후에 실제 페이지 텍스트가 있다고 가정
                 end_pos = start_pos + len(page_marker) + len(page_text)
+                current_search_pos = end_pos
             else:
-                # 마커 없으면 순차적으로 배치
-                end_pos = current_pos + len(page_text)
-                start_pos = current_pos
+                # 2. 페이지 마커 없음 → full_text에서 page_text 찾기 (Upstage)
+                # page_text의 앞부분 샘플로 검색 (전체를 찾으면 느림)
+                search_sample = page_text[:min(200, len(page_text))].strip()
+                
+                if search_sample:
+                    found_pos = full_text.find(search_sample, current_search_pos)
+                    if found_pos >= 0:
+                        start_pos = found_pos
+                        end_pos = start_pos + len(page_text)
+                        current_search_pos = end_pos
+                    else:
+                        # 샘플로 못 찾으면 순차 배치 (폴백)
+                        logger.warning(
+                            f"[ADAPTIVE-SECTION] 페이지 {page_no} 텍스트를 full_text에서 찾지 못함 "
+                            f"(샘플: '{search_sample[:50]}...'). 순차 배치 사용."
+                        )
+                        start_pos = current_search_pos
+                        end_pos = start_pos + len(page_text)
+                        current_search_pos = end_pos
+                else:
+                    # 빈 페이지 - 건너뛰기
+                    continue
             
             boundaries.append((start_pos, end_pos, page_no))
-            current_pos = end_pos
 
+        logger.debug(f"[ADAPTIVE-SECTION] 페이지 경계 {len(boundaries)}개 생성 완료")
         return boundaries
 
     def _find_page_number(

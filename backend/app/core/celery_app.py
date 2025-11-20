@@ -115,11 +115,11 @@ def init_worker_process_handler(**kwargs):
         logger.info(f"📄 [WORKER-INIT] 문서 처리 제공자: {doc_provider}")
         
         if doc_provider == "upstage":
-            from app.services.document.extraction.upstage_document_service import UpstageDocumentParseService
+            from app.services.document.extraction.upstage_document_service import UpstageDocumentService
             doc_start = time.time()
-            doc_service = UpstageDocumentParseService()
+            doc_service = UpstageDocumentService()
             doc_time = time.time() - doc_start
-            logger.info(f"✅ [WORKER-INIT] UpstageDocumentParseService 초기화 완료 ({doc_time:.2f}초)")
+            logger.info(f"✅ [WORKER-INIT] UpstageDocumentService 초기화 완료 ({doc_time:.2f}초)")
         elif doc_provider == "azure_di":
             from app.services.document.extraction.azure_document_intelligence_service import AzureDocumentIntelligenceService
             doc_start = time.time()

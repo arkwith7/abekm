@@ -1,0 +1,200 @@
+[
+  {
+    "type": "other",
+    "level": 1,
+    "title": "양손잡이 리더십과 혁신적인 업무 행동:",
+    "normalized": "양손잡이_리더십과_혁신적인_업무_행동:",
+    "confidence": 0.0,
+    "start_pos": 126,
+    "end_pos": 214,
+    "line_no": 8,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "Ambidextrous Leadership and Innovative Work Behavior:",
+    "normalized": "ambidextrous_leadership_and_innovative_work_behavior:",
+    "confidence": 0.0,
+    "start_pos": 214,
+    "end_pos": 2862,
+    "line_no": 14,
+    "subsections": []
+  },
+  {
+    "type": "introduction",
+    "level": 1,
+    "title": "1. Introduction",
+    "normalized": "1._introduction",
+    "confidence": 0.8,
+    "start_pos": 2862,
+    "end_pos": 8895,
+    "line_no": 56,
+    "subsections": []
+  },
+  {
+    "type": "introduction",
+    "level": 1,
+    "title": "2. Theoretical Background",
+    "normalized": "2._theoretical_background",
+    "confidence": 0.8,
+    "start_pos": 8895,
+    "end_pos": 14688,
+    "line_no": 196,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "3. Research Method",
+    "normalized": "3._research_method",
+    "confidence": 0.0,
+    "start_pos": 14688,
+    "end_pos": 30880,
+    "line_no": 337,
+    "subsections": []
+  },
+  {
+    "type": "discussion",
+    "level": 1,
+    "title": "4. Empirical Analysis",
+    "normalized": "4._empirical_analysis",
+    "confidence": 0.8,
+    "start_pos": 30880,
+    "end_pos": 32114,
+    "line_no": 763,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "4.2 Questionnaire Composition",
+    "normalized": "4.2_questionnaire_composition",
+    "confidence": 0.0,
+    "start_pos": 32114,
+    "end_pos": 36818,
+    "line_no": 795,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "4.4 Measurement Model Assessment",
+    "normalized": "4.4_measurement_model_assessment",
+    "confidence": 0.0,
+    "start_pos": 36818,
+    "end_pos": 41703,
+    "line_no": 934,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "4.5 The Structural Model Assessment",
+    "normalized": "4.5_the_structural_model_assessment",
+    "confidence": 0.0,
+    "start_pos": 41703,
+    "end_pos": 45775,
+    "line_no": 1075,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "4.5.3 Moderating Effects",
+    "normalized": "4.5.3_moderating_effects",
+    "confidence": 0.0,
+    "start_pos": 45775,
+    "end_pos": 51102,
+    "line_no": 1165,
+    "subsections": []
+  },
+  {
+    "type": "discussion",
+    "level": 1,
+    "title": "5. Discussion, Implications,",
+    "normalized": "5._discussion,_implications,",
+    "confidence": 0.8,
+    "start_pos": 51102,
+    "end_pos": 51161,
+    "line_no": 1311,
+    "subsections": []
+  },
+  {
+    "type": "discussion",
+    "level": 1,
+    "title": "5.1 Discussion",
+    "normalized": "5.1_discussion",
+    "confidence": 0.8,
+    "start_pos": 51161,
+    "end_pos": 61578,
+    "line_no": 1314,
+    "subsections": []
+  },
+  {
+    "type": "conclusion",
+    "level": 1,
+    "title": "5.4 Conclusion",
+    "normalized": "5.4_conclusion",
+    "confidence": 0.8,
+    "start_pos": 61578,
+    "end_pos": 74974,
+    "line_no": 1570,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "brochures/semiconductor-manufacturing/",
+    "normalized": "brochures/semiconductor-manufacturing/",
+    "confidence": 0.0,
+    "start_pos": 74974,
+    "end_pos": 81141,
+    "line_no": 1929,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "About the Authors",
+    "normalized": "about_the_authors",
+    "confidence": 0.0,
+    "start_pos": 81141,
+    "end_pos": 81193,
+    "line_no": 2097,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "Henry Ameyaw Domfeh (domfehhenrysomet@ajou.ac.kr)",
+    "normalized": "henry_ameyaw_domfeh_(domfehhenrysomet@ajou.ac.kr)",
+    "confidence": 0.0,
+    "start_pos": 81193,
+    "end_pos": 81647,
+    "line_no": 2102,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "Henry Ofori (henryofori@ajou.ac.kr)",
+    "normalized": "henry_ofori_(henryofori@ajou.ac.kr)",
+    "confidence": 0.0,
+    "start_pos": 81647,
+    "end_pos": 82065,
+    "line_no": 2114,
+    "subsections": []
+  },
+  {
+    "type": "other",
+    "level": 1,
+    "title": "Sora Yoon (yoonsora@ajou.ac.kr)",
+    "normalized": "sora_yoon_(yoonsora@ajou.ac.kr)",
+    "confidence": 0.0,
+    "start_pos": 82065,
+    "end_pos": null,
+    "line_no": 2125,
+    "subsections": []
+  }
+]

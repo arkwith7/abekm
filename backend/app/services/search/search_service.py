@@ -2354,7 +2354,26 @@ class SearchService:
             # 3. 이미지 검색 (CLIP 멀티모달)
             image_results: List[Dict[str, Any]] = []
             image_embedding: List[float] = []
-            image_threshold = 0.8  # 유사도 임계값 (0.8 = 80% 유사도 이상만 반환)
+            
+            # 모델별 기본 임계값 설정
+            from app.core.config import settings
+            provider = settings.get_current_embedding_provider()
+            if provider == 'bedrock':
+                # AWS Bedrock Marengo: 시각적 정확도 중심 모델
+                # - 특성: 이미지 전용 임베딩 → 정확한 유사도 측정
+                # - 0.95+: 거의 동일 (복사본, 다른 해상도)
+                # - 0.75~0.95: 매우 유사 (같은 대상, 유사 구도)
+                # - 0.60~0.75: 유사 (같은 카테고리, 다른 맥락)
+                # - 0.40~0.60: 관련 있음 (같은 주제)
+                # - 임계값 0.75: CLIP과 동일한 정확도 기준 유지
+                image_threshold = 0.75
+            else:
+                # Azure CLIP: 시맨틱 유사도 중심 모델
+                # - 특성: 이미지-텍스트 의미 매칭 → 점수가 높게 나옴
+                # - 임계값 0.75: 높은 정확도 유지
+                image_threshold = 0.75
+            
+            # 사용자 지정 임계값 우선 적용
             if filters and isinstance(filters.get("image_similarity_threshold"), (int, float)):
                 candidate = float(filters["image_similarity_threshold"])  # type: ignore[index]
                 if 0.0 <= candidate <= 1.0:
@@ -2432,7 +2451,10 @@ class SearchService:
                     "search_time_seconds": search_time,
                     "image_results_count": len(image_results),
                     "image_similarity_threshold": image_threshold,
-                    "image_embedding_dimension": len(image_embedding) if image_embedding else None
+                    "image_embedding_dimension": len(image_embedding) if image_embedding else None,
+                    # 🆕 프로바이더/모델 정보 노출 (프론트 배지 표기용)
+                    "image_provider": provider,
+                    "image_model": getattr(settings, 'bedrock_multimodal_embedding_model_id', None) if provider == 'bedrock' else getattr(settings, 'azure_openai_multimodal_embedding_deployment', None)
                 },
                 "filters_applied": {
                     **text_results.get('filters_applied', {}),
@@ -2559,11 +2581,28 @@ class SearchService:
             joined = "','".join(container_filters)
             container_condition = f" AND fbf.knowledge_container_id IN ('{joined}')"
 
+        # 🔷 프로바이더별 벡터 컬럼 선택 (bedrock vs azure_openai)
+        from app.core.config import settings
+        provider = settings.get_current_embedding_provider()
+        
+        if provider == 'bedrock':
+            # AWS Bedrock: TwelveLabs Marengo (512d)
+            vector_column = "de.aws_marengo_vector_512"
+            vector_not_null_condition = f"{vector_column} IS NOT NULL"
+            logger.info(f"[MULTIMODAL_SEARCH] AWS Bedrock 벡터 검색 (aws_marengo_vector_512)")
+        else:
+            # Azure OpenAI: CLIP (512d) - 기본값 및 레거시 호환
+            vector_column = "de.azure_clip_vector"
+            vector_not_null_condition = f"({vector_column} IS NOT NULL OR de.clip_vector IS NOT NULL)"
+            # Azure는 azure_clip_vector 우선, 없으면 레거시 clip_vector 사용
+            vector_column = f"COALESCE({vector_column}, de.clip_vector)"
+            logger.info(f"[MULTIMODAL_SEARCH] Azure CLIP 벡터 검색 (azure_clip_vector)")
+
         query_sql = f"""
             SELECT
                 de.embedding_id AS embedding_id,
-                de.clip_vector <=> '{vector_literal}'::vector AS distance,
-                1 - (de.clip_vector <=> '{vector_literal}'::vector) / 2 AS cosine_similarity,
+                {vector_column} <=> '{vector_literal}'::vector AS distance,
+                1 - ({vector_column} <=> '{vector_literal}'::vector) AS cosine_similarity,
                 dc.chunk_id,
                 dc.chunk_index,
                 dc.content_text,
@@ -2579,10 +2618,10 @@ class SearchService:
             JOIN doc_chunk dc ON de.chunk_id = dc.chunk_id
             JOIN tb_file_bss_info fbf ON dc.file_bss_info_sno = fbf.file_bss_info_sno
             LEFT JOIN tb_knowledge_containers kc ON fbf.knowledge_container_id = kc.container_id
-            WHERE de.clip_vector IS NOT NULL
+            WHERE {vector_not_null_condition}
               AND fbf.del_yn = 'N'
               {container_condition}
-            ORDER BY de.clip_vector <=> '{vector_literal}'::vector ASC
+            ORDER BY {vector_column} <=> '{vector_literal}'::vector ASC
             LIMIT {max_results * 2}
         """
 
@@ -2638,6 +2677,9 @@ class SearchService:
                         "file_name": file_name,
                         "document_id": str(row.file_bss_info_sno),
                         "chunk_index": row.chunk_index,
+                        # 🆕 프론트 표기를 위한 프로바이더/모델 정보
+                        "image_provider": provider,
+                        "image_model": getattr(settings, 'bedrock_multimodal_embedding_model_id', None) if provider == 'bedrock' else getattr(settings, 'azure_openai_multimodal_embedding_deployment', None)
                     }
                 })
 

@@ -592,20 +592,25 @@ class ContainerService:
         container_id: str
     ) -> int:
         """
-        컨테이너의 document_count를 실제 문서 개수로 업데이트
+        컨테이너의 document_count를 실제 문서 개수로 업데이트 (완료된 문서만 집계)
         
         Args:
             container_id: 업데이트할 컨테이너 ID
             
         Returns:
-            업데이트된 문서 개수
+            업데이트된 문서 개수 (완료된 문서만)
         """
         try:
-            # 실제 문서 개수 조회 (삭제되지 않은 문서만)
+            # ✅ 실제 문서 개수 조회 (삭제되지 않고, 처리 완료된 문서만)
+            # processing_status가 'completed'이거나 NULL인 문서만 집계
             doc_count_query = select(func.count(TbFileBssInfo.file_bss_info_sno)).where(
                 and_(
                     TbFileBssInfo.knowledge_container_id == container_id,
-                    TbFileBssInfo.del_yn != 'Y'
+                    TbFileBssInfo.del_yn != 'Y',
+                    or_(
+                        TbFileBssInfo.processing_status == 'completed',
+                        TbFileBssInfo.processing_status.is_(None)  # 레거시 문서 (status 없음)
+                    )
                 )
             )
             doc_count_result = await self.session.execute(doc_count_query)

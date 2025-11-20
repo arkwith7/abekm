@@ -56,9 +56,13 @@ class CallbackTask(Task):
             self.update_status(document_id, 'failed', error_msg)
     
     def on_success(self, retval, task_id, args, kwargs):
-        """작업 성공 시 호출"""
+        """작업 성공 시 호출 (Celery 태스크 실행 완료, 비즈니스 로직 성공 여부는 retval 확인)"""
         document_id = args[0] if args else kwargs.get('document_id')
-        logger.info(f"✅ [TASK-SUCCESS] 문서 처리 성공: doc_id={document_id}, task_id={task_id}")
+        # retval['success']가 False이면 비즈니스 로직 실패
+        if isinstance(retval, dict) and not retval.get('success'):
+            logger.info(f"⚠️ [TASK-COMPLETED] 문서 처리 완료 (실패): doc_id={document_id}, task_id={task_id}")
+        else:
+            logger.info(f"✅ [TASK-COMPLETED] 문서 처리 완료 (성공): doc_id={document_id}, task_id={task_id}")
     
     def update_status(self, document_id: int, status: str, error: Optional[str] = None):
         """

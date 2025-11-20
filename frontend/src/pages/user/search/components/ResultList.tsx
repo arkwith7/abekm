@@ -245,9 +245,15 @@ const ResultItem: React.FC<{
                     </span>
                   )}
                   {result.clip_score !== undefined && result.clip_score > 0 && (
-                    <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-md">
-                      🔍 CLIP {(result.clip_score * 100).toFixed(0)}%
-                    </span>
+                    (() => {
+                      const provider = result.metadata?.image_provider as string | undefined;
+                      const label = provider === 'bedrock' ? 'Marengo' : 'CLIP';
+                      return (
+                        <span className="text-xs text-green-600 bg-green-50 px-2 py-1 rounded-md">
+                          🔍 {label} {(result.clip_score * 100).toFixed(0)}%
+                        </span>
+                      );
+                    })()
                   )}
                 </div>
               </div>

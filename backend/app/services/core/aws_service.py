@@ -27,6 +27,19 @@ class S3Service(AWSService):
         self.s3_client = self.session.client('s3')
         # settings의 소문자 필드 또는 환경 변수 사용
         self.bucket_name = getattr(settings, 'aws_s3_bucket', None) or os.getenv('AWS_S3_BUCKET')
+        self._purpose_prefix = {
+            'raw': 'raw',
+            'intermediate': 'intermediate',
+            'derived': 'derived'
+        }
+
+    def _build_key(self, blob_path: str, purpose: str = 'raw') -> str:
+        """스토리지 purpose에 맞는 S3 키 생성"""
+        prefix = self._purpose_prefix.get(purpose, 'raw')
+        normalized = blob_path.lstrip('/')
+        if normalized.startswith(f"{prefix}/"):
+            return normalized
+        return f"{prefix}/{normalized}"
     
     async def upload_file(self, file_path: str, object_key: str) -> str:
         """파일을 S3에 업로드"""
@@ -59,6 +72,68 @@ class S3Service(AWSService):
         except Exception as e:
             logger.error(f"Failed to delete file from S3: {e}")
             return False
+    
+    def upload_bytes(self, data: bytes, blob_path: str, purpose: str = 'raw', content_type: Optional[str] = None) -> str:
+        """바이트 데이터를 S3에 업로드 (Azure Blob 호환 API)
+        
+        Args:
+            data: 업로드할 바이트 데이터
+            blob_path: S3 키 (purpose 프리픽스 제외)
+            purpose: 'raw', 'intermediate', 'derived' 중 하나
+            content_type: MIME 타입 (선택)
+        
+        Returns:
+            S3 URL
+        """
+        try:
+            full_key = self._build_key(blob_path, purpose)
+            
+            put_params = {
+                'Bucket': self.bucket_name,
+                'Key': full_key,
+                'Body': data
+            }
+            if content_type:
+                put_params['ContentType'] = content_type
+            
+            self.s3_client.put_object(**put_params)
+            
+            region = getattr(settings, 'aws_region', None) or os.getenv('AWS_REGION', 'ap-northeast-2')
+            url = f"https://{self.bucket_name}.s3.{region}.amazonaws.com/{full_key}"
+            logger.info(f"Bytes uploaded to S3: {url} ({len(data)} bytes, purpose={purpose})")
+            return url
+        except Exception as e:
+            logger.error(f"Failed to upload bytes to S3: {e}")
+            raise e
+    
+    def download_bytes(self, blob_path: str, purpose: str = 'raw') -> bytes:
+        """S3에서 바이트 데이터 다운로드 (Azure Blob 호환 API)"""
+        full_key = self._build_key(blob_path, purpose)
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=full_key)
+            data = response['Body'].read()
+            logger.info(f"Bytes downloaded from S3: {full_key} ({len(data)} bytes)")
+            return data
+        except self.s3_client.exceptions.NoSuchKey:
+            logger.warning(f"S3 key not found: {full_key}")
+            return b''
+        except Exception as e:
+            logger.error(f"Failed to download bytes from S3: {e}")
+            raise e
+
+    def download_text(self, object_key: str, encoding: str = 'utf-8') -> str:
+        """S3에서 텍스트 파일 다운로드"""
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=object_key)
+            text = response['Body'].read().decode(encoding, errors='replace')
+            logger.info(f"Text file downloaded from S3: {object_key} ({len(text)} chars)")
+            return text
+        except self.s3_client.exceptions.NoSuchKey:
+            logger.warning(f"Text file not found in S3: {object_key}")
+            return ""
+        except Exception as e:
+            logger.error(f"Failed to download text from S3: {e}")
+            raise e
 
     def generate_presigned_url(
         self,

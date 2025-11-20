@@ -1,0 +1,1807 @@
+{
+  "api": "2.0",
+  "content": {
+    "html": "<p id='0' data-category='paragraph' style='font-size:14px'>{</p>\n<br><p id='1' data-category='paragraph' style='font-size:14px'>\"api\": \"2.0\",<br>\"content\": {</p>\n<br><p id='2' data-category='paragraph' style='font-size:14px'>\"html\": \"<h1 id='0' style='font-size:22px'>INVOICE</h1>\\n<h1 id='1'<br>style='font-size:20px'>Company<br>Upstage</h1>\\n<br><h1 id='2'<br>style='font-size:18px'>Invoice ID</h1>\\n<br><h1 id='3' style='font-size:14px'><br>휴 INV-AJ355548</h1>\\n<h1 id='4' style='font-size:18px'>Invoice Date</<br>h1>\\n<br><h1 id='5' style='font-size:18px'>9/7/1992</h1>\\n<h1 id='6'<br>style='font-size:16px'>Mamo<br>Lucy Park</h1>\\n<h1 id='7' style='font-<br>size:18px'>Address</h1>\\n<br><h1 id='8' style='font-size:16px'>7 Pepper<br>Wood Street, 130 Stone Comer<br>Terrace<br>Wilkes Barre, Pennsylvania,<br>18768<br>United States</h1>\\n<h1 id='9' style='font-size:16px'>Email</<br>h1>\\n<br><h1 id='10' style='font-size:16px'>Ikitchenman0@arizona.edu</<br>h1>\\n<br><h1 id='11' style='font-size:20px'>Service Details Form</h1>\\n<h1<br>id='12' style='font-size:16px'>Name<br>Sung Kim</h1>\\n<h1 id='13'<br>style='font-size:16px'>260 'ess<br>Gwangovolungang:co 338, Gyeongg<br>do.<br>Sanghyeon-dong, Sui-gu<br>Yongin-si, South Korea</h1>\\n<h1 id='14'<br>style='font-size:18px'>Additional Request</h1>\\n<br><p id='15' data-<br>category='paragraph' style='font-size:14px'>Vivamus vestibulum sagittis<br>sapien. Cum sociis natoque<br>penatibus 항목 magnis dfs parturient montes,<br>nascetur ridiculus<br>mus.</p>\\n<h1 id='16' style='font-size:14px'>TERMS<br>AND CONDITIONS</h1>\\n<p id='17' data-category='list' style='font-<br>size:14px'>L TM Seir that not be lable 1층 the Buyer drectly indirectly for any<br>loun or damage sufflered by 전액 Buyer<br>2. The 별 www. the product for ore<br>과 관한 from the date 설 shipment.<br>3. Any ourchase order received by ~ sele<br>- be interpreted 추가 accepting the offer Ma the 18% offer writing The buyer<br>may<br>purchase 15 The offer My the Terms and Conditions the Seller<br>included The offer</p>\",<br>\"markdown\": \"\",</p>\n<br><p id='3' data-category='paragraph' style='font-size:14px'>\"text\": \"\"</p>\n<br><h1 id='4' style='font-size:14px'>},</h1>\n<br><h1 id='5' style='font-size:14px'>\"elements\": [</h1>\n<br><p id='6' data-category='paragraph' style='font-size:14px'>{</p>\n<br><p id='7' data-category='paragraph' style='font-size:14px'>\"category\": \"heading1\",</p>\n<br><p id='8' data-category='paragraph' style='font-size:14px'>\"content\": {</p>\n<br><p id='9' data-category='paragraph' style='font-size:14px'>\"html\": \"<h1 id='0' style='font-size:22px'>INVOICE</h1>\",</p>\n<br><p id='10' data-category='paragraph' style='font-size:14px'>\"markdown\": \"\",</p>\n<br><p id='11' data-category='paragraph' style='font-size:14px'>\"text\": \"\"</p>\n<br><p id='12' data-category='paragraph' style='font-size:14px'>},</p>\n<br><p id='13' data-category='paragraph' style='font-size:14px'>\"coordinates\": [</p>\n<br><p id='14' data-category='paragraph' style='font-size:14px'>{</p>\n<br><p id='15' data-category='paragraph' style='font-size:14px'>\"x\": 0.0648,</p>\n<br><p id='16' data-category='paragraph' style='font-size:14px'>\"y\": 0.0517</p>\n<br><p id='17' data-category='paragraph' style='font-size:14px'>},</p>\n<br><p id='18' data-category='paragraph' style='font-size:14px'>{</p>\n<br><p id='19' data-category='paragraph' style='font-size:14px'>\"x\": 0.2405,</p>\n<br><p id='20' data-category='paragraph' style='font-size:14px'>\"y\": 0.0517</p>\n<p id='21' data-category='index' style='font-size:14px'>},<br>{<br>\"x\": 0.2405,<br>\"y\": 0.0953<br>},<br>{<br>\"x\": 0.0648,<br>\"y\": 0.0953<br>}<br>],<br>\"id\": 0,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='1' style='font-size:20px'>Company<br>Upstage</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0657,<br>\"y\": 0.2651<br>},<br>{<br>\"x\": 0.1606,<br>\"y\": 0.2651<br>},<br>{<br>\"x\": 0.1606,<br>\"y\": 0.3168<br>},<br>{<br>\"x\": 0.0657,<br>\"y\": 0.3168<br>}<br>],<br>\"id\": 1,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='2' style='font-size:18px'>Invoice ID</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"</p>\n<p id='22' data-category='index' style='font-size:14px'>},<br>\"coordinates\": [<br>{<br>\"x\": 0.5712,<br>\"y\": 0.0748<br>},<br>{<br>\"x\": 0.671,<br>\"y\": 0.0748<br>},<br>{<br>\"x\": 0.671,<br>\"y\": 0.101<br>},<br>{<br>\"x\": 0.5712,<br>\"y\": 0.101<br>}<br>],<br>\"id\": 2,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='3' style='font-size:14px'>휴 INV-AJ355548</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.788,<br>\"y\": 0.076<br>},<br>{<br>\"x\": 0.9287,<br>\"y\": 0.076<br>},<br>{<br>\"x\": 0.9287,<br>\"y\": 0.0972<br>},<br>{<br>\"x\": 0.788,<br>\"y\": 0.0972<br>}<br>],</p>\n<p id='23' data-category='index' style='font-size:14px'>\"id\": 3,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='4' style='font-size:18px'>Invoice Date</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.572,<br>\"y\": 0.1232<br>},<br>{<br>\"x\": 0.6941,<br>\"y\": 0.1232<br>},<br>{<br>\"x\": 0.6941,<br>\"y\": 0.1484<br>},<br>{<br>\"x\": 0.572,<br>\"y\": 0.1484<br>}<br>],<br>\"id\": 4,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='5' style='font-size:18px'>9/7/1992</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.8525,<br>\"y\": 0.1224<br>},<br>{<br>\"x\": 0.9293,<br>\"y\": 0.1224<br>},</p>\n<p id='24' data-category='index' style='font-size:14px'>{<br>\"x\": 0.9293,<br>\"y\": 0.1468<br>},<br>{<br>\"x\": 0.8525,<br>\"y\": 0.1468<br>}<br>],<br>\"id\": 5,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='6' style='font-size:16px'>Mamo<br>Lucy Park</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0658,<br>\"y\": 0.3331<br>},<br>{<br>\"x\": 0.15,<br>\"y\": 0.3331<br>},<br>{<br>\"x\": 0.15,<br>\"y\": 0.3846<br>},<br>{<br>\"x\": 0.0658,<br>\"y\": 0.3846<br>}<br>],<br>\"id\": 6,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='7' style='font-size:18px'>Address</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},</p>\n<p id='25' data-category='index' style='font-size:14px'>\"coordinates\": [<br>{<br>\"x\": 0.0662,<br>\"y\": 0.4061<br>},<br>{<br>\"x\": 0.1482,<br>\"y\": 0.4061<br>},<br>{<br>\"x\": 0.1482,<br>\"y\": 0.4286<br>},<br>{<br>\"x\": 0.0662,<br>\"y\": 0.4286<br>}<br>],<br>\"id\": 7,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='8' style='font-size:16px'>7 Pepper Wood Street, 130<br>Stone Comer<br>Terrace<br>Wilkes Barre, Pennsylvania, 18768<br>United<br>States</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.067,<br>\"y\": 0.4332<br>},<br>{<br>\"x\": 0.3962,<br>\"y\": 0.4332<br>},<br>{<br>\"x\": 0.3962,<br>\"y\": 0.5173<br>},<br>{<br>\"x\": 0.067,<br>\"y\": 0.5173<br>}</p>\n<p id='26' data-category='index' style='font-size:14px'>],<br>\"id\": 8,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='9' style='font-size:16px'>Email</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0656,<br>\"y\": 0.5326<br>},<br>{<br>\"x\": 0.1235,<br>\"y\": 0.5326<br>},<br>{<br>\"x\": 0.1235,<br>\"y\": 0.5579<br>},<br>{<br>\"x\": 0.0656,<br>\"y\": 0.5579<br>}<br>],<br>\"id\": 9,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='10' style='font-<br>size:16px'>Ikitchenman0@arizona.edu</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0654,<br>\"y\": 0.5614<br>},<br>{<br>\"x\": 0.2874,</p>\n<p id='27' data-category='index' style='font-size:14px'>\"y\": 0.5614<br>},<br>{<br>\"x\": 0.2874,<br>\"y\": 0.5834<br>},<br>{<br>\"x\": 0.0654,<br>\"y\": 0.5834<br>}<br>],<br>\"id\": 10,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='11' style='font-size:20px'>Service Details Form</<br>h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.5727,<br>\"y\": 0.2112<br>},<br>{<br>\"x\": 0.8149,<br>\"y\": 0.2112<br>},<br>{<br>\"x\": 0.8149,<br>\"y\": 0.2417<br>},<br>{<br>\"x\": 0.5727,<br>\"y\": 0.2417<br>}<br>],<br>\"id\": 11,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='12' style='font-size:16px'>Name<br>Sung Kim</h1>\",</p>\n<p id='28' data-category='index' style='font-size:14px'>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.573,<br>\"y\": 0.2657<br>},<br>{<br>\"x\": 0.6563,<br>\"y\": 0.2657<br>},<br>{<br>\"x\": 0.6563,<br>\"y\": 0.3177<br>},<br>{<br>\"x\": 0.573,<br>\"y\": 0.3177<br>}<br>],<br>\"id\": 12,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='13' style='font-size:16px'>260<br>'ess<br>Gwangovolungang:co 338, Gyeongg do.<br>Sanghyeon-dong, Sui-<br>gu<br>Yongin-si, South Korea</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.5724,<br>\"y\": 0.3401<br>},<br>{<br>\"x\": 0.891,<br>\"y\": 0.3401<br>},<br>{<br>\"x\": 0.891,<br>\"y\": 0.4232<br>},<br>{</p>\n<p id='29' data-category='index' style='font-size:14px'>\"x\": 0.5724,<br>\"y\": 0.4232<br>}<br>],<br>\"id\": 13,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='14' style='font-size:18px'>Additional Request</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0648,<br>\"y\": 0.6681<br>},<br>{<br>\"x\": 0.2482,<br>\"y\": 0.6681<br>},<br>{<br>\"x\": 0.2482,<br>\"y\": 0.6962<br>},<br>{<br>\"x\": 0.0648,<br>\"y\": 0.6962<br>}<br>],<br>\"id\": 14,<br>\"page\": 1<br>},<br>{<br>\"category\": \"paragraph\",<br>\"content\": {<br>\"html\": \"<br><p id='15' data-category='paragraph' style='font-<br>size:14px'>Vivamus vestibulum sagittis sapien. Cum sociis<br>natoque<br>penatibus 항목 magnis dfs parturient montes, nascetur<br>ridiculus<br>mus.</p>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{</p>\n<p id='30' data-category='index' style='font-size:14px'>\"x\": 0.4191,<br>\"y\": 0.6684<br>},<br>{<br>\"x\": 0.9132,<br>\"y\": 0.6684<br>},<br>{<br>\"x\": 0.9132,<br>\"y\": 0.7332<br>},<br>{<br>\"x\": 0.4191,<br>\"y\": 0.7332<br>}<br>],<br>\"id\": 15,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='16' style='font-size:14px'>TERMS AND CONDITIONS</<br>h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0649,<br>\"y\": 0.8303<br>},<br>{<br>\"x\": 0.2506,<br>\"y\": 0.8303<br>},<br>{<br>\"x\": 0.2506,<br>\"y\": 0.8523<br>},<br>{<br>\"x\": 0.0649,<br>\"y\": 0.8523<br>}<br>],<br>\"id\": 16,<br>\"page\": 1</p>\n<p id='31' data-category='paragraph' style='font-size:14px'>},</p>\n<br><p id='32' data-category='paragraph' style='font-size:14px'>{</p>\n<br><p id='33' data-category='paragraph' style='font-size:14px'>\"category\": \"list\",<br>\"content\": {</p>\n<br><p id='34' data-category='paragraph' style='font-size:14px'>\"html\": \"<p id='17' data-category='list' style='font-size:14px'>L TM Seir<br>that not be lable 1층 the Buyer drectly indirectly for any loun or damage<br>sufflered by 전액 Buyer<br>2. The 별 www. the product for ore 과 관한 from the<br>date 설 shipment.<br>3. Any ourchase order received by ~ sele - be interpreted<br>추가 accepting the offer Ma the 18% offer writing The buyer may<br>purchase<br>15 The offer My the Terms and Conditions the Seller included The offer</p>\",</p>\n<br><p id='35' data-category='paragraph' style='font-size:14px'>\"markdown\": \"\",</p>\n<br><p id='36' data-category='paragraph' style='font-size:14px'>\"text\": \"\"</p>\n<br><p id='37' data-category='paragraph' style='font-size:14px'>},<br>\"coordinates\": [</p>\n<br><p id='38' data-category='paragraph' style='font-size:14px'>{</p>\n<br><p id='39' data-category='paragraph' style='font-size:14px'>\"x\": 0.0679,</p>\n<br><p id='40' data-category='paragraph' style='font-size:14px'>\"y\": 0.8717</p>\n<br><p id='41' data-category='paragraph' style='font-size:14px'>},</p>\n<br><p id='42' data-category='paragraph' style='font-size:14px'>{</p>\n<br><p id='43' data-category='paragraph' style='font-size:14px'>\"x\": 0.9261,</p>\n<br><p id='44' data-category='paragraph' style='font-size:14px'>\"y\": 0.8717</p>\n<br><p id='45' data-category='paragraph' style='font-size:14px'>},</p>\n<br><p id='46' data-category='paragraph' style='font-size:14px'>{</p>\n<br><p id='47' data-category='paragraph' style='font-size:14px'>\"x\": 0.9261,</p>\n<br><p id='48' data-category='paragraph' style='font-size:14px'>\"y\": 0.9558</p>\n<br><p id='49' data-category='paragraph' style='font-size:14px'>},</p>\n<br><p id='50' data-category='paragraph' style='font-size:14px'>{</p>\n<br><p id='51' data-category='paragraph' style='font-size:14px'>\"x\": 0.0679,</p>\n<br><p id='52' data-category='paragraph' style='font-size:14px'>\"y\": 0.9558</p>\n<br><p id='53' data-category='paragraph' style='font-size:14px'>}</p>\n<br><p id='54' data-category='paragraph' style='font-size:14px'>],</p>\n<br><p id='55' data-category='paragraph' style='font-size:14px'>\"id\": 17,</p>\n<br><p id='56' data-category='paragraph' style='font-size:14px'>\"page\": 1</p>\n<br><p id='57' data-category='paragraph' style='font-size:14px'>}</p>\n<br><p id='58' data-category='paragraph' style='font-size:14px'>],</p>\n<br><p id='59' data-category='paragraph' style='font-size:14px'>\"model\": \"document-parse-250618\",</p>\n<br><p id='60' data-category='paragraph' style='font-size:14px'>\"usage\": {</p>\n<br><p id='61' data-category='paragraph' style='font-size:14px'>\"pages\": 1</p>\n<br><p id='62' data-category='paragraph' style='font-size:14px'>}</p>\n<br><p id='63' data-category='paragraph' style='font-size:14px'>}</p>",
+    "markdown": "",
+    "text": ""
+  },
+  "elements": [
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<p id='0' data-category='paragraph' style='font-size:14px'>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1269,
+          "y": 0.0659
+        },
+        {
+          "x": 0.1393,
+          "y": 0.0659
+        },
+        {
+          "x": 0.1393,
+          "y": 0.0817
+        },
+        {
+          "x": 0.1269,
+          "y": 0.0817
+        }
+      ],
+      "id": 0,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='1' data-category='paragraph' style='font-size:14px'>\"api\": \"2.0\",<br>\"content\": {</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1364,
+          "y": 0.084
+        },
+        {
+          "x": 0.2528,
+          "y": 0.084
+        },
+        {
+          "x": 0.2528,
+          "y": 0.1189
+        },
+        {
+          "x": 0.1364,
+          "y": 0.1189
+        }
+      ],
+      "id": 1,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='2' data-category='paragraph' style='font-size:14px'>\"html\": \"<h1 id='0' style='font-size:22px'>INVOICE</h1>\\n<h1 id='1'<br>style='font-size:20px'>Company<br>Upstage</h1>\\n<br><h1 id='2'<br>style='font-size:18px'>Invoice ID</h1>\\n<br><h1 id='3' style='font-size:14px'><br>휴 INV-AJ355548</h1>\\n<h1 id='4' style='font-size:18px'>Invoice Date</<br>h1>\\n<br><h1 id='5' style='font-size:18px'>9/7/1992</h1>\\n<h1 id='6'<br>style='font-size:16px'>Mamo<br>Lucy Park</h1>\\n<h1 id='7' style='font-<br>size:18px'>Address</h1>\\n<br><h1 id='8' style='font-size:16px'>7 Pepper<br>Wood Street, 130 Stone Comer<br>Terrace<br>Wilkes Barre, Pennsylvania,<br>18768<br>United States</h1>\\n<h1 id='9' style='font-size:16px'>Email</<br>h1>\\n<br><h1 id='10' style='font-size:16px'>Ikitchenman0@arizona.edu</<br>h1>\\n<br><h1 id='11' style='font-size:20px'>Service Details Form</h1>\\n<h1<br>id='12' style='font-size:16px'>Name<br>Sung Kim</h1>\\n<h1 id='13'<br>style='font-size:16px'>260 'ess<br>Gwangovolungang:co 338, Gyeongg<br>do.<br>Sanghyeon-dong, Sui-gu<br>Yongin-si, South Korea</h1>\\n<h1 id='14'<br>style='font-size:18px'>Additional Request</h1>\\n<br><p id='15' data-<br>category='paragraph' style='font-size:14px'>Vivamus vestibulum sagittis<br>sapien. Cum sociis natoque<br>penatibus 항목 magnis dfs parturient montes,<br>nascetur ridiculus<br>mus.</p>\\n<h1 id='16' style='font-size:14px'>TERMS<br>AND CONDITIONS</h1>\\n<p id='17' data-category='list' style='font-<br>size:14px'>L TM Seir that not be lable 1층 the Buyer drectly indirectly for any<br>loun or damage sufflered by 전액 Buyer<br>2. The 별 www. the product for ore<br>과 관한 from the date 설 shipment.<br>3. Any ourchase order received by ~ sele<br>- be interpreted 추가 accepting the offer Ma the 18% offer writing The buyer<br>may<br>purchase 15 The offer My the Terms and Conditions the Seller<br>included The offer</p>\",<br>\"markdown\": \"\",</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1254,
+          "y": 0.1238
+        },
+        {
+          "x": 0.8675,
+          "y": 0.1238
+        },
+        {
+          "x": 0.8675,
+          "y": 0.5968
+        },
+        {
+          "x": 0.1254,
+          "y": 0.5968
+        }
+      ],
+      "id": 2,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='3' data-category='paragraph' style='font-size:14px'>\"text\": \"\"</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1489,
+          "y": 0.6057
+        },
+        {
+          "x": 0.2375,
+          "y": 0.6057
+        },
+        {
+          "x": 0.2375,
+          "y": 0.6224
+        },
+        {
+          "x": 0.1489,
+          "y": 0.6224
+        }
+      ],
+      "id": 3,
+      "page": 1
+    },
+    {
+      "category": "heading1",
+      "content": {
+        "html": "<br><h1 id='4' style='font-size:14px'>},</h1>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1384,
+          "y": 0.6247
+        },
+        {
+          "x": 0.1545,
+          "y": 0.6247
+        },
+        {
+          "x": 0.1545,
+          "y": 0.6406
+        },
+        {
+          "x": 0.1384,
+          "y": 0.6406
+        }
+      ],
+      "id": 4,
+      "page": 1
+    },
+    {
+      "category": "heading1",
+      "content": {
+        "html": "<br><h1 id='5' style='font-size:14px'>\"elements\": [</h1>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1378,
+          "y": 0.6429
+        },
+        {
+          "x": 0.2645,
+          "y": 0.6429
+        },
+        {
+          "x": 0.2645,
+          "y": 0.6597
+        },
+        {
+          "x": 0.1378,
+          "y": 0.6597
+        }
+      ],
+      "id": 5,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='6' data-category='paragraph' style='font-size:14px'>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1501,
+          "y": 0.6624
+        },
+        {
+          "x": 0.1592,
+          "y": 0.6624
+        },
+        {
+          "x": 0.1592,
+          "y": 0.6774
+        },
+        {
+          "x": 0.1501,
+          "y": 0.6774
+        }
+      ],
+      "id": 6,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='7' data-category='paragraph' style='font-size:14px'>\"category\": \"heading1\",</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.16,
+          "y": 0.6801
+        },
+        {
+          "x": 0.3827,
+          "y": 0.6801
+        },
+        {
+          "x": 0.3827,
+          "y": 0.6969
+        },
+        {
+          "x": 0.16,
+          "y": 0.6969
+        }
+      ],
+      "id": 7,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='8' data-category='paragraph' style='font-size:14px'>\"content\": {</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.16,
+          "y": 0.6988
+        },
+        {
+          "x": 0.2731,
+          "y": 0.6988
+        },
+        {
+          "x": 0.2731,
+          "y": 0.7155
+        },
+        {
+          "x": 0.16,
+          "y": 0.7155
+        }
+      ],
+      "id": 8,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='9' data-category='paragraph' style='font-size:14px'>\"html\": \"<h1 id='0' style='font-size:22px'>INVOICE</h1>\",</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1711,
+          "y": 0.7174
+        },
+        {
+          "x": 0.7119,
+          "y": 0.7174
+        },
+        {
+          "x": 0.7119,
+          "y": 0.7341
+        },
+        {
+          "x": 0.1711,
+          "y": 0.7341
+        }
+      ],
+      "id": 9,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='10' data-category='paragraph' style='font-size:14px'>\"markdown\": \"\",</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1711,
+          "y": 0.736
+        },
+        {
+          "x": 0.3244,
+          "y": 0.736
+        },
+        {
+          "x": 0.3244,
+          "y": 0.7528
+        },
+        {
+          "x": 0.1711,
+          "y": 0.7528
+        }
+      ],
+      "id": 10,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='11' data-category='paragraph' style='font-size:14px'>\"text\": \"\"</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1711,
+          "y": 0.7546
+        },
+        {
+          "x": 0.2597,
+          "y": 0.7546
+        },
+        {
+          "x": 0.2597,
+          "y": 0.7714
+        },
+        {
+          "x": 0.1711,
+          "y": 0.7714
+        }
+      ],
+      "id": 11,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='12' data-category='paragraph' style='font-size:14px'>},</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1606,
+          "y": 0.7737
+        },
+        {
+          "x": 0.1767,
+          "y": 0.7737
+        },
+        {
+          "x": 0.1767,
+          "y": 0.7896
+        },
+        {
+          "x": 0.1606,
+          "y": 0.7896
+        }
+      ],
+      "id": 12,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='13' data-category='paragraph' style='font-size:14px'>\"coordinates\": [</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.16,
+          "y": 0.7919
+        },
+        {
+          "x": 0.3116,
+          "y": 0.7919
+        },
+        {
+          "x": 0.3116,
+          "y": 0.8086
+        },
+        {
+          "x": 0.16,
+          "y": 0.8086
+        }
+      ],
+      "id": 13,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='14' data-category='paragraph' style='font-size:14px'>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1724,
+          "y": 0.8113
+        },
+        {
+          "x": 0.1814,
+          "y": 0.8113
+        },
+        {
+          "x": 0.1814,
+          "y": 0.8264
+        },
+        {
+          "x": 0.1724,
+          "y": 0.8264
+        }
+      ],
+      "id": 14,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='15' data-category='paragraph' style='font-size:14px'>\"x\": 0.0648,</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.8291
+        },
+        {
+          "x": 0.2992,
+          "y": 0.8291
+        },
+        {
+          "x": 0.2992,
+          "y": 0.8459
+        },
+        {
+          "x": 0.1822,
+          "y": 0.8459
+        }
+      ],
+      "id": 15,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='16' data-category='paragraph' style='font-size:14px'>\"y\": 0.0517</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.8477
+        },
+        {
+          "x": 0.2891,
+          "y": 0.8477
+        },
+        {
+          "x": 0.2891,
+          "y": 0.8645
+        },
+        {
+          "x": 0.1822,
+          "y": 0.8645
+        }
+      ],
+      "id": 16,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='17' data-category='paragraph' style='font-size:14px'>},</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1718,
+          "y": 0.8668
+        },
+        {
+          "x": 0.1879,
+          "y": 0.8668
+        },
+        {
+          "x": 0.1879,
+          "y": 0.8827
+        },
+        {
+          "x": 0.1718,
+          "y": 0.8827
+        }
+      ],
+      "id": 17,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='18' data-category='paragraph' style='font-size:14px'>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1724,
+          "y": 0.8858
+        },
+        {
+          "x": 0.1814,
+          "y": 0.8858
+        },
+        {
+          "x": 0.1814,
+          "y": 0.9009
+        },
+        {
+          "x": 0.1724,
+          "y": 0.9009
+        }
+      ],
+      "id": 18,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='19' data-category='paragraph' style='font-size:14px'>\"x\": 0.2405,</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.9036
+        },
+        {
+          "x": 0.2982,
+          "y": 0.9036
+        },
+        {
+          "x": 0.2982,
+          "y": 0.9203
+        },
+        {
+          "x": 0.1822,
+          "y": 0.9203
+        }
+      ],
+      "id": 19,
+      "page": 1
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='20' data-category='paragraph' style='font-size:14px'>\"y\": 0.0517</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.9222
+        },
+        {
+          "x": 0.2891,
+          "y": 0.9222
+        },
+        {
+          "x": 0.2891,
+          "y": 0.939
+        },
+        {
+          "x": 0.1822,
+          "y": 0.939
+        }
+      ],
+      "id": 20,
+      "page": 1
+    },
+    {
+      "category": "index",
+      "content": {
+        "html": "<p id='21' data-category='index' style='font-size:14px'>},<br>{<br>\"x\": 0.2405,<br>\"y\": 0.0953<br>},<br>{<br>\"x\": 0.0648,<br>\"y\": 0.0953<br>}<br>],<br>\"id\": 0,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='1' style='font-size:20px'>Company<br>Upstage</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0657,<br>\"y\": 0.2651<br>},<br>{<br>\"x\": 0.1606,<br>\"y\": 0.2651<br>},<br>{<br>\"x\": 0.1606,<br>\"y\": 0.3168<br>},<br>{<br>\"x\": 0.0657,<br>\"y\": 0.3168<br>}<br>],<br>\"id\": 1,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='2' style='font-size:18px'>Invoice ID</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1397,
+          "y": 0.0615
+        },
+        {
+          "x": 0.8535,
+          "y": 0.0615
+        },
+        {
+          "x": 0.8535,
+          "y": 0.9412
+        },
+        {
+          "x": 0.1397,
+          "y": 0.9412
+        }
+      ],
+      "id": 21,
+      "page": 2
+    },
+    {
+      "category": "index",
+      "content": {
+        "html": "<p id='22' data-category='index' style='font-size:14px'>},<br>\"coordinates\": [<br>{<br>\"x\": 0.5712,<br>\"y\": 0.0748<br>},<br>{<br>\"x\": 0.671,<br>\"y\": 0.0748<br>},<br>{<br>\"x\": 0.671,<br>\"y\": 0.101<br>},<br>{<br>\"x\": 0.5712,<br>\"y\": 0.101<br>}<br>],<br>\"id\": 2,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='3' style='font-size:14px'>휴 INV-AJ355548</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.788,<br>\"y\": 0.076<br>},<br>{<br>\"x\": 0.9287,<br>\"y\": 0.076<br>},<br>{<br>\"x\": 0.9287,<br>\"y\": 0.0972<br>},<br>{<br>\"x\": 0.788,<br>\"y\": 0.0972<br>}<br>],</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.14,
+          "y": 0.0563
+        },
+        {
+          "x": 0.8488,
+          "y": 0.0563
+        },
+        {
+          "x": 0.8488,
+          "y": 0.9494
+        },
+        {
+          "x": 0.14,
+          "y": 0.9494
+        }
+      ],
+      "id": 22,
+      "page": 3
+    },
+    {
+      "category": "index",
+      "content": {
+        "html": "<p id='23' data-category='index' style='font-size:14px'>\"id\": 3,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='4' style='font-size:18px'>Invoice Date</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.572,<br>\"y\": 0.1232<br>},<br>{<br>\"x\": 0.6941,<br>\"y\": 0.1232<br>},<br>{<br>\"x\": 0.6941,<br>\"y\": 0.1484<br>},<br>{<br>\"x\": 0.572,<br>\"y\": 0.1484<br>}<br>],<br>\"id\": 4,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='5' style='font-size:18px'>9/7/1992</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.8525,<br>\"y\": 0.1224<br>},<br>{<br>\"x\": 0.9293,<br>\"y\": 0.1224<br>},</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.143,
+          "y": 0.0673
+        },
+        {
+          "x": 0.7694,
+          "y": 0.0673
+        },
+        {
+          "x": 0.7694,
+          "y": 0.9376
+        },
+        {
+          "x": 0.143,
+          "y": 0.9376
+        }
+      ],
+      "id": 23,
+      "page": 4
+    },
+    {
+      "category": "index",
+      "content": {
+        "html": "<p id='24' data-category='index' style='font-size:14px'>{<br>\"x\": 0.9293,<br>\"y\": 0.1468<br>},<br>{<br>\"x\": 0.8525,<br>\"y\": 0.1468<br>}<br>],<br>\"id\": 5,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='6' style='font-size:16px'>Mamo<br>Lucy Park</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0658,<br>\"y\": 0.3331<br>},<br>{<br>\"x\": 0.15,<br>\"y\": 0.3331<br>},<br>{<br>\"x\": 0.15,<br>\"y\": 0.3846<br>},<br>{<br>\"x\": 0.0658,<br>\"y\": 0.3846<br>}<br>],<br>\"id\": 6,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='7' style='font-size:18px'>Address</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1388,
+          "y": 0.0602
+        },
+        {
+          "x": 0.838,
+          "y": 0.0602
+        },
+        {
+          "x": 0.838,
+          "y": 0.947
+        },
+        {
+          "x": 0.1388,
+          "y": 0.947
+        }
+      ],
+      "id": 24,
+      "page": 5
+    },
+    {
+      "category": "index",
+      "content": {
+        "html": "<p id='25' data-category='index' style='font-size:14px'>\"coordinates\": [<br>{<br>\"x\": 0.0662,<br>\"y\": 0.4061<br>},<br>{<br>\"x\": 0.1482,<br>\"y\": 0.4061<br>},<br>{<br>\"x\": 0.1482,<br>\"y\": 0.4286<br>},<br>{<br>\"x\": 0.0662,<br>\"y\": 0.4286<br>}<br>],<br>\"id\": 7,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='8' style='font-size:16px'>7 Pepper Wood Street, 130<br>Stone Comer<br>Terrace<br>Wilkes Barre, Pennsylvania, 18768<br>United<br>States</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.067,<br>\"y\": 0.4332<br>},<br>{<br>\"x\": 0.3962,<br>\"y\": 0.4332<br>},<br>{<br>\"x\": 0.3962,<br>\"y\": 0.5173<br>},<br>{<br>\"x\": 0.067,<br>\"y\": 0.5173<br>}</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1255,
+          "y": 0.0513
+        },
+        {
+          "x": 0.87,
+          "y": 0.0513
+        },
+        {
+          "x": 0.87,
+          "y": 0.9486
+        },
+        {
+          "x": 0.1255,
+          "y": 0.9486
+        }
+      ],
+      "id": 25,
+      "page": 6
+    },
+    {
+      "category": "index",
+      "content": {
+        "html": "<p id='26' data-category='index' style='font-size:14px'>],<br>\"id\": 8,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='9' style='font-size:16px'>Email</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0656,<br>\"y\": 0.5326<br>},<br>{<br>\"x\": 0.1235,<br>\"y\": 0.5326<br>},<br>{<br>\"x\": 0.1235,<br>\"y\": 0.5579<br>},<br>{<br>\"x\": 0.0656,<br>\"y\": 0.5579<br>}<br>],<br>\"id\": 9,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='10' style='font-<br>size:16px'>Ikitchenman0@arizona.edu</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0654,<br>\"y\": 0.5614<br>},<br>{<br>\"x\": 0.2874,</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1239,
+          "y": 0.0667
+        },
+        {
+          "x": 0.7054,
+          "y": 0.0667
+        },
+        {
+          "x": 0.7054,
+          "y": 0.9494
+        },
+        {
+          "x": 0.1239,
+          "y": 0.9494
+        }
+      ],
+      "id": 26,
+      "page": 7
+    },
+    {
+      "category": "index",
+      "content": {
+        "html": "<p id='27' data-category='index' style='font-size:14px'>\"y\": 0.5614<br>},<br>{<br>\"x\": 0.2874,<br>\"y\": 0.5834<br>},<br>{<br>\"x\": 0.0654,<br>\"y\": 0.5834<br>}<br>],<br>\"id\": 10,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<br><h1 id='11' style='font-size:20px'>Service Details Form</<br>h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.5727,<br>\"y\": 0.2112<br>},<br>{<br>\"x\": 0.8149,<br>\"y\": 0.2112<br>},<br>{<br>\"x\": 0.8149,<br>\"y\": 0.2417<br>},<br>{<br>\"x\": 0.5727,<br>\"y\": 0.2417<br>}<br>],<br>\"id\": 11,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='12' style='font-size:16px'>Name<br>Sung Kim</h1>\",</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1321,
+          "y": 0.0593
+        },
+        {
+          "x": 0.849,
+          "y": 0.0593
+        },
+        {
+          "x": 0.849,
+          "y": 0.946
+        },
+        {
+          "x": 0.1321,
+          "y": 0.946
+        }
+      ],
+      "id": 27,
+      "page": 8
+    },
+    {
+      "category": "index",
+      "content": {
+        "html": "<p id='28' data-category='index' style='font-size:14px'>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.573,<br>\"y\": 0.2657<br>},<br>{<br>\"x\": 0.6563,<br>\"y\": 0.2657<br>},<br>{<br>\"x\": 0.6563,<br>\"y\": 0.3177<br>},<br>{<br>\"x\": 0.573,<br>\"y\": 0.3177<br>}<br>],<br>\"id\": 12,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='13' style='font-size:16px'>260<br>'ess<br>Gwangovolungang:co 338, Gyeongg do.<br>Sanghyeon-dong, Sui-<br>gu<br>Yongin-si, South Korea</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.5724,<br>\"y\": 0.3401<br>},<br>{<br>\"x\": 0.891,<br>\"y\": 0.3401<br>},<br>{<br>\"x\": 0.891,<br>\"y\": 0.4232<br>},<br>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1222,
+          "y": 0.0546
+        },
+        {
+          "x": 0.8446,
+          "y": 0.0546
+        },
+        {
+          "x": 0.8446,
+          "y": 0.9482
+        },
+        {
+          "x": 0.1222,
+          "y": 0.9482
+        }
+      ],
+      "id": 28,
+      "page": 9
+    },
+    {
+      "category": "index",
+      "content": {
+        "html": "<p id='29' data-category='index' style='font-size:14px'>\"x\": 0.5724,<br>\"y\": 0.4232<br>}<br>],<br>\"id\": 13,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='14' style='font-size:18px'>Additional Request</h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0648,<br>\"y\": 0.6681<br>},<br>{<br>\"x\": 0.2482,<br>\"y\": 0.6681<br>},<br>{<br>\"x\": 0.2482,<br>\"y\": 0.6962<br>},<br>{<br>\"x\": 0.0648,<br>\"y\": 0.6962<br>}<br>],<br>\"id\": 14,<br>\"page\": 1<br>},<br>{<br>\"category\": \"paragraph\",<br>\"content\": {<br>\"html\": \"<br><p id='15' data-category='paragraph' style='font-<br>size:14px'>Vivamus vestibulum sagittis sapien. Cum sociis<br>natoque<br>penatibus 항목 magnis dfs parturient montes, nascetur<br>ridiculus<br>mus.</p>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.129,
+          "y": 0.0597
+        },
+        {
+          "x": 0.8221,
+          "y": 0.0597
+        },
+        {
+          "x": 0.8221,
+          "y": 0.954
+        },
+        {
+          "x": 0.129,
+          "y": 0.954
+        }
+      ],
+      "id": 29,
+      "page": 10
+    },
+    {
+      "category": "index",
+      "content": {
+        "html": "<p id='30' data-category='index' style='font-size:14px'>\"x\": 0.4191,<br>\"y\": 0.6684<br>},<br>{<br>\"x\": 0.9132,<br>\"y\": 0.6684<br>},<br>{<br>\"x\": 0.9132,<br>\"y\": 0.7332<br>},<br>{<br>\"x\": 0.4191,<br>\"y\": 0.7332<br>}<br>],<br>\"id\": 15,<br>\"page\": 1<br>},<br>{<br>\"category\": \"heading1\",<br>\"content\": {<br>\"html\": \"<h1 id='16' style='font-size:14px'>TERMS AND CONDITIONS</<br>h1>\",<br>\"markdown\": \"\",<br>\"text\": \"\"<br>},<br>\"coordinates\": [<br>{<br>\"x\": 0.0649,<br>\"y\": 0.8303<br>},<br>{<br>\"x\": 0.2506,<br>\"y\": 0.8303<br>},<br>{<br>\"x\": 0.2506,<br>\"y\": 0.8523<br>},<br>{<br>\"x\": 0.0649,<br>\"y\": 0.8523<br>}<br>],<br>\"id\": 16,<br>\"page\": 1</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.123,
+          "y": 0.047
+        },
+        {
+          "x": 0.8466,
+          "y": 0.047
+        },
+        {
+          "x": 0.8466,
+          "y": 0.9517
+        },
+        {
+          "x": 0.123,
+          "y": 0.9517
+        }
+      ],
+      "id": 30,
+      "page": 11
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<p id='31' data-category='paragraph' style='font-size:14px'>},</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1495,
+          "y": 0.0661
+        },
+        {
+          "x": 0.1656,
+          "y": 0.0661
+        },
+        {
+          "x": 0.1656,
+          "y": 0.082
+        },
+        {
+          "x": 0.1495,
+          "y": 0.082
+        }
+      ],
+      "id": 31,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='32' data-category='paragraph' style='font-size:14px'>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1501,
+          "y": 0.0852
+        },
+        {
+          "x": 0.1592,
+          "y": 0.0852
+        },
+        {
+          "x": 0.1592,
+          "y": 0.1002
+        },
+        {
+          "x": 0.1501,
+          "y": 0.1002
+        }
+      ],
+      "id": 32,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='33' data-category='paragraph' style='font-size:14px'>\"category\": \"list\",<br>\"content\": {</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1605,
+          "y": 0.1036
+        },
+        {
+          "x": 0.3281,
+          "y": 0.1036
+        },
+        {
+          "x": 0.3281,
+          "y": 0.1363
+        },
+        {
+          "x": 0.1605,
+          "y": 0.1363
+        }
+      ],
+      "id": 33,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='34' data-category='paragraph' style='font-size:14px'>\"html\": \"<p id='17' data-category='list' style='font-size:14px'>L TM Seir<br>that not be lable 1층 the Buyer drectly indirectly for any loun or damage<br>sufflered by 전액 Buyer<br>2. The 별 www. the product for ore 과 관한 from the<br>date 설 shipment.<br>3. Any ourchase order received by ~ sele - be interpreted<br>추가 accepting the offer Ma the 18% offer writing The buyer may<br>purchase<br>15 The offer My the Terms and Conditions the Seller included The offer</p>\",</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1245,
+          "y": 0.1408
+        },
+        {
+          "x": 0.871,
+          "y": 0.1408
+        },
+        {
+          "x": 0.871,
+          "y": 0.2498
+        },
+        {
+          "x": 0.1245,
+          "y": 0.2498
+        }
+      ],
+      "id": 34,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='35' data-category='paragraph' style='font-size:14px'>\"markdown\": \"\",</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1711,
+          "y": 0.2519
+        },
+        {
+          "x": 0.3244,
+          "y": 0.2519
+        },
+        {
+          "x": 0.3244,
+          "y": 0.2686
+        },
+        {
+          "x": 0.1711,
+          "y": 0.2686
+        }
+      ],
+      "id": 35,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='36' data-category='paragraph' style='font-size:14px'>\"text\": \"\"</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1711,
+          "y": 0.2705
+        },
+        {
+          "x": 0.2597,
+          "y": 0.2705
+        },
+        {
+          "x": 0.2597,
+          "y": 0.2873
+        },
+        {
+          "x": 0.1711,
+          "y": 0.2873
+        }
+      ],
+      "id": 36,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='37' data-category='paragraph' style='font-size:14px'>},<br>\"coordinates\": [</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1582,
+          "y": 0.2903
+        },
+        {
+          "x": 0.3129,
+          "y": 0.2903
+        },
+        {
+          "x": 0.3129,
+          "y": 0.3234
+        },
+        {
+          "x": 0.1582,
+          "y": 0.3234
+        }
+      ],
+      "id": 37,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='38' data-category='paragraph' style='font-size:14px'>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1724,
+          "y": 0.3272
+        },
+        {
+          "x": 0.1814,
+          "y": 0.3272
+        },
+        {
+          "x": 0.1814,
+          "y": 0.3423
+        },
+        {
+          "x": 0.1724,
+          "y": 0.3423
+        }
+      ],
+      "id": 38,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='39' data-category='paragraph' style='font-size:14px'>\"x\": 0.0679,</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.345
+        },
+        {
+          "x": 0.2974,
+          "y": 0.345
+        },
+        {
+          "x": 0.2974,
+          "y": 0.3617
+        },
+        {
+          "x": 0.1822,
+          "y": 0.3617
+        }
+      ],
+      "id": 39,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='40' data-category='paragraph' style='font-size:14px'>\"y\": 0.8717</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.3636
+        },
+        {
+          "x": 0.2884,
+          "y": 0.3636
+        },
+        {
+          "x": 0.2884,
+          "y": 0.3804
+        },
+        {
+          "x": 0.1822,
+          "y": 0.3804
+        }
+      ],
+      "id": 40,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='41' data-category='paragraph' style='font-size:14px'>},</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1718,
+          "y": 0.3827
+        },
+        {
+          "x": 0.1879,
+          "y": 0.3827
+        },
+        {
+          "x": 0.1879,
+          "y": 0.3985
+        },
+        {
+          "x": 0.1718,
+          "y": 0.3985
+        }
+      ],
+      "id": 41,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='42' data-category='paragraph' style='font-size:14px'>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1724,
+          "y": 0.4017
+        },
+        {
+          "x": 0.1814,
+          "y": 0.4017
+        },
+        {
+          "x": 0.1814,
+          "y": 0.4167
+        },
+        {
+          "x": 0.1724,
+          "y": 0.4167
+        }
+      ],
+      "id": 42,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='43' data-category='paragraph' style='font-size:14px'>\"x\": 0.9261,</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.4195
+        },
+        {
+          "x": 0.2952,
+          "y": 0.4195
+        },
+        {
+          "x": 0.2952,
+          "y": 0.4362
+        },
+        {
+          "x": 0.1822,
+          "y": 0.4362
+        }
+      ],
+      "id": 43,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='44' data-category='paragraph' style='font-size:14px'>\"y\": 0.8717</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.4381
+        },
+        {
+          "x": 0.2884,
+          "y": 0.4381
+        },
+        {
+          "x": 0.2884,
+          "y": 0.4548
+        },
+        {
+          "x": 0.1822,
+          "y": 0.4548
+        }
+      ],
+      "id": 44,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='45' data-category='paragraph' style='font-size:14px'>},</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1718,
+          "y": 0.4572
+        },
+        {
+          "x": 0.1879,
+          "y": 0.4572
+        },
+        {
+          "x": 0.1879,
+          "y": 0.473
+        },
+        {
+          "x": 0.1718,
+          "y": 0.473
+        }
+      ],
+      "id": 45,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='46' data-category='paragraph' style='font-size:14px'>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1724,
+          "y": 0.4762
+        },
+        {
+          "x": 0.1814,
+          "y": 0.4762
+        },
+        {
+          "x": 0.1814,
+          "y": 0.4912
+        },
+        {
+          "x": 0.1724,
+          "y": 0.4912
+        }
+      ],
+      "id": 46,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='47' data-category='paragraph' style='font-size:14px'>\"x\": 0.9261,</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.4939
+        },
+        {
+          "x": 0.2952,
+          "y": 0.4939
+        },
+        {
+          "x": 0.2952,
+          "y": 0.5107
+        },
+        {
+          "x": 0.1822,
+          "y": 0.5107
+        }
+      ],
+      "id": 47,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='48' data-category='paragraph' style='font-size:14px'>\"y\": 0.9558</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.5126
+        },
+        {
+          "x": 0.2936,
+          "y": 0.5126
+        },
+        {
+          "x": 0.2936,
+          "y": 0.5293
+        },
+        {
+          "x": 0.1822,
+          "y": 0.5293
+        }
+      ],
+      "id": 48,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='49' data-category='paragraph' style='font-size:14px'>},</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1718,
+          "y": 0.5316
+        },
+        {
+          "x": 0.1879,
+          "y": 0.5316
+        },
+        {
+          "x": 0.1879,
+          "y": 0.5475
+        },
+        {
+          "x": 0.1718,
+          "y": 0.5475
+        }
+      ],
+      "id": 49,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='50' data-category='paragraph' style='font-size:14px'>{</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1724,
+          "y": 0.5507
+        },
+        {
+          "x": 0.1814,
+          "y": 0.5507
+        },
+        {
+          "x": 0.1814,
+          "y": 0.5657
+        },
+        {
+          "x": 0.1724,
+          "y": 0.5657
+        }
+      ],
+      "id": 50,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='51' data-category='paragraph' style='font-size:14px'>\"x\": 0.0679,</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.5684
+        },
+        {
+          "x": 0.2974,
+          "y": 0.5684
+        },
+        {
+          "x": 0.2974,
+          "y": 0.5852
+        },
+        {
+          "x": 0.1822,
+          "y": 0.5852
+        }
+      ],
+      "id": 51,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='52' data-category='paragraph' style='font-size:14px'>\"y\": 0.9558</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1822,
+          "y": 0.587
+        },
+        {
+          "x": 0.2936,
+          "y": 0.587
+        },
+        {
+          "x": 0.2936,
+          "y": 0.6038
+        },
+        {
+          "x": 0.1822,
+          "y": 0.6038
+        }
+      ],
+      "id": 52,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='53' data-category='paragraph' style='font-size:14px'>}</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1686,
+          "y": 0.6049
+        },
+        {
+          "x": 0.1831,
+          "y": 0.6049
+        },
+        {
+          "x": 0.1831,
+          "y": 0.6212
+        },
+        {
+          "x": 0.1686,
+          "y": 0.6212
+        }
+      ],
+      "id": 53,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='54' data-category='paragraph' style='font-size:14px'>],</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1606,
+          "y": 0.6247
+        },
+        {
+          "x": 0.1767,
+          "y": 0.6247
+        },
+        {
+          "x": 0.1767,
+          "y": 0.6406
+        },
+        {
+          "x": 0.1606,
+          "y": 0.6406
+        }
+      ],
+      "id": 54,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='55' data-category='paragraph' style='font-size:14px'>\"id\": 17,</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.16,
+          "y": 0.6429
+        },
+        {
+          "x": 0.2355,
+          "y": 0.6429
+        },
+        {
+          "x": 0.2355,
+          "y": 0.6597
+        },
+        {
+          "x": 0.16,
+          "y": 0.6597
+        }
+      ],
+      "id": 55,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='56' data-category='paragraph' style='font-size:14px'>\"page\": 1</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.16,
+          "y": 0.6615
+        },
+        {
+          "x": 0.2497,
+          "y": 0.6615
+        },
+        {
+          "x": 0.2497,
+          "y": 0.6783
+        },
+        {
+          "x": 0.16,
+          "y": 0.6783
+        }
+      ],
+      "id": 56,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='57' data-category='paragraph' style='font-size:14px'>}</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1501,
+          "y": 0.681
+        },
+        {
+          "x": 0.1592,
+          "y": 0.681
+        },
+        {
+          "x": 0.1592,
+          "y": 0.696
+        },
+        {
+          "x": 0.1501,
+          "y": 0.696
+        }
+      ],
+      "id": 57,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='58' data-category='paragraph' style='font-size:14px'>],</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1384,
+          "y": 0.6992
+        },
+        {
+          "x": 0.1545,
+          "y": 0.6992
+        },
+        {
+          "x": 0.1545,
+          "y": 0.7151
+        },
+        {
+          "x": 0.1384,
+          "y": 0.7151
+        }
+      ],
+      "id": 58,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='59' data-category='paragraph' style='font-size:14px'>\"model\": \"document-parse-250618\",</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1378,
+          "y": 0.7174
+        },
+        {
+          "x": 0.4867,
+          "y": 0.7174
+        },
+        {
+          "x": 0.4867,
+          "y": 0.7341
+        },
+        {
+          "x": 0.1378,
+          "y": 0.7341
+        }
+      ],
+      "id": 59,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='60' data-category='paragraph' style='font-size:14px'>\"usage\": {</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1378,
+          "y": 0.736
+        },
+        {
+          "x": 0.2357,
+          "y": 0.736
+        },
+        {
+          "x": 0.2357,
+          "y": 0.7528
+        },
+        {
+          "x": 0.1378,
+          "y": 0.7528
+        }
+      ],
+      "id": 60,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='61' data-category='paragraph' style='font-size:14px'>\"pages\": 1</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1489,
+          "y": 0.7546
+        },
+        {
+          "x": 0.2489,
+          "y": 0.7546
+        },
+        {
+          "x": 0.2489,
+          "y": 0.7714
+        },
+        {
+          "x": 0.1489,
+          "y": 0.7714
+        }
+      ],
+      "id": 61,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='62' data-category='paragraph' style='font-size:14px'>}</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.139,
+          "y": 0.7741
+        },
+        {
+          "x": 0.1481,
+          "y": 0.7741
+        },
+        {
+          "x": 0.1481,
+          "y": 0.7891
+        },
+        {
+          "x": 0.139,
+          "y": 0.7891
+        }
+      ],
+      "id": 62,
+      "page": 12
+    },
+    {
+      "category": "paragraph",
+      "content": {
+        "html": "<br><p id='63' data-category='paragraph' style='font-size:14px'>}</p>",
+        "markdown": "",
+        "text": ""
+      },
+      "coordinates": [
+        {
+          "x": 0.1241,
+          "y": 0.7914
+        },
+        {
+          "x": 0.1397,
+          "y": 0.7914
+        },
+        {
+          "x": 0.1397,
+          "y": 0.8093
+        },
+        {
+          "x": 0.1241,
+          "y": 0.8093
+        }
+      ],
+      "id": 63,
+      "page": 12
+    }
+  ],
+  "model": "document-parse-250618",
+  "ocr": false,
+  "usage": {
+    "pages": 12
+  }
+}

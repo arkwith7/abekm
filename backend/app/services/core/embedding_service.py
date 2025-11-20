@@ -188,14 +188,18 @@ class EmbeddingService:
             raise
     
     async def _get_bedrock_embedding(self, text: str) -> List[float]:
-        """AWS Bedrock을 사용한 임베딩 생성"""
+        """AWS Bedrock을 사용한 일반 텍스트 임베딩 생성
+        
+        ⚠️ 용도: 문서 청킹, RAG 쿼리용 텍스트 임베딩 (1024d)
+        멀티모달 임베딩은 ImageEmbeddingService 사용!
+        """
         try:
             import json
             
             # AWS Bedrock embedding model에 따라 입력 형식 조정
             embedding_model_id = settings.get_current_embedding_model()
             if "titan-embed" in embedding_model_id:
-                # Amazon Titan Embedding 모델 사용
+                # Amazon Titan Embedding 모델 사용 (일반 텍스트 임베딩)
                 request_body = json.dumps({
                     "inputText": text
                 })
@@ -208,7 +212,10 @@ class EmbeddingService:
                 )
                 
                 response_body = json.loads(response['body'].read())
-                return response_body['embedding']
+                embedding = response_body['embedding']
+                # 로그 추가: 일반 텍스트 임베딩임을 명시
+                logger.debug(f"✅ Bedrock 텍스트 임베딩 (RAG용): {len(embedding)}d ({embedding_model_id})")
+                return embedding
             
             else:
                 # 다른 Bedrock embedding 모델에 대한 폴백

@@ -464,15 +464,15 @@ async def upload_document(
                     try:
                         from app.tasks.document_tasks import process_document_async
                         
-                        # Azure Blob 경로 또는 로컬 경로 결정
-                        # Azure Blob이 있으면 Blob 경로, 없으면 로컬 경로
-                        processing_file_path = azure_blob_object_key if azure_blob_object_key else saved_file_path
+                        # 🔧 Celery에 전달할 파일 경로 결정
+                        # S3/Azure Blob이 있으면 해당 키 사용, 없으면 로컬 경로
+                        processing_file_path = azure_blob_object_key or s3_object_key or saved_file_path
                         
                         background_provider = settings.get_current_llm_provider()
 
                         task = process_document_async.delay(
                             document_id=document_id,
-                            file_path=processing_file_path,  # Blob 경로 또는 로컬 경로
+                            file_path=processing_file_path,  # S3/Blob 키 또는 로컬 경로
                             container_id=container_id,
                             user_emp_no=str(user.emp_no),
                             provider=background_provider,
@@ -634,7 +634,7 @@ async def upload_document(
             
             logger.info(f"문서 업로드 완료 - ID: {document_result['document_id']}, 파일: {file.filename}, 처리시간: {processing_time:.2f}초")
             
-            # 🔢 컨테이너의 document_count 업데이트
+            # 🔢 컨테이너의 document_count 업데이트 (completed 상태만 집계)
             try:
                 from app.services.auth.container_service import ContainerService
                 container_service = ContainerService(session)
@@ -643,7 +643,8 @@ async def upload_document(
             except Exception as count_error:
                 logger.warning(f"⚠️ [UPLOAD-DEBUG] 컨테이너 문서 개수 업데이트 실패 (무시): {count_error}")
             
-            # 원격 업로드(S3/Azure) 완료 후 파이프라인 완료 시 로컬 임시 파일 정리
+            # 🔧 로컬 임시 파일 정리 (S3/Blob 업로드 완료 후)
+            # ⚠️ 주의: Celery 작업이 S3/Blob 키를 사용하므로 로컬 파일은 안전하게 삭제 가능
             try:
                 if (s3_object_key or azure_blob_object_key) and os.path.exists(saved_file_path):
                     os.remove(saved_file_path)
@@ -2153,14 +2154,30 @@ async def get_chunk_image(
         
         # 4. 이미지 blob 키 가져오기
         doc_id = chunk.file_bss_info_sno
-        blob_service = get_azure_blob_service()
-
+        
+        # 스토리지 백엔드에 따라 다운로드 함수 선택
+        from app.core.config import settings
+        
         async def _download_intermediate_blob(path: str) -> bytes:
             loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(
-                None,
-                lambda: blob_service.download_blob_to_bytes(path, purpose="intermediate")
-            )
+            
+            if settings.storage_backend == "s3":
+                # AWS S3에서 다운로드
+                # path는 이미 "multimodal/23/objects/image_3940_5.png" 형식
+                # S3Service.download_bytes()는 purpose='intermediate'로 prefix 자동 추가
+                from app.services.core.aws_service import S3Service
+                s3_service = S3Service()
+                return await loop.run_in_executor(
+                    None,
+                    lambda: s3_service.download_bytes(path, purpose="intermediate")
+                )
+            else:
+                # Azure Blob에서 다운로드
+                blob_service = get_azure_blob_service()
+                return await loop.run_in_executor(
+                    None,
+                    lambda: blob_service.download_blob_to_bytes(path, purpose="intermediate")
+                )
 
         # blob_key가 있으면 직접 사용 (신규 방식)
         if chunk.blob_key:

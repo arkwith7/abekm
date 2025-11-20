@@ -12,9 +12,12 @@ API Documentation: https://console.upstage.ai/docs
 """
 
 import asyncio
+import json
 import logging
 import time
+from collections import defaultdict
 from typing import Dict, List, Optional, Any
+
 import requests
 from pathlib import Path
 
@@ -30,18 +33,24 @@ class UpstageResult:
         self,
         success: bool = True,
         text: str = "",
+        markdown: str = "",  # 🆕 마크다운 추가
+        html: str = "",      # 🆕 HTML 추가
         pages: Optional[List[Dict[str, Any]]] = None,
         tables: Optional[List[Dict[str, Any]]] = None,
         figures: Optional[List[Dict[str, Any]]] = None,
+        elements: Optional[List[Dict[str, Any]]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         error: Optional[str] = None,
         extraction_method: str = "upstage_document_parse"
     ):
         self.success = success
         self.text = text
+        self.markdown = markdown  # 🆕
+        self.html = html          # 🆕
         self.pages = pages or []
         self.tables = tables or []
         self.figures = figures or []
+        self.elements = elements or []
         self.metadata = metadata or {}
         self.error = error
         self.extraction_method = extraction_method
@@ -56,6 +65,15 @@ class UpstageDocumentService:
         self.max_pages = settings.upstage_max_pages
         self.timeout_seconds = settings.upstage_timeout_seconds
         self.retry_max_attempts = settings.upstage_retry_max_attempts
+        self.model = settings.upstage_model
+        self.ocr_mode = settings.upstage_ocr_mode
+        self.base64_categories = settings.upstage_base64_categories or []
+        self.merge_multipage_tables = settings.upstage_merge_multipage_tables
+        self.use_async_api = settings.upstage_use_async_api
+        self.async_poll_interval = settings.upstage_async_poll_interval_seconds
+        self.async_timeout_seconds = settings.upstage_async_timeout_seconds
+        self.async_endpoint = settings.upstage_async_api_endpoint or self._infer_async_endpoint(self.api_endpoint)
+        self.status_endpoint = settings.upstage_async_status_endpoint or self._infer_status_endpoint(self.api_endpoint)
         
         # 초기화 로그 (디버깅용)
         logger.info(f"[UPSTAGE] UpstageDocumentService 초기화")
@@ -64,11 +82,55 @@ class UpstageDocumentService:
         logger.info(f"[UPSTAGE] Max Pages: {self.max_pages}")
         logger.info(f"[UPSTAGE] Timeout: {self.timeout_seconds}s")
         logger.info(f"[UPSTAGE] Retry Attempts: {self.retry_max_attempts}")
+        logger.info(f"[UPSTAGE] Model Alias: {self.model}")
+        logger.info(f"[UPSTAGE] OCR Mode: {self.ocr_mode or 'auto'}")
+        if self.base64_categories:
+            logger.info(f"[UPSTAGE] Base64 Encoding Targets: {self.base64_categories}")
+        logger.info(f"[UPSTAGE] Merge Multipage Tables: {self.merge_multipage_tables}")
+        logger.info(
+            f"[UPSTAGE] Async API Enabled: {self.use_async_api and self._supports_async_api()}"
+        )
         
         if not self.api_key:
             logger.error("[UPSTAGE] ❌ API 키가 설정되지 않았습니다. UPSTAGE_API_KEY 환경 변수를 확인하세요.")
         else:
             logger.info(f"[UPSTAGE] ✅ API 키 설정 완료 (길이: {len(self.api_key)}자)")
+
+    def _infer_async_endpoint(self, endpoint: Optional[str]) -> Optional[str]:
+        if not endpoint:
+            return None
+        base = endpoint.rstrip('/')
+        if base.endswith("/document-digitization"):
+            return f"{base}/async"
+        return None
+
+    def _infer_status_endpoint(self, endpoint: Optional[str]) -> Optional[str]:
+        if not endpoint:
+            return None
+        base = endpoint.rstrip('/')
+        if base.endswith("/document-digitization"):
+            return f"{base}/requests"
+        return None
+
+    def _supports_async_api(self) -> bool:
+        return bool(self.async_endpoint and self.status_endpoint)
+
+    def _build_request_payload(self) -> Dict[str, str]:
+        payload: Dict[str, str] = {}
+        if self.model:
+            payload["model"] = self.model
+        if self.ocr_mode:
+            payload["ocr"] = self.ocr_mode
+        # 🆕 마크다운 형식 요청 (섹션 구조 보존)
+        payload["output_formats"] = "html,markdown,text"
+        if self.base64_categories:
+            try:
+                payload["base64_encoding"] = json.dumps(self.base64_categories)
+            except Exception:
+                payload["base64_encoding"] = str(self.base64_categories)
+        if self.merge_multipage_tables is not None:
+            payload["merge_multipage_tables"] = str(self.merge_multipage_tables).lower()
+        return payload
     
     async def parse_document(self, file_path: str) -> UpstageResult:
         """
@@ -111,9 +173,9 @@ class UpstageDocumentService:
             if result.success:
                 logger.info(f"[UPSTAGE] ✅ 문서 분석 완료: {elapsed:.2f}초")
                 logger.info(f"[UPSTAGE]    📊 통계:")
-                logger.info(f"[UPSTAGE]       - 페이지 수: {len(result.pages)}")
-                logger.info(f"[UPSTAGE]       - 테이블 수: {len(result.tables)}")
-                logger.info(f"[UPSTAGE]       - 이미지 수: {len(result.figures)}")
+                logger.info(f"[UPSTAGE]       - 페이지 수: {result.metadata.get('page_count', len(result.pages))}")
+                logger.info(f"[UPSTAGE]       - 테이블 수: {result.metadata.get('table_count', len(result.tables))}")
+                logger.info(f"[UPSTAGE]       - 이미지 수: {result.metadata.get('figure_count', len(result.figures))}")
                 logger.info(f"[UPSTAGE]       - 텍스트 길이: {len(result.text)} 문자")
                 logger.info(f"[UPSTAGE]       - 모델: {result.metadata.get('model', 'unknown')}")
             else:
@@ -183,6 +245,13 @@ class UpstageDocumentService:
         )
     
     def _call_api_sync(self, file_path: str) -> UpstageResult:
+        """동기/비동기 API 호출 진입점"""
+        if self.use_async_api and self._supports_async_api():
+            logger.info("[UPSTAGE] 🌀 Async Document Digitization API 사용")
+            return self._call_async_document_parse(file_path)
+        return self._call_sync_document_parse(file_path)
+
+    def _call_sync_document_parse(self, file_path: str) -> UpstageResult:
         """동기 방식 API 호출 (requests 사용)"""
         
         headers = {
@@ -209,6 +278,7 @@ class UpstageDocumentService:
                 response = requests.post(
                     self.api_endpoint,
                     headers={"Authorization": f"Bearer {self.api_key}"},  # 실제 요청에는 전체 키 사용
+                    data=self._build_request_payload(),
                     files=files,
                     timeout=self.timeout_seconds
                 )
@@ -249,104 +319,332 @@ class UpstageDocumentService:
                 success=False,
                 error=f"API 호출 실패: {str(e)}"
             )
+
+    def _call_async_document_parse(self, file_path: str) -> UpstageResult:
+        if not self._supports_async_api():
+            logger.warning("[UPSTAGE] ⚠️ Async API 정보가 없어 동기 API로 폴백합니다.")
+            return self._call_sync_document_parse(file_path)
+
+        file_name = Path(file_path).name
+        logger.info(f"[UPSTAGE] 📨 Async 요청 전송: endpoint={self.async_endpoint}, file={file_name}")
+
+        try:
+            with open(file_path, "rb") as f:
+                files = {"document": (file_name, f, "application/pdf")}
+                response = requests.post(
+                    self.async_endpoint,
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    data=self._build_request_payload(),
+                    files=files,
+                    timeout=self.timeout_seconds
+                )
+
+            response.raise_for_status()
+            submission = response.json()
+            request_id = submission.get("request_id") or submission.get("id")
+            if not request_id:
+                logger.error(f"[UPSTAGE] ❌ Async 응답에 request_id가 없습니다: {submission}")
+                return UpstageResult(success=False, error="Async 응답에 request_id가 없습니다")
+
+            logger.info(f"[UPSTAGE] 🆔 Async request_id={request_id}")
+            detail = self._poll_async_request(request_id)
+            merged_payload = self._collect_async_batches(detail)
+            # detail 메타데이터 보강
+            merged_payload.setdefault("model", detail.get("model"))
+            merged_payload.setdefault("usage", {"pages": detail.get("total_pages")})
+            merged_payload.setdefault("api", detail.get("api"))
+            return self._parse_response(merged_payload)
+
+        except requests.exceptions.Timeout:
+            logger.error("[UPSTAGE] ⏱️ Async API 요청 타임아웃")
+            return UpstageResult(success=False, error="Async API 요청 타임아웃")
+        except Exception as e:
+            logger.error(f"[UPSTAGE] ❌ Async API 처리 중 오류: {type(e).__name__}: {str(e)}", exc_info=True)
+            return UpstageResult(success=False, error=f"Async API 실패: {str(e)}")
+
+    def _poll_async_request(self, request_id: str) -> Dict[str, Any]:
+        status_url = f"{self.status_endpoint.rstrip('/')}/{request_id}"
+        deadline = time.time() + self.async_timeout_seconds
+        logger.info(f"[UPSTAGE] ⏳ Async 상태 조회 시작 (timeout={self.async_timeout_seconds}s)")
+
+        while time.time() < deadline:
+            resp = requests.get(
+                status_url,
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=self.timeout_seconds
+            )
+            resp.raise_for_status()
+            detail = resp.json()
+            status = (detail.get("status") or "").lower()
+            logger.info(f"[UPSTAGE] 📡 Async status={status} completed_pages={detail.get('completed_pages')} / {detail.get('total_pages')}")
+
+            if status == "completed":
+                return detail
+            if status in {"failed", "error"}:
+                failure_message = detail.get("failure_message") or "알 수 없는 오류"
+                raise RuntimeError(f"Async 작업 실패: {failure_message}")
+
+            time.sleep(self.async_poll_interval)
+
+        raise TimeoutError("Async 작업이 지정된 시간 내에 완료되지 않았습니다")
+
+    def _collect_async_batches(self, request_detail: Dict[str, Any]) -> Dict[str, Any]:
+        batches = request_detail.get("batches") or []
+        if not batches:
+            raise RuntimeError("Async 응답에 batch 정보가 없습니다")
+
+        payloads: List[Dict[str, Any]] = []
+        for batch in batches:
+            if (batch.get("status") or "").lower() != "completed":
+                logger.warning(f"[UPSTAGE] ⚠️ batch {batch.get('id')} 상태={batch.get('status')} - 건너뜀")
+                continue
+            download_url = batch.get("download_url")
+            if not download_url:
+                logger.warning(f"[UPSTAGE] ⚠️ batch {batch.get('id')} 다운로드 URL 없음")
+                continue
+            logger.info(f"[UPSTAGE] 📥 batch {batch.get('id')} 다운로드")
+            resp = requests.get(download_url, timeout=self.timeout_seconds)
+            resp.raise_for_status()
+            payloads.append(resp.json())
+
+        if not payloads:
+            raise RuntimeError("다운로드한 batch 결과가 없습니다")
+
+        if len(payloads) == 1:
+            return payloads[0]
+        return self._merge_batch_payloads(payloads)
+
+    def _merge_batch_payloads(self, payloads: List[Dict[str, Any]]) -> Dict[str, Any]:
+        merged = payloads[0]
+        merged_content = merged.setdefault("content", {})
+        for batch in payloads[1:]:
+            content = batch.get("content") or {}
+            for key in ("pages", "tables", "figures", "elements"):
+                if key in content:
+                    merged_content.setdefault(key, [])
+                    merged_content[key].extend(content.get(key) or [])
+            for key in ("text", "html", "markdown"):
+                value = content.get(key)
+                if value:
+                    existing = merged_content.get(key, "")
+                    merged_content[key] = f"{existing}\n{value}".strip() if existing else value
+        return merged
+
+    def _build_pages(self, content: Dict[str, Any], elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        pages: List[Dict[str, Any]] = []
+        page_entries = content.get("pages") if isinstance(content, dict) else None
+        if isinstance(page_entries, list) and page_entries:
+            logger.info(f"[UPSTAGE] 📄 페이지 데이터 {len(page_entries)}건 파싱")
+            for page in page_entries:
+                if not isinstance(page, dict):
+                    continue
+                text_value = page.get("text") or page.get("html") or page.get("content") or ""
+                pages.append({
+                    "page_number": page.get("page") or page.get("page_number") or 0,
+                    "text": text_value,
+                    "width": page.get("width", 0),
+                    "height": page.get("height", 0)
+                })
+            return pages
+
+        # elements 기반 재구성
+        text_by_page: Dict[int, List[str]] = defaultdict(list)
+        for elem in elements:
+            page_num = int(elem.get("page") or 0)
+            elem_text = elem.get("text")
+            if elem_text:
+                text_by_page[page_num].append(elem_text)
+
+        for page_num in sorted(text_by_page.keys()):
+            combined_text = "\n".join(text_by_page[page_num]).strip()
+            pages.append({
+                "page_number": page_num,
+                "text": combined_text,
+                "width": 0,
+                "height": 0
+            })
+        return pages
+
+    def _compose_text_from_pages(self, pages: List[Dict[str, Any]]) -> str:
+        segments = [p.get("text", "").strip() for p in pages if p.get("text")]
+        return "\n\n".join(segments).strip()
+
+    def _compose_text_from_elements(self, elements: List[Dict[str, Any]]) -> str:
+        segments = [elem.get("text", "").strip() for elem in elements if elem.get("text")]
+        return "\n".join(segments).strip()
+
+    def _normalize_elements(self, raw_elements: Optional[List[Any]]) -> List[Dict[str, Any]]:
+        normalized: List[Dict[str, Any]] = []
+        if not isinstance(raw_elements, list):
+            return normalized
+        for elem in raw_elements:
+            if not isinstance(elem, dict):
+                continue
+            normalized.append({
+                "id": elem.get("id"),
+                "category": elem.get("category") or elem.get("type"),
+                "page": elem.get("page") or elem.get("page_number") or elem.get("pageIndex") or 0,
+                "text": self._resolve_content_field(elem, "text"),
+                "markdown": self._resolve_content_field(elem, "markdown"),
+                "html": self._resolve_content_field(elem, "html"),
+                "coordinates": elem.get("coordinates") or elem.get("bbox"),
+                "base64_encoding": elem.get("base64_encoding"),
+                "confidence": elem.get("confidence")
+            })
+        return normalized
+
+    def _resolve_content_field(self, elem: Dict[str, Any], field: str) -> str:
+        value = elem.get(field)
+        if isinstance(value, str):
+            return value
+        content_obj = elem.get("content")
+        if isinstance(content_obj, dict):
+            inner_val = content_obj.get(field)
+            if isinstance(inner_val, str):
+                return inner_val
+        return ""
+
+    def _extract_tables(self, content: Dict[str, Any], elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        tables: List[Dict[str, Any]] = []
+        
+        # 🎯 우선순위: elements에서 추출 (페이지 정보 포함)
+        table_categories = {"table", "table_continued", "table_header", "table_body"}
+        elements_tables = []
+        for elem in elements:
+            category = (elem.get("category") or "").lower()
+            if category in table_categories:
+                elements_tables.append({
+                    "table_index": len(elements_tables),
+                    "page": elem.get("page", 0),
+                    "bbox": elem.get("coordinates", []),
+                    "html": elem.get("html", ""),
+                    "markdown": elem.get("markdown", ""),
+                    "text": elem.get("text", ""),
+                    "element_id": elem.get("id"),
+                    "base64": elem.get("base64_encoding")
+                })
+        
+        # elements에서 테이블을 찾았으면 우선 사용
+        if elements_tables:
+            return elements_tables
+        
+        # Fallback: content["tables"] 사용 (페이지 정보 없을 수 있음)
+        table_entries = content.get("tables") if isinstance(content, dict) else None
+        if isinstance(table_entries, list):
+            for idx, table in enumerate(table_entries):
+                if not isinstance(table, dict):
+                    continue
+                tables.append({
+                    "table_index": idx,
+                    "page": table.get("page", 0),
+                    "bbox": table.get("bbox", []),
+                    "html": table.get("html", ""),
+                    "markdown": table.get("markdown", ""),
+                    "text": table.get("text")
+                })
+        return tables
+
+    def _extract_figures(self, content: Dict[str, Any], elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        figures: List[Dict[str, Any]] = []
+        
+        # 🎯 우선순위: elements에서 추출 (페이지 정보 포함)
+        figure_categories = {"figure", "chart", "image", "diagram"}
+        elements_figures = []
+        for elem in elements:
+            category = (elem.get("category") or "").lower()
+            if category in figure_categories:
+                elements_figures.append({
+                    "figure_index": len(elements_figures),
+                    "page": elem.get("page", 0),
+                    "bbox": elem.get("coordinates", []),
+                    "caption": elem.get("text", ""),
+                    "image": None,
+                    "base64": elem.get("base64_encoding"),
+                    "element_id": elem.get("id")
+                })
+        
+        # elements에서 figure를 찾았으면 우선 사용
+        if elements_figures:
+            return elements_figures
+        
+        # Fallback: content["figures"] 사용 (페이지 정보 없을 수 있음)
+        figure_entries = content.get("figures") if isinstance(content, dict) else None
+        if isinstance(figure_entries, list):
+            for idx, figure in enumerate(figure_entries):
+                if not isinstance(figure, dict):
+                    continue
+                figures.append({
+                    "figure_index": idx,
+                    "page": figure.get("page", 0),
+                    "bbox": figure.get("bbox", []),
+                    "caption": figure.get("caption", ""),
+                    "image": figure.get("image"),
+                    "base64": figure.get("base64_encoding")
+                })
+        return figures
     
     def _parse_response(self, data: Dict[str, Any]) -> UpstageResult:
-        """Upstage API 응답을 내부 형식으로 변환"""
+        """Upstage API 응답을 내부 형식으로 변환 (이미지 PDF, 일반 PDF 모두 지원)"""
         
         try:
-            logger.debug(f"[UPSTAGE] 📋 응답 데이터 구조: {list(data.keys())}")
-            
-            # Upstage API 응답 구조:
-            # {
-            #   "content": {...},
-            #   "model": "document-parse-v1.0",
-            #   "usage": {...}
-            # }
-            
-            content = data.get("content", {})
-            logger.debug(f"[UPSTAGE] 📋 content 구조: {list(content.keys())}")
-            
-            # 페이지별 텍스트 추출
-            pages = []
-            full_text = ""
-            
-            if "pages" in content:
-                logger.info(f"[UPSTAGE] 📄 페이지 데이터 파싱 중: {len(content['pages'])}개 페이지")
-                for page_data in content["pages"]:
-                    page_num = page_data.get("page", 0)
-                    page_text = page_data.get("text", "")
-                    
-                    pages.append({
-                        "page_number": page_num,
-                        "text": page_text,
-                        "width": page_data.get("width", 0),
-                        "height": page_data.get("height", 0)
-                    })
-                    
-                    full_text += page_text + "\n\n"
-                
-                logger.debug(f"[UPSTAGE] 📄 페이지 파싱 완료: 총 {len(full_text)} 문자")
-            
-            # 테이블 추출
-            tables = []
-            if "tables" in content:
-                logger.info(f"[UPSTAGE] 📊 테이블 데이터 파싱 중: {len(content['tables'])}개 테이블")
-                for idx, table_data in enumerate(content["tables"]):
-                    tables.append({
-                        "table_index": idx,
-                        "page": table_data.get("page", 0),
-                        "bbox": table_data.get("bbox", []),
-                        "html": table_data.get("html", ""),
-                        "markdown": table_data.get("markdown", "")
-                    })
-                logger.debug(f"[UPSTAGE] 📊 테이블 파싱 완료")
-            
-            # Figure 추출
-            figures = []
-            if "figures" in content:
-                logger.info(f"[UPSTAGE] 🖼️ Figure 데이터 파싱 중: {len(content['figures'])}개 Figure")
-                for idx, figure_data in enumerate(content["figures"]):
-                    caption = figure_data.get("caption", "")
-                    image_data = figure_data.get("image", "")
-                    
-                    figures.append({
-                        "figure_index": idx,
-                        "page": figure_data.get("page", 0),
-                        "bbox": figure_data.get("bbox", []),
-                        "caption": caption,
-                        "image": image_data  # base64 인코딩
-                    })
-                    
-                    logger.debug(f"[UPSTAGE]    Figure {idx}: page={figure_data.get('page')}, "
-                                f"caption_len={len(caption)}, image_size={len(image_data)} bytes")
-                
-                logger.debug(f"[UPSTAGE] 🖼️ Figure 파싱 완료")
-            
-            # 메타데이터
+            logger.info(f"[UPSTAGE] 📋 전체 응답 키: {list(data.keys())}")
+            content = data.get("content") or data.get("data") or data.get("result") or {}
+            if not isinstance(content, dict):
+                logger.warning(f"[UPSTAGE] ⚠️ 예상치 못한 content 타입: {type(content)}")
+                content = {}
+
+            logger.info(f"[UPSTAGE] 📋 content 키: {list(content.keys())}")
+
+            document_html = content.get("html")
+            document_markdown = content.get("markdown")
+            document_text = (content.get("text") or "").strip()
+
+            raw_elements = content.get("elements") or data.get("elements")
+            normalized_elements = self._normalize_elements(raw_elements)
+            logger.info(f"[UPSTAGE] 📎 요소 수: {len(normalized_elements)}")
+
+            pages = self._build_pages(content, normalized_elements)
+            full_text = document_text or self._compose_text_from_pages(pages)
+            if not full_text:
+                full_text = self._compose_text_from_elements(normalized_elements)
+
+            tables = self._extract_tables(content, normalized_elements)
+            figures = self._extract_figures(content, normalized_elements)
+
             usage = data.get("usage", {})
+            # 🎯 페이지 수: usage['pages'] 우선, 없으면 pages 리스트 길이
+            page_count = usage.get("pages", len(pages)) if usage else len(pages)
+            
             metadata = {
                 "model": data.get("model", "unknown"),
                 "usage": usage,
-                "page_count": len(pages),
+                "page_count": page_count,
                 "table_count": len(tables),
-                "figure_count": len(figures)
+                "figure_count": len(figures),
+                "api_version": data.get("api", "unknown"),
+                "html": document_html or "",      # 🆕 키 이름 단순화
+                "markdown": document_markdown or "",  # 🆕 키 이름 단순화
+                "element_count": len(normalized_elements)
             }
-            
-            logger.info(f"[UPSTAGE] ✅ 응답 파싱 완료")
-            logger.info(f"[UPSTAGE]    📊 최종 통계:")
-            logger.info(f"[UPSTAGE]       - 페이지: {len(pages)}")
-            logger.info(f"[UPSTAGE]       - 테이블: {len(tables)}")
-            logger.info(f"[UPSTAGE]       - Figure: {len(figures)}")
-            logger.info(f"[UPSTAGE]       - 텍스트: {len(full_text)} 문자")
+
+            if len(full_text) < 10 and not pages and not tables and not figures:
+                logger.warning("[UPSTAGE] ⚠️ 추출된 정보가 거의 없습니다. 응답 구조를 확인하세요.")
+                logger.warning(f"[UPSTAGE]    응답 샘플: {str(data)[:300]}...")
+
+            logger.info("[UPSTAGE] ✅ 응답 파싱 완료")
+            logger.info(f"[UPSTAGE]    📊 최종 통계: 페이지={page_count}, 테이블={len(tables)}, Figure={len(figures)}, 텍스트={len(full_text)}자")
             if usage:
                 logger.info(f"[UPSTAGE]       - Usage: {usage}")
-            
+
             return UpstageResult(
                 success=True,
                 text=full_text.strip(),
+                markdown=document_markdown or "",  # 🆕 마크다운 전달
+                html=document_html or "",          # 🆕 HTML 전달
                 pages=pages,
                 tables=tables,
                 figures=figures,
+                elements=normalized_elements,
                 metadata=metadata
             )
             
@@ -405,6 +703,7 @@ class UpstageDocumentService:
         return {
             "text": upstage_result.text,
             "metadata": {
+                "provider": "upstage",  # 🎯 Provider 정보 추가 (multimodal_document_service에서 사용)
                 "page_count": len(upstage_result.pages),
                 "table_count": len(upstage_result.tables),
                 "figure_count": len(upstage_result.figures),
@@ -412,7 +711,8 @@ class UpstageDocumentService:
                 "upstage_model": upstage_result.metadata.get("model", "unknown"),
                 "pages": upstage_result.pages,
                 "tables": upstage_result.tables,
-                "figures": upstage_result.figures
+                "figures": upstage_result.figures,
+                "elements": upstage_result.elements
             },
             "success": True,
             "error": None,

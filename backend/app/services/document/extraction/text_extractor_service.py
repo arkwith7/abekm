@@ -60,35 +60,63 @@ class TextExtractorService:
                 "encoding": "utf-8"
             }
             
-            # Azure Blob 경로인지 확인 (raw/ 또는 processed/로 시작)
-            is_blob_path = file_path.startswith('raw/') or file_path.startswith('processed/')
+            # 🔧 원격 저장소 경로 판단 (S3 또는 Azure Blob)
+            # raw/ 또는 processed/로 시작하면 원격 저장소 경로
+            is_remote_path = file_path.startswith('raw/') or file_path.startswith('processed/') or file_path.startswith('multimodal/')
             actual_file_path = file_path
             temp_file_path = None
             
             try:
-                if is_blob_path:
-                    # Azure Blob에서 임시 파일로 다운로드
-                    from app.services.core.azure_blob_service import azure_blob_service
+                if is_remote_path:
                     import tempfile
+                    from app.core.config import settings as app_settings
                     
-                    logger.info(f"📥 Azure Blob에서 파일 다운로드 시작: {file_path}")
+                    # storage_backend 설정에 따라 S3 또는 Azure Blob에서 다운로드
+                    storage_backend = getattr(app_settings, 'storage_backend', 'local')
                     
-                    # 임시 파일 생성
-                    file_ext = os.path.splitext(file_path)[1]
-                    temp_fd, temp_file_path = tempfile.mkstemp(suffix=file_ext)
-                    os.close(temp_fd)
-                    
-                    # Blob에서 다운로드 (동기 메서드)
-                    blob_data = azure_blob_service.download_blob_to_bytes(file_path, purpose='raw')
-                    if not blob_data:
-                        raise Exception(f"Azure Blob 다운로드 실패: {file_path}")
-                    
-                    # 임시 파일에 저장
-                    with open(temp_file_path, 'wb') as f:
-                        f.write(blob_data)
-                    
-                    actual_file_path = temp_file_path
-                    logger.info(f"✅ Azure Blob 다운로드 완료: {file_path} → {temp_file_path}")
+                    if storage_backend == 's3':
+                        # S3에서 다운로드
+                        from app.services.core.aws_service import S3Service
+                        
+                        logger.info(f"📥 S3에서 파일 다운로드 시작: {file_path}")
+                        
+                        # 임시 파일 생성
+                        file_ext = os.path.splitext(file_path)[1]
+                        temp_fd, temp_file_path = tempfile.mkstemp(suffix=file_ext)
+                        os.close(temp_fd)
+                        
+                        # S3에서 다운로드
+                        s3 = S3Service()
+                        await s3.download_file(object_key=file_path, local_path=temp_file_path)
+                        
+                        actual_file_path = temp_file_path
+                        logger.info(f"✅ S3 다운로드 완료: {file_path} → {temp_file_path}")
+                        
+                    elif storage_backend == 'azure_blob':
+                        # Azure Blob에서 다운로드
+                        from app.services.core.azure_blob_service import get_azure_blob_service
+                        
+                        logger.info(f"📥 Azure Blob에서 파일 다운로드 시작: {file_path}")
+                        
+                        # 임시 파일 생성
+                        file_ext = os.path.splitext(file_path)[1]
+                        temp_fd, temp_file_path = tempfile.mkstemp(suffix=file_ext)
+                        os.close(temp_fd)
+                        
+                        # Blob에서 다운로드
+                        azure = get_azure_blob_service()
+                        blob_data = azure.download_blob_to_bytes(file_path, purpose='raw')
+                        if not blob_data:
+                            raise Exception(f"Azure Blob 다운로드 실패: {file_path}")
+                        
+                        # 임시 파일에 저장
+                        with open(temp_file_path, 'wb') as f:
+                            f.write(blob_data)
+                        
+                        actual_file_path = temp_file_path
+                        logger.info(f"✅ Azure Blob 다운로드 완료: {file_path} → {temp_file_path}")
+                    else:
+                        logger.warning(f"⚠️ 알 수 없는 storage_backend: {storage_backend}, 로컬 경로로 처리")
                 
                 if not os.path.exists(actual_file_path):
                     result["success"] = False
@@ -187,6 +215,7 @@ class TextExtractorService:
         
         # Primary Provider 시도
         primary_success = False
+        provider_success: Optional[str] = None
         
         # Azure Document Intelligence
         if provider == "azure_di":
@@ -231,6 +260,7 @@ class TextExtractorService:
                     converted_result = upstage_document_service.create_internal_extraction_result(upstage_result)
                     result.update(converted_result)
                     primary_success = True
+                    provider_success = "upstage"
                 else:
                     logger.warning(f"⚠️ [UPSTAGE] Upstage 실패: {upstage_result.error}")
             
@@ -299,9 +329,11 @@ class TextExtractorService:
                 except Exception as e:
                     logger.warning(f"⚠️ [Fallback] Azure DI 예외: {e}")
         
+        # Upstage 결과는 그대로 반환 (pdfplumber로 덮어쓰지 않음)
+        if provider_success == "upstage":
+            return result
+
         # 최종 Fallback: pdfplumber (항상 사용 가능)
-        
-        # pdfplumber 폴백 또는 기본 방식
         return await self._extract_pdf_with_pdfplumber(file_path, result)
     
     async def _extract_pdf_with_pdfplumber(self, file_path: str, result: Dict[str, Any]) -> Dict[str, Any]:

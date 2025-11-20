@@ -121,30 +121,41 @@ if [ "$REDIS_AVAILABLE" = true ]; then
             --loglevel=info \
             --logfile="$CELERY_LOG" \
             --detach \
-            --pidfile="$CELERY_PID" 2>/dev/null || {
-            echo "⚠️  Celery Worker 시작 실패 (계속 진행)"
-            REDIS_AVAILABLE=false
-        }
+            --pidfile="$CELERY_PID" 2>/dev/null
         
-        # PID 파일 생성 대기 (최대 5초)
-        if [ "$REDIS_AVAILABLE" = true ]; then
-            for i in {1..10}; do
-                if [ -f "$CELERY_PID" ]; then
-                    CELERY_PID_VALUE=$(cat "$CELERY_PID")
-                    # 프로세스가 실제로 실행 중인지 확인
-                    if ps -p $CELERY_PID_VALUE > /dev/null 2>&1; then
-                        echo "✅ Celery Worker 시작됨 (PID: $CELERY_PID_VALUE)"
-                        echo "   로그: logs/celery.log"
-                        break
-                    fi
+        CELERY_START_RESULT=$?
+        
+        # Celery 시작 직후 충분한 대기 시간 제공
+        sleep 2
+        
+        # PID 파일 생성 및 프로세스 확인 (최대 8초)
+        CELERY_STARTED=false
+        for i in {1..16}; do
+            if [ -f "$CELERY_PID" ]; then
+                CELERY_PID_VALUE=$(cat "$CELERY_PID")
+                # 프로세스가 실제로 실행 중인지 확인
+                if ps -p $CELERY_PID_VALUE > /dev/null 2>&1; then
+                    echo "✅ Celery Worker 시작됨 (PID: $CELERY_PID_VALUE)"
+                    echo "   로그: logs/celery.log"
+                    CELERY_STARTED=true
+                    break
                 fi
-                sleep 0.5
-            done
-            
-            # 최종 확인
-            if [ ! -f "$CELERY_PID" ] || ! ps -p $(cat "$CELERY_PID") > /dev/null 2>&1; then
+            fi
+            sleep 0.5
+        done
+        
+        # 최종 확인: PID 파일이 없어도 프로세스가 실행 중이면 성공으로 간주
+        if [ "$CELERY_STARTED" = false ]; then
+            # celery worker 프로세스가 실행 중인지 직접 확인
+            if pgrep -f "celery.*worker.*app.core.celery_app" > /dev/null 2>&1; then
+                CELERY_PIDS=$(pgrep -f "celery.*worker.*app.core.celery_app" | head -1)
+                echo "✅ Celery Worker 시작됨 (PID: $CELERY_PIDS)"
+                echo "   로그: logs/celery.log"
+                CELERY_STARTED=true
+            else
                 echo "⚠️  Celery Worker 시작 실패 (계속 진행)"
                 echo "   수동 확인: tail -f $CELERY_LOG"
+                REDIS_AVAILABLE=false
             fi
         fi
     fi

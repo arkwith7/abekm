@@ -55,10 +55,23 @@ async def search_multimodal_clip(
         elif len(query_embedding) > clip_dim:
             query_embedding = query_embedding[:clip_dim]
         
-        # 3. pgvector 검색 쿼리 구성 (clip_vector 사용)
+        # 3. pgvector 검색 쿼리 구성 (프로바이더별 벡터 컬럼 사용)
         vector_literal = "[" + ",".join(map(str, query_embedding)) + "]"
         
-        # 기본 검색 쿼리
+        # 🔷 프로바이더별 벡터 컬럼 선택
+        from app.core.config import settings
+        provider = settings.get_current_embedding_provider()
+        
+        if provider == 'bedrock':
+            # AWS Bedrock: TwelveLabs Marengo (512d)
+            vector_column = "de.aws_marengo_vector_512"
+            vector_not_null = f"{vector_column} IS NOT NULL"
+        else:
+            # Azure OpenAI: CLIP (512d)
+            vector_column = "COALESCE(de.azure_clip_vector, de.clip_vector)"
+            vector_not_null = "(de.azure_clip_vector IS NOT NULL OR de.clip_vector IS NOT NULL)"
+        
+        # 기본 검색 쿼리 (프로바이더별 벡터 컬럼 사용)
         base_query = f"""
         SELECT 
             de.embedding_id,
@@ -70,12 +83,12 @@ async def search_multimodal_clip(
             dc.modality,
             fbf.file_lgc_nm as file_name,
             fbf.knowledge_container_id,
-            de.clip_vector <=> '{vector_literal}'::vector(512) as distance
+            {vector_column} <=> '{vector_literal}'::vector(512) as distance
         FROM doc_embedding de
         JOIN doc_chunk dc ON de.chunk_id = dc.chunk_id
         JOIN tb_file_bss_info fbf ON dc.file_bss_info_sno = fbf.file_bss_info_sno
         WHERE fbf.del_yn = 'N'
-          AND de.clip_vector IS NOT NULL
+          AND {vector_not_null}
         """
         
         # 필터 조건 추가

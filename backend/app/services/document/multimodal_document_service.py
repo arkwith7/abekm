@@ -36,6 +36,10 @@ from app.services.document.extraction.text_extractor_service import text_extract
 from app.services.core.korean_nlp_service import korean_nlp_service
 from app.core.config import settings
 from app.services.document.chunking.advanced_chunker import advanced_chunk_text
+from app.services.document.chunking.section_aware_chunker import (
+    chunk_by_sections,
+    filter_objects_before_references
+)
 from app.services.document.extraction.adaptive_section_detector import AdaptiveSectionDetector
 from app.services.document.storage.search_index_store import SearchIndexStoreService
 
@@ -44,6 +48,12 @@ try:
     from app.services.core.azure_blob_service import get_azure_blob_service
 except ImportError:
     get_azure_blob_service = None
+
+# AWS S3 Storage (멀티모달 파이프라인에서 사용)
+try:
+    from app.services.core.aws_service import S3Service
+except ImportError:  # pragma: no cover
+    S3Service = None  # type: ignore
 
 # 이미지 특징 추출 서비스
 try:
@@ -63,6 +73,7 @@ class MultimodalDocumentService:
         self.search_index_service = SearchIndexStoreService()
         # 인스턴스 주입이 없으면 기본 전역 서비스를 사용
         self.image_embedding_service = image_embedding_service or default_image_embedding_service
+        self._s3_service: Optional['S3Service'] = None
         # 적응형 섹션 감지 서비스 (모든 헤더 감지 + 의미 매핑)
         self.section_detector = AdaptiveSectionDetector()
     
@@ -107,6 +118,14 @@ class MultimodalDocumentService:
         document_type_normalized = (document_type or processing_options.get("document_type") or "").lower()
         section_chunking_requested = processing_options.get("section_chunking_enabled", True)
         apply_section_chunking = document_type_normalized == "academic_paper" and section_chunking_requested
+        
+        # 📋 문서 타입에 따른 처리 방식 로깅
+        if apply_section_chunking:
+            logger.info(f"[PIPELINE] 🎓 학술 논문 처리 모드: 섹션 기반 청킹, References 이후 제외")
+        else:
+            logger.info(f"[PIPELINE] 📄 일반 문서 처리 모드: 토큰 기반 청킹, 전체 콘텐츠 포함")
+            logger.info(f"[PIPELINE]    document_type={document_type_normalized or 'not_specified'}")
+        
         section_chunking_meta: Dict[str, Any] = {
             "requested": bool(apply_section_chunking),
             "enabled": False,
@@ -121,6 +140,10 @@ class MultimodalDocumentService:
         section_object_spans: List[Tuple[DocExtractedObject, int, int]] = []
         image_ids_with_binary: Set[int] = set()
         image_object_ids_seen: Set[int] = set()
+        
+        # 임시 파일 정리를 위한 변수 초기화 (finally 블록에서 사용)
+        actual_file_path: Optional[str] = None
+        is_temp_file: bool = False
 
         def _start_stage(name: str):
             stage_timers[name] = time.perf_counter()
@@ -158,6 +181,11 @@ class MultimodalDocumentService:
 
             _start_stage("extraction")
             extraction_result = await text_extractor_service.extract_text_from_file(file_path)
+            
+            # ✅ extraction 성공/실패 여부와 관계없이 actual_file_path와 is_temp_file 확보
+            actual_file_path = extraction_result.get("actual_file_path", file_path)
+            is_temp_file = extraction_result.get("is_temp_file", False)
+            
             if not extraction_result.get("success"):
                 # 모델 필드에 직접 할당 시 정적 타입 경고 회피 위해 setattr 사용
                 setattr(extraction_session, "status", "failed")
@@ -167,10 +195,6 @@ class MultimodalDocumentService:
                 _stage("extraction", False, error=extraction_result.get("error"))
                 result["error"] = extraction_result.get("error")
                 return result
-
-            # 실제 파일 경로 확보 (이미지 추출용)
-            actual_file_path = extraction_result.get("actual_file_path", file_path)
-            is_temp_file = extraction_result.get("is_temp_file", False)
             
             metadata = extraction_result.get("metadata", {})
             extracted_objects: List[DocExtractedObject] = []
@@ -352,37 +376,45 @@ class MultimodalDocumentService:
                             sorted_cells = sorted(cells, key=lambda c: (c.get("row_index", 0), c.get("column_index", 0)))
                             table_text = " | ".join([c.get("content", "") for c in sorted_cells if c.get("content", "").strip()])
                         
-                        # 페이지 번호 추출 (Azure DI 테이블은 페이지 정보가 없을 수 있음)
-                        # bounding_regions에서 페이지 번호를 찾거나, bbox 좌표로 페이지 매칭
+                        # 페이지 번호 추출 (Provider별 동적 처리)
+                        # - Upstage: elements의 page 필드 직접 사용
+                        # - Azure DI: bounding_regions 또는 bbox 좌표 기반 추론
                         table_page_no = None
+                        doc_processing_provider = metadata.get("provider", "").lower()
                         
-                        # 방법 1: table 자체에 page_no가 있는 경우
-                        if "page_no" in table:
-                            table_page_no = table.get("page_no")
+                        # Upstage: page 필드 직접 사용 (최우선)
+                        if doc_processing_provider == "upstage" and "page" in table:
+                            table_page_no = table.get("page")
                         
-                        # 방법 2: bounding_regions에서 추출
-                        elif "bounding_regions" in table and table["bounding_regions"]:
-                            first_region = table["bounding_regions"][0]
-                            table_page_no = first_region.get("page_number") or first_region.get("page")
-                        
-                        # 방법 3: bbox 좌표로 페이지 매칭 (폴백)
-                        if not table_page_no and _bbox != [0, 0, 0, 0]:
-                            # 각 페이지의 bbox와 비교하여 가장 많이 겹치는 페이지 찾기
-                            for p in metadata.get("pages", []):
-                                page_width = p.get("width", 0)
-                                page_height = p.get("height", 0)
-                                if page_width > 0 and page_height > 0:
-                                    page_bbox = [0, 0, int(page_width * 72), int(page_height * 72)]
-                                    # 간단한 포함 여부 확인
-                                    if (_bbox[0] >= page_bbox[0] and _bbox[1] >= page_bbox[1] and
-                                        _bbox[2] <= page_bbox[2] and _bbox[3] <= page_bbox[3]):
-                                        table_page_no = p.get("page_no")
-                                        break
+                        # Azure DI 또는 fallback: 다단계 추출
+                        if not table_page_no:
+                            # 방법 1: table 자체에 page_no가 있는 경우
+                            if "page_no" in table:
+                                table_page_no = table.get("page_no")
+                            
+                            # 방법 2: bounding_regions에서 추출 (Azure DI)
+                            elif "bounding_regions" in table and table["bounding_regions"]:
+                                first_region = table["bounding_regions"][0]
+                                table_page_no = first_region.get("page_number") or first_region.get("page")
+                            
+                            # 방법 3: bbox 좌표로 페이지 매칭 (폴백)
+                            elif _bbox != [0, 0, 0, 0]:
+                                # 각 페이지의 bbox와 비교하여 가장 많이 겹치는 페이지 찾기
+                                for p in metadata.get("pages", []):
+                                    page_width = p.get("width", 0)
+                                    page_height = p.get("height", 0)
+                                    if page_width > 0 and page_height > 0:
+                                        page_bbox = [0, 0, int(page_width * 72), int(page_height * 72)]
+                                        # 간단한 포함 여부 확인
+                                        if (_bbox[0] >= page_bbox[0] and _bbox[1] >= page_bbox[1] and
+                                            _bbox[2] <= page_bbox[2] and _bbox[3] <= page_bbox[3]):
+                                            table_page_no = p.get("page_no")
+                                            break
                         
                         # 페이지 번호를 찾지 못한 경우 1로 설정
                         if not table_page_no:
                             table_page_no = 1
-                            logger.warning(f"[MULTIMODAL-EXTRACT] ⚠️ 테이블 페이지 번호를 찾지 못함, 기본값 1로 설정")
+                            logger.warning(f"[MULTIMODAL-EXTRACT] ⚠️ 테이블 페이지 번호를 찾지 못함 (provider={doc_processing_provider}), 기본값 1로 설정")
                         
                         extracted_objects.append(DocExtractedObject(
                             extraction_session_id=extraction_session.extraction_session_id,
@@ -417,8 +449,18 @@ class MultimodalDocumentService:
                         except Exception:
                             _bbox = [0, 0, 0, 0]
                         
-                        # 페이지 번호 추출 (fig.page_no 또는 bbox 좌표 매칭)
-                        fig_page_no = fig.get("page_no")
+                        # 페이지 번호 추출 (Provider별 동적 처리)
+                        doc_processing_provider = metadata.get("provider", "").lower()
+                        fig_page_no = None
+                        
+                        # Upstage: page 필드 직접 사용 (최우선)
+                        if doc_processing_provider == "upstage" and "page" in fig:
+                            fig_page_no = fig.get("page")
+                        
+                        # Azure DI 또는 fallback: page_no 또는 bbox 추론
+                        if not fig_page_no:
+                            fig_page_no = fig.get("page_no")
+                        
                         if not fig_page_no and _bbox != [0, 0, 0, 0]:
                             # bbox 좌표로 페이지 매칭
                             for p in metadata.get("pages", []):
@@ -433,7 +475,7 @@ class MultimodalDocumentService:
                         
                         if not fig_page_no:
                             fig_page_no = 1
-                            logger.warning(f"[MULTIMODAL-EXTRACT] ⚠️ Figure 페이지 번호를 찾지 못함, 기본값 1로 설정")
+                            logger.warning(f"[MULTIMODAL-EXTRACT] ⚠️ Figure 페이지 번호를 찾지 못함 (provider={doc_processing_provider}), 기본값 1로 설정")
                         
                         caption_text = (fig.get("caption") or "").strip()
                         extracted_objects.append(DocExtractedObject(
@@ -448,6 +490,95 @@ class MultimodalDocumentService:
                         ))
                     
                     logger.info(f"[MULTIMODAL-EXTRACT] ✅ 문서 레벨 figure {len(doc_figures)}개 처리 완료")
+                
+                # 🎯 Upstage elements 기반 객체 추출 (bbox·category 활용)
+                # Azure DI의 구조화 수준과 동등하게 처리하기 위해 elements 배열을 직접 파싱
+                upstage_elements = metadata.get("elements", [])
+                if upstage_elements:
+                    logger.info(f"[MULTIMODAL-EXTRACT] 🔷 Upstage elements {len(upstage_elements)}개 처리 시작")
+                    
+                    # Category → object_type 매핑
+                    category_map = {
+                        "heading1": "TEXT_BLOCK", "heading2": "TEXT_BLOCK", "heading3": "TEXT_BLOCK",
+                        "paragraph": "TEXT_BLOCK", "list": "TEXT_BLOCK", "footnote": "TEXT_BLOCK",
+                        "table": "TABLE", "table_continued": "TABLE",
+                        "figure": "FIGURE", "chart": "FIGURE", "image": "IMAGE", "diagram": "FIGURE",
+                        "equation": "TEXT_BLOCK", "index": "TEXT_BLOCK"
+                    }
+                    
+                    for elem in upstage_elements:
+                        if not isinstance(elem, dict):
+                            continue
+                        
+                        elem_category = (elem.get("category") or "").lower()
+                        object_type = category_map.get(elem_category, "TEXT_BLOCK")
+                        elem_page = elem.get("page", 1)
+                        elem_text = elem.get("text", "")
+                        elem_coords = elem.get("coordinates") or elem.get("bbox") or []
+                        
+                        # Upstage coordinates는 상대 좌표 [[x,y], [x,y], ...] 형태
+                        # 절대 픽셀로 변환 (페이지 크기 기준)
+                        elem_bbox = [0, 0, 0, 0]
+                        if elem_coords and isinstance(elem_coords, list) and len(elem_coords) >= 4:
+                            try:
+                                # 페이지 크기 조회
+                                page_width = 612  # 기본 Letter 크기 (points)
+                                page_height = 792
+                                for p in metadata.get("pages", []):
+                                    if p.get("page_number") == elem_page:
+                                        page_width = p.get("width", 612) * 72  # inch → points
+                                        page_height = p.get("height", 792) * 72
+                                        break
+                                
+                                # 상대 좌표 → 절대 픽셀
+                                xs = [pt["x"] if isinstance(pt, dict) else pt[0] for pt in elem_coords if pt]
+                                ys = [pt["y"] if isinstance(pt, dict) else pt[1] for pt in elem_coords if pt]
+                                if xs and ys:
+                                    elem_bbox = [
+                                        int(min(xs) * page_width),
+                                        int(min(ys) * page_height),
+                                        int(max(xs) * page_width),
+                                        int(max(ys) * page_height)
+                                    ]
+                            except Exception as e:
+                                logger.warning(f"[MULTIMODAL-EXTRACT] bbox 변환 실패: {e}")
+                        
+                        # base64 인코딩이 있으면 structure_json에 포함
+                        structure_data = {
+                            "category": elem_category,
+                            "element_id": elem.get("id"),
+                            "markdown": elem.get("markdown"),
+                            "html": elem.get("html")
+                        }
+                        if elem.get("base64_encoding"):
+                            structure_data["base64_encoding"] = elem.get("base64_encoding")
+                        
+                        # 중복 방지: 이미 doc_tables/doc_figures에서 처리된 객체는 건너뛰기
+                        # (element_id 기반 중복 체크는 복잡하므로, 페이지·타입·텍스트 기준으로 간단히 필터)
+                        skip = False
+                        for existing in extracted_objects:
+                            if (existing.page_no == elem_page and 
+                                existing.object_type == object_type and
+                                (existing.content_text or "").strip() == elem_text.strip()):
+                                skip = True
+                                break
+                        
+                        if not skip and elem_text.strip():
+                            extracted_objects.append(DocExtractedObject(
+                                extraction_session_id=extraction_session.extraction_session_id,
+                                file_bss_info_sno=file_bss_info_sno,
+                                page_no=elem_page,
+                                object_type=object_type,
+                                sequence_in_page=len([o for o in extracted_objects if o.page_no == elem_page]),
+                                bbox=elem_bbox if elem_bbox != [0, 0, 0, 0] else None,
+                                content_text=elem_text[:5000],
+                                structure_json=structure_data,
+                                char_count=len(elem_text),
+                                token_estimate=len(elem_text.split()),
+                                hash_sha256=hashlib.sha256(elem_text.encode()).hexdigest()
+                            ))
+                    
+                    logger.info(f"[MULTIMODAL-EXTRACT] ✅ Upstage elements 처리 완료 (추가 객체: {len([o for o in extracted_objects if o.extraction_session_id == extraction_session.extraction_session_id])}개)")
             
             # PPT
             elif "slides" in metadata:
@@ -555,9 +686,12 @@ class MultimodalDocumentService:
 
                     if section_combined_text.strip():
                         # Pass DI pages so detector can leverage Azure paragraph roles
+                        # Pass Upstage elements for HTML-based section detection
                         precomputed_sections_info = self.section_detector.detect_sections(
                             section_combined_text,
                             pages=metadata.get("pages") or None,
+                            markdown_text=metadata.get("markdown") or None,  # 🆕 마크다운 전달
+                            elements=metadata.get("elements") or None,  # 🆕 Upstage elements 전달
                         )
                         if precomputed_sections_info:
                             precomputed_section_summary = self.section_detector.get_section_summary(precomputed_sections_info)
@@ -660,17 +794,23 @@ class MultimodalDocumentService:
             _stage("extraction", True, objects=len(extracted_objects))
 
             # -----------------------------
-            # 1.5. Azure Blob Storage - 중간 결과 저장
+            # 1.5. Blob Storage - 중간 결과 저장 (Azure Blob / S3)
             # -----------------------------
             performed_blob_intermediate = False
             try:
-                if settings.storage_backend == 'azure_blob' and get_azure_blob_service and file_bss_info_sno:
+                if settings.storage_backend in ['azure_blob', 's3'] and file_bss_info_sno:
                     _start_stage("blob_intermediate_save")
                     performed_blob_intermediate = True
-                    azure_factory = get_azure_blob_service if callable(get_azure_blob_service) else None
-                    if not azure_factory:
-                        raise RuntimeError("Azure Blob service factory not available")
-                    azure = azure_factory()
+                    
+                    if settings.storage_backend == 'azure_blob':
+                        azure_factory = get_azure_blob_service if callable(get_azure_blob_service) else None
+                        if not azure_factory:
+                            raise RuntimeError("Azure Blob service factory not available")
+                        storage = azure_factory()
+                    else:  # s3
+                        storage = self._get_s3_service()
+                        if not storage:
+                            raise RuntimeError("S3 service not available")
                     
                     # 전체 추출 텍스트 저장 (intermediate 컨테이너)
                     full_text_key = f"multimodal/{file_bss_info_sno}/extraction_full_text.txt"
@@ -679,7 +819,7 @@ class MultimodalDocumentService:
                     if not full_text_content.strip():
                         full_text_content = _assemble_full_text(extracted_objects)
                     if full_text_content.strip():
-                        azure.upload_bytes(
+                        storage.upload_bytes(
                             full_text_content.encode('utf-8'), 
                             full_text_key, 
                             purpose='intermediate'
@@ -687,6 +827,17 @@ class MultimodalDocumentService:
                         logger.info(f"[MULTIMODAL-BLOB] 전체 텍스트 저장: {full_text_key} (len={len(full_text_content)})")
                     else:
                         logger.info("[MULTIMODAL-BLOB] 전체 텍스트 비어있어 저장 생략")
+                    
+                    # Markdown 저장 (학술 논문 섹션 구조 보존)
+                    markdown_content = extraction_result.get("markdown", "") or metadata.get("markdown", "")
+                    if markdown_content and markdown_content.strip():
+                        markdown_key = f"multimodal/{file_bss_info_sno}/extraction_full_text.md"
+                        storage.upload_bytes(
+                            markdown_content.encode('utf-8'),
+                            markdown_key,
+                            purpose='intermediate'
+                        )
+                        logger.info(f"[MULTIMODAL-BLOB] Markdown 저장: {markdown_key} (len={len(markdown_content)})")
                     
                     # 추출 메타데이터 저장 (binary_data 제거)
                     metadata_key = f"multimodal/{file_bss_info_sno}/extraction_metadata.json"
@@ -704,7 +855,7 @@ class MultimodalDocumentService:
                         "has_full_text": bool(full_text_content.strip()),
                         "timestamp": datetime.now().isoformat()
                     }
-                    azure.upload_bytes(
+                    storage.upload_bytes(
                         json.dumps(metadata_content, ensure_ascii=False).encode('utf-8'),
                         metadata_key,
                         purpose='intermediate'
@@ -714,6 +865,10 @@ class MultimodalDocumentService:
                     # 객체별 세부 정보 저장 + 매니페스트 구성
                     objects_manifest: List[Dict[str, Any]] = []
                     saved_counts = {"TEXT_BLOCK": 0, "TABLE": 0, "IMAGE": 0, "FIGURE": 0}
+                    # 🎯 Provider 정보 추출 (Azure DI vs Upstage 분기 처리용)
+                    doc_processing_provider = metadata.get("provider", "").lower()
+                    logger.info(f"[MULTIMODAL-BLOB] 문서 처리 Provider: {doc_processing_provider}")
+                    
                     # PDF 이미지 추출을 위한 사전 준비
                     pdf_pages = None
                     pdf_doc = None
@@ -738,7 +893,7 @@ class MultimodalDocumentService:
                             blob_key = None
                             if getattr(obj, 'object_type', None) == 'TEXT_BLOCK' and (obj.content_text or '').strip():
                                 blob_key = f"multimodal/{file_bss_info_sno}/objects/text_block_{idx}_{obj.page_no or 0}.txt"
-                                azure.upload_bytes(
+                                storage.upload_bytes(
                                     (obj.content_text or '').encode('utf-8'),
                                     blob_key,
                                     purpose='intermediate'
@@ -763,7 +918,7 @@ class MultimodalDocumentService:
                                     "bbox": obj.bbox
                                 }
                                 try:
-                                    azure.upload_bytes(
+                                    storage.upload_bytes(
                                         json.dumps(obj_content, ensure_ascii=False).encode('utf-8'),
                                         blob_key,
                                         purpose='intermediate'
@@ -774,7 +929,7 @@ class MultimodalDocumentService:
                                     # 강제 fallback: structure_json 제거 후 저장
                                     fallback_content = dict(obj_content)
                                     fallback_content.pop('structure_json', None)
-                                    azure.upload_bytes(
+                                    storage.upload_bytes(
                                         json.dumps(fallback_content, ensure_ascii=False).encode('utf-8'),
                                         blob_key,
                                         purpose='intermediate'
@@ -786,21 +941,48 @@ class MultimodalDocumentService:
                                     img_bytes = None
                                     page_no_val = getattr(obj, 'page_no', None) or 1
                                     
-                                    # 🎯 STEP 1: Azure DI가 이미 바이너리 데이터를 제공했는지 확인
-                                    azure_binary = getattr(obj, 'binary_data', None)
-                                    if azure_binary and len(azure_binary) > 0:
-                                        img_bytes = azure_binary
-                                        logger.info(f"[MULTIMODAL-BLOB] ✅ Azure DI 바이너리 사용 - idx={idx}, size={len(img_bytes)} bytes")
-                                    
-                                    # STEP 2: Azure DI 바이너리가 없으면 PDF에서 추출
-                                    elif is_pdf and pdf_pages is not None:
-                                        logger.info(f"[MULTIMODAL-BLOB] PDF 이미지 처리 시작 idx={idx}, page={page_no_val}, is_pdf={is_pdf}, pdf_pages={len(pdf_pages) if pdf_pages else 0}")
+                                    # 🎯 STEP 1: Upstage structure_json.base64_encoding 우선 확인 (Upstage 전용)
+                                    if doc_processing_provider == "upstage":
+                                        structure_json = getattr(obj, 'structure_json', None)
+                                        logger.info(f"[MULTIMODAL-BLOB] STEP 1 (Upstage) - idx={idx}, structure_json type={type(structure_json).__name__}, exists={structure_json is not None}")
                                         
-                                        # 🎯 Azure DI polygon bbox 추출 (정확한 좌표)
+                                        if structure_json and isinstance(structure_json, dict):
+                                            base64_data = structure_json.get('base64_encoding') or structure_json.get('base64') or structure_json.get('image')
+                                            logger.info(f"[MULTIMODAL-BLOB] STEP 1 dict 확인 - idx={idx}, base64_encoding={('base64_encoding' in structure_json)}, base64={('base64' in structure_json)}, image={('image' in structure_json)}, data_len={len(base64_data) if base64_data else 0}")
+                                            if base64_data:
+                                                try:
+                                                    import base64
+                                                    img_bytes = base64.b64decode(base64_data)
+                                                    logger.info(f"[MULTIMODAL-BLOB] ✅ Upstage base64 디코드 성공 - idx={idx}, size={len(img_bytes)} bytes, source=structure_json")
+                                                except Exception as b64_err:
+                                                    logger.warning(f"[MULTIMODAL-BLOB] base64 디코드 실패 idx={idx}: {b64_err}")
+                                                    img_bytes = None
+                                            else:
+                                                logger.info(f"[MULTIMODAL-BLOB] STEP 1 - base64 데이터 없음, structure_json keys: {list(structure_json.keys())[:5]}")
+                                        else:
+                                            logger.warning(f"[MULTIMODAL-BLOB] STEP 1 스킵 - structure_json이 dict가 아님 (type={type(structure_json).__name__})")
+                                    else:
+                                        logger.info(f"[MULTIMODAL-BLOB] STEP 1 스킵 - Provider가 Upstage 아님 (provider={doc_processing_provider})")
+                                    
+                                    # STEP 2: Azure DI binary_data 속성 체크 (Azure DI 전용)
+                                    if not img_bytes and doc_processing_provider == "azure_di":
+                                        azure_binary = getattr(obj, 'binary_data', None)
+                                        if azure_binary and len(azure_binary) > 0:
+                                            img_bytes = azure_binary
+                                            logger.info(f"[MULTIMODAL-BLOB] ✅ Azure DI binary_data 사용 - idx={idx}, size={len(img_bytes)} bytes")
+                                        else:
+                                            logger.info(f"[MULTIMODAL-BLOB] STEP 2 (Azure DI) - binary_data 없음")
+                                    
+                                    # STEP 3: PDF에서 bbox 기반 크롭 추출 (Provider별 로직 분기)
+                                    if not img_bytes and is_pdf and pdf_pages is not None:
+                                        logger.info(f"[MULTIMODAL-BLOB] STEP 3 PDF 크롭 시작 - idx={idx}, page={page_no_val}, provider={doc_processing_provider}")
+                                        
+                                        # 🎯 Provider별 bbox 추출 로직
                                         structure_json = getattr(obj, 'structure_json', None)
                                         bbox_val = None
                                         
-                                        if structure_json and isinstance(structure_json, dict):
+                                        # Azure DI: polygon bbox 추출 (inch 단위, 정확)
+                                        if doc_processing_provider == "azure_di" and structure_json and isinstance(structure_json, dict):
                                             polygon = structure_json.get('bbox')
                                             if polygon and isinstance(polygon, list) and len(polygon) == 4:
                                                 # polygon: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
@@ -816,10 +998,16 @@ class MultimodalDocumentService:
                                                     bbox_val = [x0, y0, x1, y1]
                                                     logger.info(f"[MULTIMODAL-BLOB] ✅ Azure DI polygon bbox 추출 - idx={idx}, polygon={polygon[:2]}..., bbox={bbox_val}, size={(x1-x0):.2f}x{(y1-y0):.2f}inch")
                                         
-                                        # Fallback: obj.bbox 사용 (정수 반올림 버전)
-                                        if not bbox_val:
+                                        # Upstage: bbox는 보통 [0,0,0,0]이므로 obj.bbox 체크만
+                                        elif doc_processing_provider == "upstage":
+                                            logger.info(f"[MULTIMODAL-BLOB] Upstage bbox 체크 (보통 무효) - idx={idx}")
+                                        
+                                        # Fallback: obj.bbox 사용 (Azure DI만 유효)
+                                        if not bbox_val and doc_processing_provider == "azure_di":
                                             bbox_val = getattr(obj, 'bbox', None)
-                                            logger.info(f"[MULTIMODAL-BLOB] bbox fallback (obj.bbox) - idx={idx}, bbox_val={bbox_val}, type={type(bbox_val)}, page_no_val={page_no_val}, type={type(page_no_val)}")
+                                            logger.info(f"[MULTIMODAL-BLOB] Azure DI bbox fallback (obj.bbox) - idx={idx}, bbox_val={bbox_val}, type={type(bbox_val)}, page_no_val={page_no_val}")
+                                        elif not bbox_val:
+                                            logger.info(f"[MULTIMODAL-BLOB] ⚠️ bbox 없음 (provider={doc_processing_provider}) - idx={idx}")
                                         
                                         # 🎯 bbox가 [0,0,0,0]인 경우 같은 페이지의 FIGURE bbox 찾아서 사용
                                         if bbox_val == [0, 0, 0, 0] or (isinstance(bbox_val, (list, tuple)) and all(v == 0 for v in bbox_val)):
@@ -916,14 +1104,15 @@ class MultimodalDocumentService:
                                                     images = page.images
                                                     logger.info(f"[MULTIMODAL-BLOB] pdfplumber 감지 이미지 수: {len(images)} on page {page_no_val}")
                                                     
-                                                    # 페이지 내 이미지 시퀀스 추정 (Azure DI: 1-based → pdfplumber: 0-based 변환)
+                                                    # 페이지 내 이미지 시퀀스 추정
                                                     sequence_in_page = getattr(obj, 'sequence_in_page', 1)  # Azure DI default: 1
-                                                    image_index = sequence_in_page - 1  # 0-based 인덱스로 변환
+                                                    # Upstage API가 0-based를 반환하면 그대로 사용, 1-based면 변환
+                                                    image_index = sequence_in_page if sequence_in_page == 0 else sequence_in_page - 1
                                                     logger.info(f"[MULTIMODAL-BLOB] 이미지 인덱싱 변환 - Azure DI sequence={sequence_in_page} → pdfplumber index={image_index}")
                                                     
-                                                    # 🎯 모든 이미지를 크기순으로 정렬하여 가장 큰 것 선택
+                                                    # 🎯 실제 이미지만 필터링 (텍스트 블록 제외)
                                                     if images:
-                                                        # 이미지 크기 계산 및 정렬
+                                                        # 이미지 크기 계산 및 필터링
                                                         sized_images = []
                                                         for i, img_obj in enumerate(images):
                                                             x0, top, x1, bottom = img_obj['x0'], img_obj['top'], img_obj['x1'], img_obj['bottom']
@@ -931,8 +1120,14 @@ class MultimodalDocumentService:
                                                             height = bottom - top
                                                             area = width * height
                                                             
-                                                            # 최소 크기 필터 (50x50 이상)
-                                                            if width >= 50 and height >= 50:
+                                                            # 실제 임베디드 이미지 필터 (stream 속성 확인)
+                                                            has_stream = 'stream' in img_obj
+                                                            img_filter = img_obj.get('filter', '')
+                                                            # JPEG, JPEG2000, TIFF 등 래스터 이미지 포맷만 선택
+                                                            is_raster_image = img_filter in ['DCTDecode', 'JPXDecode', 'CCITTFaxDecode', 'FlateDecode']
+                                                            
+                                                            # 최소 크기 필터 (50x50 이상) + 실제 이미지만
+                                                            if width >= 50 and height >= 50 and has_stream and is_raster_image:
                                                                 sized_images.append({
                                                                     'index': i,
                                                                     'obj': img_obj,
@@ -942,22 +1137,26 @@ class MultimodalDocumentService:
                                                                     'x0': x0,
                                                                     'top': top,
                                                                     'x1': x1,
-                                                                    'bottom': bottom
+                                                                    'bottom': bottom,
+                                                                    'filter': img_filter
                                                                 })
                                                         
                                                         # 면적 기준 내림차순 정렬
                                                         sized_images.sort(key=lambda x: x['area'], reverse=True)
                                                         
-                                                        logger.info(f"[MULTIMODAL-BLOB] 유효 이미지 {len(sized_images)}개 (최소 50x50 이상)")
+                                                        logger.info(f"[MULTIMODAL-BLOB] 유효 래스터 이미지 {len(sized_images)}개 (최소 50x50, stream 필터: DCTDecode/JPXDecode/CCITTFaxDecode/FlateDecode)")
+                                                        if sized_images:
+                                                            for img_info in sized_images:
+                                                                logger.debug(f"  - index={img_info['index']}, size={img_info['width']:.0f}x{img_info['height']:.0f}, area={img_info['area']:.0f}, filter={img_info['filter']}")
                                                         
                                                         # sequence에 해당하는 이미지 또는 가장 큰 이미지 선택
                                                         target_img = None
                                                         if 0 <= image_index < len(sized_images):
                                                             target_img = sized_images[image_index]
-                                                            logger.info(f"[MULTIMODAL-BLOB] sequence={image_index} 이미지 선택")
+                                                            logger.info(f"[MULTIMODAL-BLOB] ✅ sequence={image_index} 이미지 선택 - size={target_img['width']:.0f}x{target_img['height']:.0f}, filter={target_img['filter']}")
                                                         elif sized_images:
                                                             target_img = sized_images[0]
-                                                            logger.info(f"[MULTIMODAL-BLOB] sequence 범위 초과, 가장 큰 이미지 선택 (area={target_img['area']:.0f})")
+                                                            logger.info(f"[MULTIMODAL-BLOB] ⚠️ sequence 범위 초과 (index={image_index}), 가장 큰 래스터 이미지 선택 - size={target_img['width']:.0f}x{target_img['height']:.0f}, area={target_img['area']:.0f}, filter={target_img['filter']}")
                                                         
                                                         if target_img:
                                                             import io
@@ -1046,7 +1245,7 @@ class MultimodalDocumentService:
                                             # object_id를 사용하여 일관된 blob 키 생성
                                             obj_id = getattr(obj, 'object_id', idx)
                                             img_blob_key = f"multimodal/{file_bss_info_sno}/objects/image_{obj_id}_{page_no_val}.png"
-                                            azure.upload_bytes(img_bytes, img_blob_key, purpose='intermediate')
+                                            storage.upload_bytes(img_bytes, img_blob_key, purpose='intermediate')
                                             image_ids_with_binary.add(obj_id)
                                             
                                             # B/C. Extract image features (pHash, dimensions)
@@ -1068,7 +1267,7 @@ class MultimodalDocumentService:
                                                     
                                                     # C. Save enhanced feature JSON
                                                     feature_key = f"multimodal/{file_bss_info_sno}/objects/image_{obj_id}_{page_no_val}_features.json"
-                                                    azure.upload_bytes(
+                                                    storage.upload_bytes(
                                                         json.dumps(features, ensure_ascii=False, indent=2).encode('utf-8'),
                                                         feature_key,
                                                         purpose='intermediate'
@@ -1082,7 +1281,11 @@ class MultimodalDocumentService:
                                                 "has_binary": True,
                                                 **enhanced_features
                                             })
-                                            saved_counts['IMAGE'] += 1
+                                            # 🆕 Provider별 카운트: Azure DI=IMAGE, Upstage=FIGURE
+                                            if obj_type == 'FIGURE':
+                                                saved_counts['FIGURE'] += 1
+                                            else:
+                                                saved_counts['IMAGE'] += 1
                                             continue
                                             
                                         except Exception as save_err:
@@ -1091,11 +1294,16 @@ class MultimodalDocumentService:
                                         # 이미지 바이너리를 확보하지 못한 경우
                                         obj_id = getattr(obj, 'object_id', None)
                                         has_azure_binary = getattr(obj, 'binary_data', None) is not None
+                                        has_upstage_base64 = False
+                                        structure_json = getattr(obj, 'structure_json', None)
+                                        if isinstance(structure_json, dict):
+                                            has_upstage_base64 = bool(structure_json.get('base64_encoding') or structure_json.get('base64') or structure_json.get('image'))
                                         bbox_val = getattr(obj, 'bbox', None)
                                         logger.warning(
-                                            f"[MULTIMODAL-BLOB] ❌ 이미지 바이너리 없음 - "
-                                            f"idx={idx}, obj_id={obj_id}, page={page_no_val}, "
+                                            f"[MULTIMODAL-BLOB] ❌ {obj_type} 바이너리 없음 - "
+                                            f"idx={idx}, obj_id={obj_id}, page={page_no_val}, provider={doc_processing_provider}, "
                                             f"Azure_DI_binary={'있음' if has_azure_binary else '없음'}, "
+                                            f"Upstage_base64={'있음' if has_upstage_base64 else '없음'}, "
                                             f"bbox={bbox_val}, "
                                             f"file_type={file_path.split('.')[-1] if file_path else 'unknown'}"
                                         )
@@ -1117,7 +1325,7 @@ class MultimodalDocumentService:
                     
                     # 객체 매니페스트 저장
                     manifest_key = f"multimodal/{file_bss_info_sno}/objects_manifest.json"
-                    azure.upload_bytes(
+                    storage.upload_bytes(
                         json.dumps(objects_manifest, ensure_ascii=False, indent=2).encode('utf-8'),
                         manifest_key,
                         purpose='intermediate'
@@ -1127,9 +1335,13 @@ class MultimodalDocumentService:
                     # Ensure database objects are updated with extracted features
                     await session.flush()
 
+                    # 🆕 Provider별 이미지 객체 구분: Azure DI=IMAGE, Upstage=FIGURE
+                    total_visual_objects = saved_counts['IMAGE'] + saved_counts['FIGURE']
                     logger.info(
-                        f"[MULTIMODAL-BLOB] 객체 저장 완료 text={saved_counts['TEXT_BLOCK']} table={saved_counts['TABLE']} "
-                        f"image={saved_counts['IMAGE']} figure={saved_counts['FIGURE']} errors={len(object_save_errors)}"
+                        f"[MULTIMODAL-BLOB] 객체 저장 완료 (Provider={doc_processing_provider}) - "
+                        f"text={saved_counts['TEXT_BLOCK']} table={saved_counts['TABLE']} "
+                        f"visual={total_visual_objects} (IMAGE={saved_counts['IMAGE']}, FIGURE={saved_counts['FIGURE']}) "
+                        f"errors={len(object_save_errors)}"
                     )
                     _stage(
                         "blob_intermediate_save", True,
@@ -1154,7 +1366,16 @@ class MultimodalDocumentService:
             _start_stage("chunking")
             # SQLAlchemy 컬럼 속성 대신 안전하게 getattr 사용
             text_objs = [o for o in extracted_objects if getattr(o, 'object_type', None) == "TEXT_BLOCK"]
+            # 🆕 Provider별 이미지 타입: Azure DI=IMAGE, Upstage=FIGURE
             raw_image_objs = [o for o in extracted_objects if getattr(o, 'object_type', None) in ["IMAGE", "FIGURE"]]
+            
+            # 이미지 타입별 카운트 (디버깅용)
+            image_type_counts = {}
+            for o in raw_image_objs:
+                otype = getattr(o, 'object_type', None)
+                image_type_counts[otype] = image_type_counts.get(otype, 0) + 1
+            logger.info(f"[CHUNKING] Provider={doc_processing_provider}, 추출된 이미지 객체: {image_type_counts}, 바이너리 있는 object_ids: {len(image_ids_with_binary)}개")
+            
             if image_object_ids_seen:
                 image_objs = [
                     o for o in raw_image_objs
@@ -1162,15 +1383,48 @@ class MultimodalDocumentService:
                 ]
                 skipped_images = len(raw_image_objs) - len(image_objs)
                 if skipped_images > 0:
-                    logger.info(
-                        "[MULTIMODAL] 바이너리 누락으로 이미지 청크 %s개 제외 (object_ids=%s)",
-                        skipped_images,
-                        [getattr(o, 'object_id', None) for o in raw_image_objs if getattr(o, 'object_id', None) not in image_ids_with_binary],
+                    skipped_obj_info = [
+                        f"{getattr(o, 'object_type', 'unknown')}#{getattr(o, 'object_id', None)}"
+                        for o in raw_image_objs 
+                        if getattr(o, 'object_id', None) not in image_ids_with_binary
+                    ]
+                    logger.warning(
+                        f"[MULTIMODAL] ⚠️ 바이너리 누락으로 이미지 청크 {skipped_images}개 제외 "
+                        f"(Provider={doc_processing_provider}, 제외된 객체={skipped_obj_info})"
                     )
             else:
                 image_objs = raw_image_objs
+                logger.info(f"[MULTIMODAL] image_object_ids_seen=False, 모든 이미지 객체 포함: {len(raw_image_objs)}개")
             table_objs = [o for o in extracted_objects if getattr(o, 'object_type', None) == "TABLE"]
             text_objs = [o for o in text_objs if (getattr(o, 'content_text', '') or '').strip()]
+            
+            # 🆕 References 이전 객체만 필터링 (학술 논문 처리)
+            references_page = None
+            if apply_section_chunking and precomputed_sections_info:
+                try:
+                    original_text_count = len(text_objs)
+                    original_image_count = len(image_objs)
+                    original_table_count = len(table_objs)
+                    
+                    text_objs, references_page = filter_objects_before_references(
+                        precomputed_sections_info, text_objs
+                    )
+                    image_objs, _ = filter_objects_before_references(
+                        precomputed_sections_info, image_objs
+                    )
+                    table_objs, _ = filter_objects_before_references(
+                        precomputed_sections_info, table_objs
+                    )
+                    
+                    if references_page:
+                        logger.info(
+                            f"[REFERENCES-FILTER] References 이후 객체 제외 (page≥{references_page}): "
+                            f"텍스트 {original_text_count}→{len(text_objs)}, "
+                            f"이미지 {original_image_count}→{len(image_objs)}, "
+                            f"테이블 {original_table_count}→{len(table_objs)}"
+                        )
+                except Exception as filter_err:
+                    logger.warning(f"[REFERENCES-FILTER] 필터링 실패 (모든 객체 포함): {filter_err}")
 
             chunk_params: Dict[str, Any] = {
                 "min_tokens": 80,
@@ -1215,6 +1469,8 @@ class MultimodalDocumentService:
                         sections_info = self.section_detector.detect_sections(
                             combined_text,
                             pages=metadata.get("pages") or None,
+                            markdown_text=metadata.get("markdown") or None,  # 🆕 마크다운 전달
+                            elements=metadata.get("elements") or None,  # 🆕 Upstage elements 전달
                         )
                         section_summary = self.section_detector.get_section_summary(sections_info)
 
@@ -1293,8 +1549,53 @@ class MultimodalDocumentService:
 
             section_chunk_counts: Dict[str, int] = {}
             adv_chunks: List[Dict[str, Any]] = []
-            if section_groups:
+            
+            # 🆕 섹션 기반 청킹 시도 (마크다운이 있고 섹션이 감지된 경우)
+            markdown_text = metadata.get("markdown") or None
+            use_section_chunking = (
+                apply_section_chunking 
+                and sections_info 
+                and markdown_text 
+                and len(sections_info) > 0
+            )
+            
+            if use_section_chunking:
+                logger.info(f"[CHUNKING] 🎯 섹션 기반 청킹 사용 ({len(sections_info)}개 섹션)")
                 section_chunking_meta["enabled"] = True
+                section_chunking_meta["method"] = "section_aware"
+                
+                # 섹션 기반 청킹 수행
+                try:
+                    adv_chunks = chunk_by_sections(
+                        sections=sections_info,
+                        full_text=combined_text or section_combined_text,
+                        min_tokens=chunk_params.get("min_tokens", 80),
+                        target_tokens=chunk_params.get("target_tokens", 280),
+                        max_tokens=chunk_params.get("max_tokens", 420),
+                        overlap_tokens=chunk_params.get("overlap_tokens", 40),
+                    )
+                    
+                    # 섹션별 청크 수 집계
+                    for chunk_dict in adv_chunks:
+                        section_type = chunk_dict.get('section_type', 'unknown')
+                        section_chunk_counts[section_type] = section_chunk_counts.get(section_type, 0) + 1
+                        # 호환성을 위해 기존 필드명 추가
+                        chunk_dict['section'] = section_type
+                        chunk_dict['section_index'] = chunk_dict.get('chunk_index', 0)
+                    
+                    logger.info(f"[CHUNKING] ✅ 섹션 기반 청킹 완료: {len(adv_chunks)}개 청크")
+                    logger.info(f"[CHUNKING]    섹션별 청크 수: {section_chunk_counts}")
+                    
+                except Exception as section_chunk_err:
+                    logger.warning(f"[CHUNKING] ⚠️ 섹션 기반 청킹 실패, 기본 청킹으로 폴백: {section_chunk_err}")
+                    use_section_chunking = False
+            
+            # 🔄 기존 섹션 그룹 기반 청킹 (폴백)
+            if not use_section_chunking and section_groups:
+                logger.info(f"[CHUNKING] 섹션 그룹 기반 청킹 사용")
+                section_chunking_meta["enabled"] = True
+                section_chunking_meta["method"] = "section_groups"
+                
                 # 섹션 순서 보존: label은 (type, index, title) 튜플
                 for label, group in section_groups:
                     iterable = (
@@ -1322,7 +1623,10 @@ class MultimodalDocumentService:
                     adv_chunks.extend(section_chunks)
                     key = label[0] if label else "unassigned"  # section_type 사용
                     section_chunk_counts[key] = section_chunk_counts.get(key, 0) + len(section_chunks)
-            else:
+            
+            # 📝 기본 토큰 기반 청킹 (최종 폴백)
+            if not adv_chunks:
+                logger.info(f"[CHUNKING] 기본 토큰 기반 청킹 사용")
                 adv_chunks = advanced_chunk_text(
                     (
                         (
@@ -1333,6 +1637,7 @@ class MultimodalDocumentService:
                     )
                 )
                 section_chunking_meta["enabled"] = False
+                section_chunking_meta["method"] = "token_based"
 
             if section_chunk_counts:
                 section_chunking_meta["chunk_counts"] = section_chunk_counts
@@ -1532,17 +1837,23 @@ class MultimodalDocumentService:
                 # 실패해도 계속 진행 (검색 인덱스는 별도)
 
             # -----------------------------
-            # 2.5. Azure Blob Storage - 청킹 결과 저장 (derived)
+            # 2.5. Blob Storage - 청킹 결과 저장 (Azure Blob / S3)
             # -----------------------------
             performed_blob_derived = False
             try:
-                if settings.storage_backend == 'azure_blob' and get_azure_blob_service and file_bss_info_sno:
+                if settings.storage_backend in ['azure_blob', 's3'] and file_bss_info_sno:
                     _start_stage("blob_derived_save")
                     performed_blob_derived = True
-                    azure_factory3 = get_azure_blob_service if callable(get_azure_blob_service) else None
-                    if not azure_factory3:
-                        raise RuntimeError("Azure Blob service factory not available")
-                    azure = azure_factory3()
+                    
+                    if settings.storage_backend == 'azure_blob':
+                        azure_factory3 = get_azure_blob_service if callable(get_azure_blob_service) else None
+                        if not azure_factory3:
+                            raise RuntimeError("Azure Blob service factory not available")
+                        storage = azure_factory3()
+                    else:  # s3
+                        storage = self._get_s3_service()
+                        if not storage:
+                            raise RuntimeError("S3 service not available")
                     
                     # 청킹 메타데이터 저장
                     chunk_metadata_key = f"multimodal/{file_bss_info_sno}/chunking_metadata.json"
@@ -1558,7 +1869,7 @@ class MultimodalDocumentService:
                         },
                         "timestamp": datetime.now().isoformat()
                     }
-                    azure.upload_bytes(
+                    storage.upload_bytes(
                         json.dumps(chunk_metadata, ensure_ascii=False).encode('utf-8'),
                         chunk_metadata_key,
                         purpose='derived'
@@ -1577,7 +1888,7 @@ class MultimodalDocumentService:
                             "modality": chunk_modality,
                             "source_object_ids": getattr(chunk, 'source_object_ids', [])
                         }
-                        azure.upload_bytes(
+                        storage.upload_bytes(
                             json.dumps(chunk_content, ensure_ascii=False).encode('utf-8'),
                             chunk_key,
                             purpose='derived'
@@ -1592,7 +1903,7 @@ class MultimodalDocumentService:
                     
                     # 청크 매니페스트 저장
                     manifest_key = f"multimodal/{file_bss_info_sno}/chunks_manifest.json"
-                    azure.upload_bytes(
+                    storage.upload_bytes(
                         json.dumps(chunk_manifest, ensure_ascii=False).encode('utf-8'),
                         manifest_key,
                         purpose='derived'
@@ -1690,28 +2001,52 @@ class MultimodalDocumentService:
                                 )
                                 img_obj = img_obj_result.scalar_one_or_none()
                                 
-                                if img_obj and settings.storage_backend == 'azure_blob':
-                                    # Azure Blob에서 이미지 다운로드
-                                    azure_factory4 = get_azure_blob_service if callable(get_azure_blob_service) else None
-                                    if not azure_factory4:
-                                        raise RuntimeError("Azure Blob service factory not available")
-                                    azure = azure_factory4()
+                                if img_obj:
                                     page_no_val = getattr(img_obj, 'page_no', 0) or 0
                                     img_blob_key = f"multimodal/{file_bss_info_sno}/objects/image_{img_obj.object_id}_{page_no_val}.png"
-                                    img_bytes = azure.download_blob_to_bytes(img_blob_key, purpose='intermediate')
-                                    
+                                    caption_text = getattr(ch, 'content_text', '') or ''
+                                    img_bytes: Optional[bytes] = None
+
+                                    try:
+                                        if settings.storage_backend == 'azure_blob':
+                                            azure_factory4 = get_azure_blob_service if callable(get_azure_blob_service) else None
+                                            if not azure_factory4:
+                                                raise RuntimeError("Azure Blob service factory not available")
+                                            azure = azure_factory4()
+                                            img_bytes = azure.download_blob_to_bytes(img_blob_key, purpose='intermediate')
+                                        elif settings.storage_backend == 's3':
+                                            s3_service = self._get_s3_service()
+                                            if s3_service:
+                                                img_bytes = s3_service.download_bytes(img_blob_key, purpose='intermediate')
+                                            else:
+                                                logger.warning("[MULTIMODAL][IMAGE-EMB] S3Service unavailable for image download")
+                                        else:
+                                            logger.debug(f"[MULTIMODAL][IMAGE-EMB] Storage backend '{settings.storage_backend}' does not support blob downloads")
+                                    except Exception as storage_err:
+                                        logger.warning(f"[MULTIMODAL][IMAGE-EMB] 이미지 다운로드 실패 chunk={ch.chunk_id}: {storage_err}")
+
                                     if img_bytes:
-                                        # CLIP 이미지 임베딩 생성
+                                        # 중요: 검색 경로와 동일한 "이미지 전용" 임베딩을 사용해 일관된 유사도 보장
+                                        # caption을 함께 주는 text_image 모드는 동일 이미지 재검색 시 벡터 불일치를 유발할 수 있음
                                         clip_vec = await self.image_embedding_service.generate_image_embedding(
-                                            image_bytes=img_bytes
+                                            image_bytes=img_bytes,
+                                            caption=None
                                         )
                                         if clip_vec:
                                             clip_embed_success += 1
-                                            logger.info(f"[MULTIMODAL][CLIP] ✅ 이미지 CLIP 임베딩 생성: chunk={ch.chunk_id}, dim={len(clip_vec)}")
+                                            # Provider 동적 표시 (bedrock=Marengo, azure_openai=CLIP, local=CLIP)
+                                            provider_name = getattr(self.image_embedding_service, 'provider', 'unknown')
+                                            if provider_name == 'bedrock':
+                                                provider_label = "Marengo"
+                                            elif provider_name == 'azure_openai':
+                                                provider_label = "Azure-CLIP"
+                                            else:
+                                                provider_label = "Local-CLIP"
+                                            logger.info(f"[MULTIMODAL][{provider_label}] ✅ 이미지 임베딩 생성: chunk={ch.chunk_id}, dim={len(clip_vec)}")
                         except Exception as clip_err:
-                            logger.warning(f"[MULTIMODAL][CLIP] CLIP 임베딩 생성 실패 chunk={ch.chunk_id}: {clip_err}")
+                            logger.warning(f"[MULTIMODAL][IMAGE-EMB] 임베딩 생성 실패 chunk={ch.chunk_id}: {clip_err}")
                     
-                    # 텍스트 청크의 경우에도 CLIP 텍스트 임베딩 생성 가능 (선택적)
+                    # 텍스트 청크의 경우에도 멀티모달 텍스트 임베딩 생성 가능 (선택적)
                     elif modality == 'text' and self.image_embedding_service and getattr(settings, 'enable_text_clip_embedding', False):
                         try:
                             content_text = getattr(ch, 'content_text', '') or ''
@@ -1719,9 +2054,11 @@ class MultimodalDocumentService:
                                 clip_vec = await self.image_embedding_service.generate_text_embedding(content_text)
                                 if clip_vec:
                                     clip_embed_success += 1
-                                    logger.info(f"[MULTIMODAL][CLIP] ✅ 텍스트 CLIP 임베딩 생성: chunk={ch.chunk_id}, dim={len(clip_vec)}")
+                                    provider_name = getattr(self.image_embedding_service, 'provider', 'unknown')
+                                    provider_label = "Marengo" if provider_name == 'bedrock' else "CLIP"
+                                    logger.info(f"[MULTIMODAL][{provider_label}] ✅ 텍스트 임베딩 생성: chunk={ch.chunk_id}, dim={len(clip_vec)}")
                         except Exception as clip_err:
-                            logger.warning(f"[MULTIMODAL][CLIP] 텍스트 CLIP 임베딩 생성 실패 chunk={ch.chunk_id}: {clip_err}")
+                            logger.warning(f"[MULTIMODAL][TEXT-EMB] 텍스트 임베딩 생성 실패 chunk={ch.chunk_id}: {clip_err}")
                     
                     # 임베딩 벡터 저장 (텍스트 임베딩 또는 CLIP 임베딩 중 하나라도 있으면 저장)
                     if vec or clip_vec:
@@ -1746,6 +2083,7 @@ class MultimodalDocumentService:
                         azure_clip_vec = None
                         aws_vec_1024 = None
                         aws_vec_256 = None
+                        aws_marengo_vec_512 = None
                         
                         if vec:
                             if max_dim == 1536:
@@ -1761,23 +2099,61 @@ class MultimodalDocumentService:
                                 provider = 'aws'
                                 aws_vec_256 = vec
                         
+                        # 🔷 멀티모달 임베딩 벡터 할당 (프로바이더별 명확한 구분)
+                        multimodal_model_name = None
+                        multimodal_dimension = None
+                        multimodal_provider = None
+                        
                         if clip_vec:
-                            azure_clip_vec = clip_vec  # CLIP은 Azure 전용
-                            if not provider:
-                                provider = 'azure'
+                            # DEFAULT_EMBEDDING_PROVIDER 설정 읽기
+                            embedding_provider = settings.get_current_embedding_provider()
+                            
+                            if embedding_provider == 'bedrock':
+                                # ✅ AWS Bedrock: TwelveLabs Marengo (512d) → aws_marengo_vector_512
+                                aws_marengo_vec_512 = clip_vec
+                                multimodal_model_name = settings.bedrock_multimodal_embedding_model_id
+                                multimodal_dimension = 512
+                                multimodal_provider = 'aws'
+                                logger.info(f"[MULTIMODAL] Bedrock Marengo 벡터 할당 → aws_marengo_vector_512 (512d)")
+                            elif embedding_provider == 'azure_openai':
+                                # ✅ Azure OpenAI: CLIP (512d) → azure_clip_vector
+                                azure_clip_vec = clip_vec
+                                multimodal_model_name = settings.azure_openai_multimodal_embedding_deployment or 'openai-clip-vit-base-patch32'
+                                multimodal_dimension = 512
+                                multimodal_provider = 'azure'
+                                logger.info(f"[MULTIMODAL] Azure CLIP 벡터 할당 → azure_clip_vector (512d)")
+                            else:
+                                # ⚠️ 기타 프로바이더 (로컬 CLIP 등) → 레거시 clip_vector
+                                multimodal_model_name = 'openai-clip-vit-base-patch32'
+                                multimodal_dimension = 512
+                                multimodal_provider = 'local'
+                                logger.warning(f"[MULTIMODAL] 알 수 없는 provider={embedding_provider}, 레거시 clip_vector 사용")
+                        
+                        # 📝 메타데이터 결정: 이미지 청크는 멀티모달 모델 정보 우선 사용
+                        if modality == 'image' and clip_vec and multimodal_model_name:
+                            # ✅ 이미지: 멀티모달 모델 메타데이터 사용
+                            final_model_name = multimodal_model_name
+                            final_dimension = multimodal_dimension
+                            final_provider = multimodal_provider or provider
+                        else:
+                            # 텍스트: 기존 텍스트 임베딩 모델 메타데이터 사용
+                            final_model_name = current_embedding_model
+                            final_dimension = max_dim
+                            final_provider = provider
                         
                         emb = DocEmbedding(
                             chunk_id=ch.chunk_id,
                             file_bss_info_sno=file_bss_info_sno,
-                            provider=provider,
-                            model_name=current_embedding_model,
+                            provider=final_provider,
+                            model_name=final_model_name,
                             modality=modality,
-                            dimension=max_dim,
+                            dimension=final_dimension,
                             azure_vector_1536=azure_vec_1536,
                             azure_vector_3072=azure_vec_3072,
                             azure_clip_vector=azure_clip_vec,
                             aws_vector_1024=aws_vec_1024,
                             aws_vector_256=aws_vec_256,
+                            aws_marengo_vector_512=aws_marengo_vec_512,
                             vector=vec,  # 레거시 호환
                             clip_vector=clip_vec  # 레거시 호환
                         )
@@ -1799,6 +2175,8 @@ class MultimodalDocumentService:
 
             # -----------------------------
             # 3.1. vs_doc_contents_chunks 임베딩 업데이트 (RAG 기능 지원)
+            # 텍스트 임베딩(Titan 1024d) → aws_embedding_1024
+            # 이미지 임베딩(Marengo 512d) → multimodal_embedding
             # -----------------------------
             try:
                 logger.info(f"[MULTIMODAL][RAG] vs_doc_contents_chunks 임베딩 업데이트 시작 - {len(chunk_embeddings)}개")
@@ -1807,12 +2185,43 @@ class MultimodalDocumentService:
                 from sqlalchemy import update
                 
                 for chunk_idx, vec in chunk_embeddings.items():
-                    stmt = (
-                        update(VsDocContentsChunks)
-                        .where(VsDocContentsChunks.file_bss_info_sno == file_bss_info_sno)
-                        .where(VsDocContentsChunks.chunk_index == chunk_idx)
-                        .values(chunk_embedding=vec)
-                    )
+                    # 임베딩 차원으로 타입 판별
+                    embedding_dim = len(vec)
+                    
+                    if embedding_dim == 1024:
+                        # 텍스트 임베딩 (AWS Titan)
+                        stmt = (
+                            update(VsDocContentsChunks)
+                            .where(VsDocContentsChunks.file_bss_info_sno == file_bss_info_sno)
+                            .where(VsDocContentsChunks.chunk_index == chunk_idx)
+                            .values(
+                                aws_embedding_1024=vec,
+                                embedding_provider='aws'
+                            )
+                        )
+                        logger.debug(f"[MULTIMODAL][RAG] 텍스트 임베딩 저장 (Titan 1024d): chunk_idx={chunk_idx}")
+                    elif embedding_dim == 512:
+                        # 이미지 임베딩 (Marengo)
+                        stmt = (
+                            update(VsDocContentsChunks)
+                            .where(VsDocContentsChunks.file_bss_info_sno == file_bss_info_sno)
+                            .where(VsDocContentsChunks.chunk_index == chunk_idx)
+                            .values(
+                                multimodal_embedding=vec,
+                                embedding_provider='aws'
+                            )
+                        )
+                        logger.debug(f"[MULTIMODAL][RAG] 이미지 임베딩 저장 (Marengo 512d): chunk_idx={chunk_idx}")
+                    else:
+                        # 레거시 폴백
+                        logger.warning(f"[MULTIMODAL][RAG] 알 수 없는 임베딩 차원: {embedding_dim}d, chunk_idx={chunk_idx}")
+                        stmt = (
+                            update(VsDocContentsChunks)
+                            .where(VsDocContentsChunks.file_bss_info_sno == file_bss_info_sno)
+                            .where(VsDocContentsChunks.chunk_index == chunk_idx)
+                            .values(chunk_embedding=vec)
+                        )
+                    
                     await session.execute(stmt)
                 
                 await session.flush()
@@ -1823,17 +2232,23 @@ class MultimodalDocumentService:
                 # 실패해도 계속 진행
 
             # -----------------------------
-            # 3.5. Azure Blob Storage - 임베딩 결과 저장 (derived)
+            # 3.5. Blob Storage - 임베딩 결과 저장 (Azure Blob / S3)
             # -----------------------------
             performed_blob_embedding = False
             try:
-                if settings.storage_backend == 'azure_blob' and get_azure_blob_service and file_bss_info_sno:
+                if settings.storage_backend in ['azure_blob', 's3'] and file_bss_info_sno:
                     _start_stage("blob_embedding_save")
                     performed_blob_embedding = True
-                    azure_factory5 = get_azure_blob_service if callable(get_azure_blob_service) else None
-                    if not azure_factory5:
-                        raise RuntimeError("Azure Blob service factory not available")
-                    azure = azure_factory5()
+                    
+                    if settings.storage_backend == 'azure_blob':
+                        azure_factory5 = get_azure_blob_service if callable(get_azure_blob_service) else None
+                        if not azure_factory5:
+                            raise RuntimeError("Azure Blob service factory not available")
+                        storage = azure_factory5()
+                    else:  # s3
+                        storage = self._get_s3_service()
+                        if not storage:
+                            raise RuntimeError("S3 service not available")
                     
                     # 임베딩 메타데이터 저장
                     embedding_metadata_key = f"multimodal/{file_bss_info_sno}/embedding_metadata.json"
@@ -1844,7 +2259,7 @@ class MultimodalDocumentService:
                         "total_chunks": len(doc_chunks),
                         "timestamp": datetime.now().isoformat()
                     }
-                    azure.upload_bytes(
+                    storage.upload_bytes(
                         json.dumps(embedding_metadata, ensure_ascii=False).encode('utf-8'),
                         embedding_metadata_key,
                         purpose='derived'
@@ -1871,6 +2286,8 @@ class MultimodalDocumentService:
                 file_result = await session.execute(stmt_file)
                 file_info = file_result.scalar_one_or_none()
                 
+                visual_object_types = ("IMAGE", "FIGURE")
+
                 if not file_info:
                     logger.warning(f"[MULTIMODAL] 파일 정보를 찾을 수 없음: {file_bss_info_sno}")
                     _stage("search_index_creation", False, error="File info not found")
@@ -1888,7 +2305,7 @@ class MultimodalDocumentService:
                     # 추출된 객체에서 이미지/테이블 개수 확인
                     for obj in extracted_objects:
                         obj_type = getattr(obj, 'object_type', '')
-                        if obj_type == 'IMAGE':
+                        if obj_type in visual_object_types:
                             image_count += 1
                         elif obj_type == 'TABLE':
                             table_count += 1
@@ -1919,7 +2336,8 @@ class MultimodalDocumentService:
                     # 4.5. 이미지 정보 수집 (멀티모달 검색용)
                     image_metadata = []
                     for obj in extracted_objects:
-                        if getattr(obj, 'object_type', '') == 'IMAGE':
+                        obj_type = getattr(obj, 'object_type', '')
+                        if obj_type in visual_object_types:
                             # 🎯 Caption 우선 추출 (content_text에 저장됨)
                             caption = getattr(obj, 'content_text', '') or ''
                             structure_json = getattr(obj, 'structure_json', {}) or {}
@@ -1934,6 +2352,7 @@ class MultimodalDocumentService:
                                 'caption': caption,  # 🎯 Azure DI에서 추출한 Figure caption
                                 'bounding_box': getattr(obj, 'bbox', None),
                                 'has_caption': bool(caption),  # 🎯 Caption 유무 플래그
+                                'object_type': obj_type,
                             }
                             image_metadata.append(img_meta)
                             
@@ -1999,8 +2418,8 @@ class MultimodalDocumentService:
                     search_index.extraction_session_id = extraction_session.extraction_session_id
                     search_index.primary_chunk_session_id = chunk_session.chunk_session_id
                     search_index.last_embedding_model = current_embedding_model
-                    search_index.has_table = any(o.object_type == "TABLE" for o in extracted_objects)
-                    search_index.has_image = any(o.object_type == "IMAGE" for o in extracted_objects)
+                    search_index.has_table = any(getattr(o, 'object_type', '') == "TABLE" for o in extracted_objects)
+                    search_index.has_image = any(getattr(o, 'object_type', '') in visual_object_types for o in extracted_objects)
                     logger.info(f"[MULTIMODAL] 검색 인덱스 메타데이터 업데이트 완료")
                 _stage("index_metadata_update", True)
             except Exception as meta_err:
@@ -2057,6 +2476,18 @@ class MultimodalDocumentService:
                     logger.debug(f"[MULTIMODAL] 임시 파일 삭제 완료: {actual_file_path}")
                 except Exception as cleanup_err:
                     logger.warning(f"[MULTIMODAL] 임시 파일 삭제 실패: {cleanup_err}")
+
+    def _get_s3_service(self) -> Optional['S3Service']:
+        """지연 로딩 방식으로 S3Service 인스턴스를 반환"""
+        if S3Service is None:
+            return None
+        if self._s3_service is None:
+            try:
+                self._s3_service = S3Service()
+            except Exception as err:
+                logger.warning(f"[MULTIMODAL] S3Service 초기화 실패: {err}")
+                self._s3_service = None
+        return self._s3_service
 
     def _derive_core_content_page_set(
         self,

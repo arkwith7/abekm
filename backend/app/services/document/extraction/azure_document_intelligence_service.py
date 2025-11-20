@@ -1364,6 +1364,7 @@ class AzureDocumentIntelligenceService:
             'success': True,
             'text': di_result.text,
             'metadata': {
+                'provider': 'azure_di',  # 🎯 Provider 정보 추가 (multimodal_document_service에서 사용)
                 **di_result.metadata,
                 'pages': di_result.pages,
                 'tables': di_result.tables,

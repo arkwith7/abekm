@@ -31,7 +31,10 @@ class VsDocContentsChunks(Base):
     azure_embedding_1536 = Column('azure_embedding_1536', Vector(1536), nullable=True, comment="Azure text-embedding-3-small")
     
     # 🟧 AWS 전용 임베딩 (1024d)
-    aws_embedding_1024 = Column('aws_embedding_1024', Vector(1024), nullable=True, comment="AWS Titan v2")
+    aws_embedding_1024 = Column('aws_embedding_1024', Vector(1024), nullable=True, comment="AWS Titan v2 텍스트 임베딩")
+    
+    # 🎨 멀티모달 임베딩 (512d)
+    multimodal_embedding = Column('multimodal_embedding', Vector(512), nullable=True, comment="Twelvelabs Marengo 이미지 임베딩")
     
     # 🔄 레거시 호환 (기존 컬럼 유지)
     chunk_embedding = Column('chunk_embedding', Vector(settings.vector_dimension), nullable=True, comment="레거시: 동적 차원")

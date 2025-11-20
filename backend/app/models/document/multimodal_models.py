@@ -131,7 +131,9 @@ class DocEmbedding(Base):
     # 🟧 AWS 전용 벡터 컬럼 (고정 차원)
     aws_vector_1024 = Column(Vector(1024), nullable=True, comment="AWS Titan v2 텍스트 임베딩 (1024d)")
     aws_vector_256 = Column(Vector(256), nullable=True, comment="AWS Titan v2 small (256d)")
-    aws_multimodal_vector_1024 = Column(Vector(1024), nullable=True, comment="AWS Cohere Embed v4 멀티모달 (1024d)")
+    aws_marengo_vector_512 = Column(Vector(512), nullable=True, comment="AWS TwelveLabs Marengo Embed 3.0 멀티모달 (512d)")
+    # 레거시 컬럼 (이전 Cohere 시절)
+    aws_multimodal_vector_1024 = Column(Vector(1024), nullable=True, comment="[DEPRECATED] AWS Cohere Embed v4 멀티모달 (1024d)")
     
     # 🔄 레거시 호환 (기존 컬럼 유지)
     vector = Column(Vector(), nullable=True, comment="레거시: 동적 차원 지원")
@@ -145,7 +147,8 @@ class DocEmbedding(Base):
 # NOTE: 
 # - vector 컬럼: 텍스트 임베딩 (1536d, 3072d 등) 동적 차원 지원
 # - clip_vector 컬럼: Azure CLIP 멀티모달 임베딩 (512d) 고정
-# - aws_multimodal_vector 컬럼: AWS 멀티모달 임베딩 (1024d)
-#   → Claude 3 Vision으로 이미지 설명 생성 → Titan v2로 임베딩
+# - aws_marengo_vector_512 컬럼: AWS TwelveLabs Marengo 멀티모달 임베딩 (512d)
+#   → 이미지+텍스트 동시 임베딩, 비디오 AI 기술 기반
+# - aws_multimodal_vector_1024 컬럼: [DEPRECATED] 이전 Cohere 시절 (1024d)
 # - dimension 컬럼: vector의 실제 차원 값 저장
-# - 듀얼 벡터 전략: 텍스트 검색(vector) + 멀티모달 검색(clip_vector/aws_multimodal_vector)
+# - 듀얼 벡터 전략: 텍스트 검색(vector) + 멀티모달 검색(clip_vector/aws_marengo_vector_512)

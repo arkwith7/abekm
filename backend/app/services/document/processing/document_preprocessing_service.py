@@ -13,6 +13,8 @@ import re
 import hashlib
 import logging
 import json
+import os
+from datetime import datetime
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 import tiktoken
@@ -44,6 +46,13 @@ class DocumentPreprocessingService:
         self.target_tokens_per_chunk = 3000  # 목표 청크 크기 - 균형 잡힌 크기
         self.overlap_tokens = 300  # 겹침 토큰 수 (약 10%)
         self.tokenizer = tiktoken.get_encoding("cl100k_base")  # 정확한 토큰 계산
+        
+        # 청킹 디버그 로그 설정
+        self.chunking_debug = os.getenv('CHUNKING_DEBUG', 'false').lower() == 'true'
+        self.chunking_log_dir = Path('/home/admin/Dev/abekm/backend/logs/chunking')
+        if self.chunking_debug:
+            self.chunking_log_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"📊 청킹 디버그 모드 활성화: {self.chunking_log_dir}")
         
         # kss (Korean Sentence Splitter) 초기화
         try:
@@ -334,17 +343,30 @@ class DocumentPreprocessingService:
         if not text:
             return []
         
+        # 디버그 로그 초기화
+        debug_log = {
+            'timestamp': datetime.now().isoformat(),
+            'input_text_length': len(text),
+            'input_text_preview': text[:500] + ('...' if len(text) > 500 else ''),
+            'paragraphs': [],
+            'chunks': [],
+            'statistics': {}
+        }
+        
         # 전체 토큰 수 계산
         total_tokens = len(self.tokenizer.encode(text))
         logger.info(f"전체 텍스트 토큰 수: {total_tokens}")
+        debug_log['statistics']['total_tokens'] = total_tokens
         
         # 최소 크기 이하면 그대로 반환
         if total_tokens <= self.min_tokens_per_chunk:
             logger.warning(f"텍스트가 최소 크기 이하: {total_tokens} < {self.min_tokens_per_chunk}")
+            self._save_chunking_debug_log(debug_log, [text])
             return [text]
         
         # 목표 크기 이하면 그대로 반환
         if total_tokens <= self.target_tokens_per_chunk:
+            self._save_chunking_debug_log(debug_log, [text])
             return [text]
         
         # 1단계: 단락으로 분할 (구조 인식)
@@ -352,7 +374,18 @@ class DocumentPreprocessingService:
         
         if not paragraphs:
             # 단락 분할 실패 시 문장 단위로 폴백
-            return self._chunk_by_sentences(text)
+            result = self._chunk_by_sentences(text)
+            self._save_chunking_debug_log(debug_log, result)
+            return result
+        
+        # 단락 정보 저장
+        for i, para in enumerate(paragraphs):
+            debug_log['paragraphs'].append({
+                'index': i,
+                'text_preview': para['text'][:200] + ('...' if len(para['text']) > 200 else ''),
+                'token_count': para['token_count'],
+                'is_heading': para['is_heading']
+            })
         
         # 2단계: 단락 기반 청킹
         chunks = []
@@ -437,6 +470,10 @@ class DocumentPreprocessingService:
         
         avg_tokens = sum(len(self.tokenizer.encode(c)) for c in validated_chunks) // len(validated_chunks) if validated_chunks else 0
         logger.info(f"단락 기반 청킹 완료: {len(validated_chunks)}개 청크 (평균 {avg_tokens} 토큰)")
+        
+        # 최종 청크 정보 저장
+        self._save_chunking_debug_log(debug_log, validated_chunks)
+        
         return validated_chunks
     
     def _split_paragraph_to_chunks(self, paragraph: str) -> List[str]:
@@ -615,6 +652,112 @@ class DocumentPreprocessingService:
             sentences = [text.strip()]
         
         return sentences
+    
+    def _save_chunking_debug_log(self, debug_log: Dict[str, Any], chunks: List[str]) -> None:
+        """청킹 결과를 파일로 저장 (디버그 모드일 때만)"""
+        if not self.chunking_debug:
+            return
+        
+        try:
+            # 청크 상세 정보 추가
+            for i, chunk in enumerate(chunks):
+                chunk_tokens = len(self.tokenizer.encode(chunk))
+                chunk_chars = len(chunk)
+                
+                # 청크에서 제목/키워드 추출 (간단 분석)
+                lines = chunk.split('\n')
+                first_line = lines[0][:100] if lines else ''
+                
+                debug_log['chunks'].append({
+                    'chunk_index': i,
+                    'char_count': chunk_chars,
+                    'token_count': chunk_tokens,
+                    'first_line': first_line,
+                    'line_count': len(lines),
+                    'has_heading': bool(re.search(r'^#{1,6}\s|^\d+\.|\*\*.*\*\*', chunk)),
+                    'full_text': chunk
+                })
+            
+            # 통계 정보 추가
+            if chunks:
+                token_counts = [len(self.tokenizer.encode(c)) for c in chunks]
+                debug_log['statistics'].update({
+                    'total_chunks': len(chunks),
+                    'avg_tokens_per_chunk': sum(token_counts) // len(token_counts),
+                    'min_tokens': min(token_counts),
+                    'max_tokens': max(token_counts),
+                    'total_output_tokens': sum(token_counts),
+                    'chunk_size_distribution': {
+                        'small (<500)': sum(1 for t in token_counts if t < 500),
+                        'medium (500-2000)': sum(1 for t in token_counts if 500 <= t < 2000),
+                        'large (2000-4000)': sum(1 for t in token_counts if 2000 <= t < 4000),
+                        'xlarge (>=4000)': sum(1 for t in token_counts if t >= 4000)
+                    }
+                })
+            
+            # 파일로 저장 (타임스탬프 포함)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+            log_file = self.chunking_log_dir / f'chunking_{timestamp}.json'
+            
+            with open(log_file, 'w', encoding='utf-8') as f:
+                json.dump(debug_log, f, ensure_ascii=False, indent=2)
+            
+            # 사람이 읽기 쉬운 텍스트 버전도 저장
+            txt_file = self.chunking_log_dir / f'chunking_{timestamp}.txt'
+            with open(txt_file, 'w', encoding='utf-8') as f:
+                f.write("=" * 80 + "\n")
+                f.write(f"청킹 분석 결과 - {debug_log['timestamp']}\n")
+                f.write("=" * 80 + "\n\n")
+                
+                f.write("[입력 정보]\n")
+                f.write(f"- 전체 길이: {debug_log['input_text_length']:,}자\n")
+                f.write(f"- 전체 토큰: {debug_log['statistics'].get('total_tokens', 0):,}개\n\n")
+                
+                f.write("[단락 분할]\n")
+                f.write(f"- 단락 수: {len(debug_log.get('paragraphs', []))}\n")
+                for para in debug_log.get('paragraphs', [])[:10]:  # 처음 10개만
+                    f.write(f"  #{para['index']}: {para['token_count']}토큰, "
+                           f"제목={para['is_heading']}\n")
+                    f.write(f"    {para['text_preview']}\n\n")
+                
+                if len(debug_log.get('paragraphs', [])) > 10:
+                    f.write(f"  ... 외 {len(debug_log['paragraphs']) - 10}개 단락\n\n")
+                
+                f.write("[청킹 결과]\n")
+                stats = debug_log['statistics']
+                f.write(f"- 총 청크 수: {stats.get('total_chunks', 0)}\n")
+                f.write(f"- 평균 토큰: {stats.get('avg_tokens_per_chunk', 0)}\n")
+                f.write(f"- 토큰 범위: {stats.get('min_tokens', 0)} ~ {stats.get('max_tokens', 0)}\n")
+                f.write(f"- 총 출력 토큰: {stats.get('total_output_tokens', 0):,}\n\n")
+                
+                f.write("[청크 크기 분포]\n")
+                dist = stats.get('chunk_size_distribution', {})
+                f.write(f"- 작음 (<500토큰): {dist.get('small (<500)', 0)}개\n")
+                f.write(f"- 중간 (500-2000토큰): {dist.get('medium (500-2000)', 0)}개\n")
+                f.write(f"- 큼 (2000-4000토큰): {dist.get('large (2000-4000)', 0)}개\n")
+                f.write(f"- 매우큼 (>=4000토큰): {dist.get('xlarge (>=4000)', 0)}개\n\n")
+                
+                f.write("=" * 80 + "\n")
+                f.write("[상세 청크 내용]\n")
+                f.write("=" * 80 + "\n\n")
+                
+                for chunk_info in debug_log['chunks']:
+                    f.write(f"\n{'='*80}\n")
+                    f.write(f"청크 #{chunk_info['chunk_index'] + 1}\n")
+                    f.write(f"{'='*80}\n")
+                    f.write(f"길이: {chunk_info['char_count']}자 / {chunk_info['token_count']}토큰\n")
+                    f.write(f"줄 수: {chunk_info['line_count']}\n")
+                    f.write(f"제목 포함: {'예' if chunk_info['has_heading'] else '아니오'}\n")
+                    f.write(f"첫 줄: {chunk_info['first_line']}\n")
+                    f.write(f"\n[전체 내용]\n")
+                    f.write("-" * 80 + "\n")
+                    f.write(chunk_info['full_text'])
+                    f.write("\n" + "-" * 80 + "\n")
+            
+            logger.info(f"📝 청킹 디버그 로그 저장: {log_file.name}")
+            
+        except Exception as e:
+            logger.error(f"청킹 디버그 로그 저장 실패: {e}")
     
     def _create_chunk_metadata(
         self, 

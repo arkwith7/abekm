@@ -8,7 +8,7 @@
 - References 섹션 파싱
 - 수식 추출 (옵션)
 """
-from typing import Dict, Any
+from typing import Dict, Any, Callable, Optional
 import logging
 import json
 from datetime import datetime
@@ -51,6 +51,53 @@ class AcademicPaperPipeline(GeneralPipeline):
         logger.info(f"   📖 References 파싱: {self.parse_references}")
         logger.info(f"   🔢 수식 추출: {self.extract_equations}")
         logger.info(f"   ⭐ 우선 섹션: {self.priority_sections}")
+
+    def _get_storage_adapter(
+        self,
+    ) -> tuple[str, Optional[Callable[[str], str]], Optional[Callable[[str, bytes, str], None]]]:
+        """스토리지 백엔드별 텍스트 다운로드/업로드 헬퍼"""
+        from app.core.config import settings
+
+        backend = getattr(settings, 'storage_backend', 's3').lower()
+
+        if backend == 'azure_blob':
+            from app.services.core.azure_blob_service import get_azure_blob_service
+
+            blob_service = get_azure_blob_service()
+
+            def download_text(key: str) -> str:
+                return blob_service.download_text(key, purpose='intermediate')
+
+            def upload_bytes(key: str, data: bytes, content_type: str = 'text/plain; charset=utf-8') -> None:
+                blob_service.upload_bytes(data, key, purpose='intermediate')
+
+            return backend, download_text, upload_bytes
+
+        if backend == 's3':
+            from app.services.core.aws_service import S3Service
+
+            s3_service = S3Service()
+
+            def download_text(key: str) -> str:
+                # S3에서는 intermediate/ prefix가 자동으로 붙으므로 추가
+                full_key = f"intermediate/{key}" if not key.startswith('intermediate/') else key
+                return s3_service.download_text(full_key)
+
+            def upload_bytes(key: str, data: bytes, content_type: str = 'text/plain; charset=utf-8') -> None:
+                # upload_bytes는 이미 purpose='intermediate'로 호출되므로 prefix 자동 추가됨
+                full_key = f"intermediate/{key}" if not key.startswith('intermediate/') else key
+                put_params = {
+                    'Bucket': s3_service.bucket_name,
+                    'Key': full_key,
+                    'Body': data
+                }
+                if content_type:
+                    put_params['ContentType'] = content_type
+                s3_service.s3_client.put_object(**put_params)
+
+            return backend, download_text, upload_bytes
+
+        return backend, None, None
     
     async def process(self) -> Dict[str, Any]:
         """멀티모달 파이프라인 + 학술논문 섹션 감지"""
@@ -85,18 +132,21 @@ class AcademicPaperPipeline(GeneralPipeline):
         return result
     
     async def _detect_and_save_sections(self):
-        """추출된 텍스트에서 섹션 감지"""
-        # Blob에서 전체 텍스트 로드
+        """추출된 텍스트에서 섹션 감지 (동적 스토리지 백엔드)"""
+        # 스토리지 백엔드에서 전체 텍스트 로드
         try:
-            from app.services.core.azure_blob_service import get_azure_blob_service
-            blob_service = get_azure_blob_service()
-            
-            # extraction_full_text.txt 다운로드
-            blob_path = f"multimodal/{self.document_id}/extraction_full_text.txt"
-            full_text = blob_service.download_text(
-                blob_path=blob_path,
-                purpose='intermediate'
-            )
+            storage_backend, download_text, upload_bytes = self._get_storage_adapter()
+            blob_key = f"multimodal/{self.document_id}/extraction_full_text.txt"
+
+            if not download_text:
+                logger.warning(f"[SECTION-DETECT] 지원되지 않는 스토리지 백엔드: {storage_backend}")
+                return
+
+            try:
+                full_text = download_text(blob_key)
+            except Exception as exc:
+                logger.error(f"[SECTION-DETECT] 전체 텍스트 다운로드 실패 ({storage_backend}): {exc}")
+                return
             
             if not full_text:
                 logger.warning("[SECTION-DETECT] 전체 텍스트를 찾을 수 없음")
@@ -124,12 +174,15 @@ class AcademicPaperPipeline(GeneralPipeline):
                     "summary": summary,
                     "detected_at": datetime.now().isoformat()
                 }
-                blob_service.upload_bytes(
-                    data=json.dumps(sections_data, ensure_ascii=False, indent=2).encode("utf-8"),
-                    blob_path=sections_blob_path,
-                    purpose='intermediate'
-                )
-                logger.info(f"[SECTION-DETECT] 섹션 정보 저장: {sections_blob_path}")
+                if upload_bytes:
+                    upload_bytes(
+                        sections_blob_path,
+                        json.dumps(sections_data, ensure_ascii=False, indent=2).encode("utf-8"),
+                        content_type='application/json; charset=utf-8'
+                    )
+                    logger.info(f"[SECTION-DETECT] 섹션 정보 저장({storage_backend}): {sections_blob_path}")
+                else:
+                    logger.warning("[SECTION-DETECT] 업로드 헬퍼가 없어 섹션 정보를 저장하지 못함")
 
                 # 학술 논문 서지정보 최소 upsert (제목/초록/DOI/연도)
                 try:
@@ -169,15 +222,13 @@ class AcademicPaperPipeline(GeneralPipeline):
         섹션 감지가 이미 완료된 경우 서지정보만 upsert
         """
         try:
-            from app.services.core.azure_blob_service import get_azure_blob_service
-            blob_service = get_azure_blob_service()
-            
-            # 전체 텍스트 로드
+            storage_backend, download_text, _ = self._get_storage_adapter()
+            if not download_text:
+                logger.warning(f"[BIBLIO-ONLY] 지원되지 않는 스토리지 백엔드: {storage_backend}")
+                return
+
             blob_path = f"multimodal/{self.document_id}/extraction_full_text.txt"
-            full_text = blob_service.download_text(
-                blob_path=blob_path,
-                purpose='intermediate'
-            )
+            full_text = download_text(blob_path)
             
             if not full_text:
                 logger.warning("[BIBLIO-ONLY] 전체 텍스트를 찾을 수 없음")
@@ -186,7 +237,7 @@ class AcademicPaperPipeline(GeneralPipeline):
             # 섹션 정보 로드 (있다면)
             sections_blob_path = f"multimodal/{self.document_id}/sections.json"
             try:
-                sections_json = blob_service.download_text(sections_blob_path, purpose='intermediate')
+                sections_json = download_text(sections_blob_path)
                 sections_data = json.loads(sections_json) if sections_json else {}
                 # 전체 sections_data를 전달 (sections 배열과 summary 모두 포함)
             except Exception as e:
