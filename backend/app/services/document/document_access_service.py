@@ -24,6 +24,7 @@ from app.models.document.document_access import (
     RuleType,
     PermissionLevel
 )
+from app.services.auth.permission_service import PermissionService
 
 logger = logging.getLogger(__name__)
 
@@ -316,6 +317,10 @@ class DocumentAccessService:
             # 사용자 부서 조회
             user_dept = await self._get_user_department(user_emp_no)
             
+            # 지식관리자 관리 범위 조회
+            permission_service = PermissionService(self.db)
+            managed_container_ids = await permission_service.get_managed_container_ids(user_emp_no)
+            
             # 기본 쿼리: 파일 정보 + 접근 규칙 조인
             query = select(
                 TbFileBssInfo,
@@ -357,7 +362,12 @@ class DocumentAccessService:
                     TbDocumentAccessRules.access_level == AccessLevel.RESTRICTED,
                     TbDocumentAccessRules.rule_type == RuleType.DEPARTMENT,
                     TbDocumentAccessRules.target_id == user_dept
-                ) if user_dept else False
+                ) if user_dept else False,
+                # PRIVATE - 관리자 (관리 범위 내 컨테이너)
+                and_(
+                    TbDocumentAccessRules.access_level == AccessLevel.PRIVATE,
+                    TbFileBssInfo.knowledge_container_id.in_(managed_container_ids)
+                ) if managed_container_ids else False
             )
             
             query = query.where(access_conditions)

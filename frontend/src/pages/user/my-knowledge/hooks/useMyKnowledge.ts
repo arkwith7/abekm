@@ -199,8 +199,25 @@ export const useMyKnowledge = () => {
       if (response.success) {
         console.log('✅ 컨테이너 생성 성공:', response.container_id);
 
-        // 컨테이너 목록 새로고침
-        await loadInitialData();
+        // 🔄 컨테이너 목록 강제 새로고침 (loadInitialData 대신 직접 호출하여 사이드이펙트 방지)
+        console.log('🔄 컨테이너 목록 새로고침 시작...');
+        const containerResponse = await getFullContainerHierarchy();
+
+        if (containerResponse?.success && containerResponse.containers) {
+          const mapToKnowledgeContainer = (node: any): KnowledgeContainer => ({
+            id: node.id,
+            name: node.name,
+            path: node.org_path || `/${node.id}`,
+            parent_id: node.parent_id,
+            permission: node.permission || 'NONE',
+            document_count: node.document_count || 0,
+            children: node.children ? node.children.map(mapToKnowledgeContainer) : [],
+          });
+
+          const updatedContainers = containerResponse.containers.map(mapToKnowledgeContainer);
+          setContainers(updatedContainers);
+          console.log('✅ 컨테이너 목록 업데이트 완료');
+        }
 
         // 🎯 생성된 컨테이너로 자동 이동
         setSelectedContainerId(response.container_id);
@@ -220,6 +237,13 @@ export const useMyKnowledge = () => {
             return newSet;
           });
         }
+
+        // 🔄 생성된 컨테이너로 전환하면 useEffect가 자동으로 문서 로드
+        console.log('📄 새 컨테이너로 전환:', response.container_id);
+        // 로딩 플래그 초기화하여 useEffect가 정상 작동하도록
+        setTimeout(() => {
+          loadingDocsRef.current = false;
+        }, 100);
 
         return response;
       } else {
@@ -248,29 +272,73 @@ export const useMyKnowledge = () => {
       if (response.success) {
         console.log('✅ 컨테이너 삭제 성공');
 
-        // 컨테이너 목록 새로고침
-        await loadInitialData();
-
-        // 🎯 삭제된 컨테이너가 선택된 상태라면 부모 컨테이너로 이동
-        if (selectedContainerId === containerId && parentContainerId) {
-          setSelectedContainerId(parentContainerId);
-          console.log('📍 포커스 이동:', parentContainerId);
-
-          // 📂 부모 컨테이너까지의 전체 경로를 확장
-          const pathToParent = findPathToContainer(parentContainerId);
-          console.log('📍 확장할 경로:', pathToParent);
-
-          setExpandedContainers(prev => {
-            const newSet = new Set(prev);
-            // 부모 컨테이너 추가
-            newSet.add(parentContainerId);
-            // 조상 컨테이너들 모두 추가
-            pathToParent.forEach(ancestorId => newSet.add(ancestorId));
-            return newSet;
+        // 🔄 컨테이너 목록 강제 새로고침
+        console.log('🔄 컨테이너 목록 새로고침 시작...');
+        const containerResponse = await getFullContainerHierarchy();
+        if (containerResponse?.success && containerResponse.containers) {
+          const mapToKnowledgeContainer = (node: any): KnowledgeContainer => ({
+            id: node.id,
+            name: node.name,
+            path: node.org_path || `/${node.id}`,
+            parent_id: node.parent_id,
+            permission: node.permission || 'NONE',
+            document_count: node.document_count || 0,
+            children: node.children ? node.children.map(mapToKnowledgeContainer) : [],
           });
-        } else if (selectedContainerId === containerId && !parentContainerId) {
-          // 최상위 컨테이너 삭제 시 선택 해제
-          setSelectedContainerId(null);
+
+          const updatedContainers = containerResponse.containers.map(mapToKnowledgeContainer);
+          setContainers(updatedContainers);
+          console.log('✅ 컨테이너 목록 업데이트 완료');
+        }
+
+        // 🎯 삭제된 컨테이너가 선택된 상태였다면 부모로 이동
+        if (selectedContainerId === containerId) {
+          if (parentContainerId) {
+            // 부모 컨테이너로 포커스 이동
+            console.log('📍 부모 컨테이너로 포커스 이동:', parentContainerId);
+            setSelectedContainerId(parentContainerId);
+
+            // 📂 부모 컨테이너까지의 전체 경로를 확장
+            const pathToParent = findPathToContainer(parentContainerId);
+            console.log('📍 확장할 경로:', pathToParent);
+
+            setExpandedContainers(prev => {
+              const newSet = new Set(prev);
+              newSet.add(parentContainerId);
+              pathToParent.forEach(ancestorId => newSet.add(ancestorId));
+              return newSet;
+            });
+
+            // 🔄 부모 컨테이너의 문서 목록 즉시 로드
+            console.log('📄 부모 컨테이너의 문서 목록 로드 시작:', parentContainerId);
+            try {
+              const docs = await getMyDocuments({
+                skip: 0,
+                limit: itemsPerPage,
+                container_id: parentContainerId
+              });
+              const documentsWithStatus = docs.documents.map((doc: Document) => ({
+                ...doc,
+                status: 'completed' as const
+              }));
+              setDocuments(documentsWithStatus);
+              setTotalItems(docs.total);
+              setHasNext(docs.has_next);
+              setHasPrevious(docs.has_previous);
+              setCurrentPage(1);
+              console.log('✅ 부모 컨테이너의 문서 목록 로드 완료:', docs.total, '개');
+            } catch (error) {
+              console.error('❌ 부모 컨테이너의 문서 목록 로드 실패:', error);
+              setDocuments([]);
+              setTotalItems(0);
+            }
+          } else {
+            // 최상위 컨테이너 삭제 시 선택 해제
+            console.log('📍 최상위 컨테이너 삭제 - 선택 해제');
+            setSelectedContainerId(null);
+            setDocuments([]);
+            setTotalItems(0);
+          }
         }
 
         return response;

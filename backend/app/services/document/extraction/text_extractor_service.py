@@ -436,17 +436,26 @@ class TextExtractorService:
                 table_count += 1
                 table_text = f"\n[표 {table_count}]\n"
                 table_rows = []
-                table_cells = []  # 2D 셀 구조 (중복 저장 가능하나 검색/구조 확장 용도)
-                for row in table.rows:
+                table_cells = []  # 멀티모달 서비스 호환을 위한 평탄화된 셀 구조 (List[Dict])
+                
+                for r_idx, row in enumerate(table.rows):
                     row_cell_texts = []
-                    for cell in row.cells:
+                    for c_idx, cell in enumerate(row.cells):
                         ctext = cell.text.strip() if cell.text else ""
                         row_cell_texts.append(ctext)
+                        
+                        # 멀티모달 서비스 호환 포맷 (row_index, column_index, content)
+                        table_cells.append({
+                            "row_index": r_idx,
+                            "column_index": c_idx,
+                            "content": ctext
+                        })
+                        
                     row_text = " | ".join(row_cell_texts)
                     if row_text.strip():
                         table_text += row_text + "\n"
                     table_rows.append(row_text)
-                    table_cells.append(row_cell_texts)
+                    
                 text_content += table_text
                 
                 tables_data.append({

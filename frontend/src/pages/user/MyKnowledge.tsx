@@ -6,12 +6,13 @@ import { useSelectedDocuments, useWorkContext } from '../../contexts/GlobalAppCo
 import { Document } from '../../contexts/types';
 import { createPermissionRequest } from '../../services/permissionRequestService';
 import ContainerCreateModal from './my-knowledge/components/ContainerCreateModal';
+import DocumentAccessModal from './my-knowledge/components/DocumentAccessModal';
 import KnowledgeContainerTree from './my-knowledge/components/KnowledgeContainerTree';
 import KnowledgeEditModal from './my-knowledge/components/KnowledgeEditModal';
 import KnowledgeList from './my-knowledge/components/KnowledgeList';
 import KnowledgeUploadModal from './my-knowledge/components/KnowledgeUploadModal';
 import KnowledgeViewModal from './my-knowledge/components/KnowledgeViewModal';
-import { useMyKnowledge } from './my-knowledge/hooks/useMyKnowledge';
+import { ExtendedDocument, useMyKnowledge } from './my-knowledge/hooks/useMyKnowledge';
 
 const MyKnowledge: React.FC = () => {
   // 권한 요청 모달 상태
@@ -23,6 +24,10 @@ const MyKnowledge: React.FC = () => {
   // 🆕 컨테이너 생성/삭제 모달 상태
   const [showContainerCreateModal, setShowContainerCreateModal] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
+
+  // 🆕 문서 접근 권한 설정 모달 상태
+  const [showAccessModal, setShowAccessModal] = useState(false);
+  const [accessControlDocument, setAccessControlDocument] = useState<ExtendedDocument | null>(null);
 
   // 글로벌 상태 hooks
   const {
@@ -368,6 +373,10 @@ const MyKnowledge: React.FC = () => {
                 onPageChange={handlePageChange}
                 onItemsPerPageChange={handleItemsPerPageChange}
                 isLoadingDocuments={isLoadingDocuments}
+                onAccessControl={(doc) => {
+                  setAccessControlDocument(doc);
+                  setShowAccessModal(true);
+                }}
               />
             )}
           </div>
@@ -487,6 +496,22 @@ const MyKnowledge: React.FC = () => {
         onSubmit={handleContainerCreate}
         parentContainerName={selectedContainer?.name}
       />
+
+      {/* 🆕 문서 접근 권한 설정 모달 */}
+      {showAccessModal && accessControlDocument && (
+        <DocumentAccessModal
+          documentId={accessControlDocument.id}
+          documentName={accessControlDocument.title}
+          onClose={() => {
+            setShowAccessModal(false);
+            setAccessControlDocument(null);
+          }}
+          onSuccess={() => {
+            // 문서 목록 새로고침은 필요 없음 (권한 변경이 즉시 반영되지 않아도 됨)
+            // 필요시 여기서 문서 목록 재조회 로직 추가
+          }}
+        />
+      )}
     </div>
   );
 };

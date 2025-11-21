@@ -24,21 +24,21 @@ let apiBaseUrl: string | null = null;
 export const getApiUrl = (): string => {
   if (!apiBaseUrl) {
     apiBaseUrl = getApiBaseUrl();
-    const hasApiUrl = !!process.env.REACT_APP_API_URL;
-    console.log('🔗 API Base URL 설정:', {
-      mode: hasApiUrl ? 'DOCKER (환경변수 사용)' : 'LOCAL (프록시 사용)',
-      apiBaseUrl: hasApiUrl ? apiBaseUrl : '(프록시: /api → localhost)',
-      reactAppApiUrl: process.env.REACT_APP_API_URL,
-      actualRequests: hasApiUrl ? (apiBaseUrl + '/v1/...') : '/api/v1/...'
-    });
+    // 필요시 주석 해제하여 디버깅
+    // const hasApiUrl = !!process.env.REACT_APP_API_URL;
+    // console.log('🔗 API Base URL 설정:', {
+    //   mode: hasApiUrl ? 'DOCKER (환경변수 사용)' : 'LOCAL (프록시 사용)',
+    //   apiBaseUrl: hasApiUrl ? apiBaseUrl : '(프록시: /api → localhost)',
+    //   actualRequests: hasApiUrl ? (apiBaseUrl + '/v1/...') : '/api/v1/...'
+    // });
   }
   return apiBaseUrl;
 };
 
-// 개발 환경에서 디버깅용
-console.log('🔧 API 설정:', {
-  nodeEnv: process.env.NODE_ENV,
-  reactAppApiUrl: process.env.REACT_APP_API_URL,
-  computed_api_url: getApiBaseUrl(),
-  proxy_path: '/api'
-});
+// 개발 환경에서 디버깅용 (필요시 주석 해제)
+// console.log('🔧 API 설정:', {
+//   nodeEnv: process.env.NODE_ENV,
+//   reactAppApiUrl: process.env.REACT_APP_API_URL,
+//   computed_api_url: getApiBaseUrl(),
+//   proxy_path: '/api'
+// });

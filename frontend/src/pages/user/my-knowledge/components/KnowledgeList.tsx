@@ -3,12 +3,12 @@ import {
   CheckCircle,
   Clock,
   Download,
-  Edit,
   Eye,
   Filter,
   Grid,
   List,
   Search,
+  Shield,
   Trash2,
   Upload
 } from 'lucide-react';
@@ -43,6 +43,7 @@ interface KnowledgeListProps {
   onFileView?: (document: ExtendedDocument) => void;
   onBulkDelete: () => void;
   onUploadClick?: () => void;
+  onAccessControl?: (document: ExtendedDocument) => void;
   searchTerm: string;
   onSearchChange: (term: string) => void;
   filterStatus: DocumentStatus | 'all';
@@ -88,6 +89,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
   onFileView,
   onBulkDelete,
   onUploadClick,
+  onAccessControl,
   searchTerm,
   onSearchChange,
   filterStatus,
@@ -487,6 +489,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                             >
                               <Eye className="w-4 h-4" />
                             </button>
+                            {/* 편집 기능 비활성화 (백엔드 미구현)
                             <button
                               onClick={() => onEdit(document)}
                               className="text-blue-600 hover:text-blue-900 transition-colors"
@@ -494,12 +497,20 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                             >
                               <Edit className="w-4 h-4" />
                             </button>
+                            */}
                             <button
                               onClick={() => onDownload(document)}
                               className="text-green-600 hover:text-green-900 transition-colors"
                               title="다운로드"
                             >
                               <Download className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => onAccessControl?.(document)}
+                              className="text-blue-600 hover:text-blue-900 transition-colors"
+                              title="접근 권한 설정"
+                            >
+                              <Shield className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => onDelete(document.id)}
@@ -598,6 +609,15 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                       {formatDate(document.created_at || '')}
                     </span>
                     <div className="flex space-x-1">
+                      {onAccessControl && mapProcessingStatus(document.processing_status) === 'completed' && (
+                        <button
+                          onClick={() => onAccessControl(document)}
+                          className="text-blue-600 hover:text-blue-900 transition-colors"
+                          title="접근 권한 설정"
+                        >
+                          <Shield className="w-4 h-4" />
+                        </button>
+                      )}
                       {mapProcessingStatus(document.processing_status) === 'completed' && (
                         <>
                           <button
@@ -607,6 +627,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                           >
                             <Eye className="w-4 h-4" />
                           </button>
+                          {/* 편집 기능 비활성화 (백엔드 미구현)
                           <button
                             onClick={() => onEdit(document)}
                             className="p-1 text-blue-600 hover:text-blue-900 transition-colors"
@@ -614,6 +635,7 @@ const KnowledgeList: React.FC<KnowledgeListProps> = ({
                           >
                             <Edit className="w-4 h-4" />
                           </button>
+                          */}
                           <button
                             onClick={() => onDownload(document)}
                             className="p-1 text-green-600 hover:text-green-900 transition-colors"

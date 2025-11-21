@@ -2,7 +2,7 @@ import { CalendarClock, Clock, FileText, History, MessageSquare, PlusCircle, Ref
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGlobalApp } from '../../../contexts/GlobalAppContext';
-import { useSidebar } from '../../../contexts/SidebarContext';
+// import { useSidebar } from '../../../contexts/SidebarContext';
 import { getRecentChatSessions } from '../../../services/dashboardService';
 import type { ChatHistory } from '../../../types/dashboard.types';
 
@@ -95,8 +95,8 @@ const PAGE_SIZE = 10;
 
 const ChatHistoryPage: React.FC = () => {
     const navigate = useNavigate();
-    const { isOpen: isSidebarOpen } = useSidebar();
-    const [contentOffset, setContentOffset] = useState(0);
+    // const { isOpen: isSidebarOpen } = useSidebar(); // 사이드바 상태 의존성 제거
+    // const [contentOffset, setContentOffset] = useState(0); // 불필요한 오프셋 상태 제거
 
     // 🆕 글로벌 상태에서 저장된 상태 복원
     const { state: globalState, actions } = useGlobalApp();
@@ -112,6 +112,7 @@ const ChatHistoryPage: React.FC = () => {
     const [autoLoadEnabled, setAutoLoadEnabled] = useState(false);
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+    /* 불필요한 리사이즈 핸들러 제거
     useEffect(() => {
         const handleResize = () => {
             if (typeof window === 'undefined') return;
@@ -126,6 +127,7 @@ const ChatHistoryPage: React.FC = () => {
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, [isSidebarOpen]);
+    */
 
     const loadFirstPage = async () => {
         setAutoLoadEnabled(false);
@@ -275,7 +277,7 @@ const ChatHistoryPage: React.FC = () => {
         <div className="min-h-full bg-gradient-to-br from-slate-50 via-white to-slate-100">
             <div
                 className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8"
-                style={{ paddingLeft: contentOffset ? Math.max(contentOffset - 64, 0) : 0 }}
+            // style={{ paddingLeft: contentOffset ? Math.max(contentOffset - 64, 0) : 0 }} // 불필요한 패딩 제거
             >
                 <header className="flex flex-col gap-4 rounded-2xl border border-blue-100 bg-white/90 p-6 shadow-sm md:flex-row md:items-center md:justify-between">
                     <div>

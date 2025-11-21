@@ -118,6 +118,37 @@ class ContainerService:
                 granted_by='SYSTEM'
             )
             
+            # 부모 컨테이너의 관리자에게도 권한 부여
+            if parent_container_id:
+                # 부모 컨테이너의 관리자 조회 (ADMIN, MANAGER, OWNER)
+                parent_managers_query = select(TbUserPermissions).where(
+                    and_(
+                        TbUserPermissions.container_id == parent_container_id,
+                        TbUserPermissions.role_id.in_(['ADMIN', 'MANAGER', 'OWNER']),
+                        TbUserPermissions.is_active == True
+                    )
+                )
+                parent_managers_result = await self.session.execute(parent_managers_query)
+                parent_managers = parent_managers_result.scalars().all()
+                
+                for manager in parent_managers:
+                    # 생성자 본인은 이미 추가됨
+                    if manager.user_emp_no == creator_emp_no:
+                        continue
+                        
+                    # 부모와 동일한 권한 레벨 부여 (OWNER -> ADMIN으로 매핑)
+                    new_permission = manager.role_id
+                    if new_permission == 'OWNER':
+                        new_permission = 'ADMIN'
+                        
+                    await self.permission_service.grant_permission(
+                        grantor_emp_no='SYSTEM',
+                        user_emp_no=manager.user_emp_no,
+                        container_id=container_id,
+                        permission_level=new_permission,
+                        granted_by='SYSTEM'
+                    )
+            
             await self.session.commit()
             
             logger.info(f"컨테이너 생성 완료: {container_id}")

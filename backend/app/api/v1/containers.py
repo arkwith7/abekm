@@ -5,7 +5,7 @@
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, or_, func
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 import logging
@@ -191,11 +191,15 @@ async def get_full_container_hierarchy(
         hierarchy = []
         
         for container in all_containers:
-            # 🔢 실제 문서 개수 조회 (del_yn != 'Y')
+            # 🔢 실제 문서 개수 조회 (del_yn != 'Y' AND processing_status != 'failed')
             doc_count_query = select(func.count(TbFileBssInfo.file_bss_info_sno)).where(
                 and_(
                     TbFileBssInfo.knowledge_container_id == container.container_id,
-                    TbFileBssInfo.del_yn != 'Y'
+                    TbFileBssInfo.del_yn != 'Y',
+                    or_(
+                        TbFileBssInfo.processing_status.is_(None),
+                        TbFileBssInfo.processing_status != 'failed'
+                    )
                 )
             )
             doc_count_result = await db.execute(doc_count_query)

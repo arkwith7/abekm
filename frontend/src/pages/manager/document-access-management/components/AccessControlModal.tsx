@@ -36,9 +36,12 @@ export const AccessControlModal: React.FC<AccessControlModalProps> = ({
     onSuccess
 }) => {
     const [accessLevel, setAccessLevel] = useState<AccessLevel>(document.access_level);
+    const [originalAccessLevel, setOriginalAccessLevel] = useState<AccessLevel>(document.access_level);
     const [rules, setRules] = useState<DocumentAccessRule[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [hasChanges, setHasChanges] = useState(false);
 
     // RESTRICTED 규칙 추가 폼
     const [showAddRule, setShowAddRule] = useState(false);
@@ -51,14 +54,23 @@ export const AccessControlModal: React.FC<AccessControlModalProps> = ({
 
     // 접근 규칙 로드
     const loadAccessRules = useCallback(async () => {
+        console.log('📥 Loading access rules...');
         try {
             setIsLoading(true);
             const data = await getDocumentAccessRules(document.file_bss_info_sno);
+            console.log('📦 Loaded rules:', data);
             setRules(data);
 
             // 현재 접근 레벨 업데이트
             if (data.length > 0) {
-                setAccessLevel(data[0].access_level);
+                const backendLevel = data[0].access_level;
+                console.log('🔍 Backend access level:', backendLevel);
+
+                // 백엔드 데이터로 업데이트 및 원본 상태 저장
+                setAccessLevel(backendLevel);
+                setOriginalAccessLevel(backendLevel);
+                setHasChanges(false);
+                console.log('✅ Updated state to:', backendLevel);
             }
         } catch (err) {
             console.error('Failed to load access rules:', err);
@@ -66,9 +78,7 @@ export const AccessControlModal: React.FC<AccessControlModalProps> = ({
         } finally {
             setIsLoading(false);
         }
-    }, [document.file_bss_info_sno]);
-
-    useEffect(() => {
+    }, [document.file_bss_info_sno]); useEffect(() => {
         if (isOpen) {
             loadAccessRules();
         }
@@ -98,39 +108,76 @@ export const AccessControlModal: React.FC<AccessControlModalProps> = ({
         }
     };
 
-    // 접근 레벨 변경
-    const handleAccessLevelChange = async (newLevel: AccessLevel) => {
+    // 접근 레벨 변경 (로컬 상태만 변경)
+    const handleAccessLevelChange = (newLevel: AccessLevel) => {
+        console.log('🔘 접근 레벨 로컬 변경:', newLevel);
+        console.log('📊 현재 상태:', accessLevel);
+        setAccessLevel(newLevel);
+        setHasChanges(true);
+        console.log('✅ 로컬 상태 업데이트 완료 (저장 필요)');
+    };
+
+    // 저장 처리 (백엔드 반영)
+    const handleSave = async () => {
+        console.log('💾 접근 권한 저장 시작');
+        console.log('현재 accessLevel:', accessLevel);
+        console.log('원본 accessLevel:', originalAccessLevel);
+
         try {
-            setIsLoading(true);
+            setIsSaving(true);
             setError(null);
 
-            // PUBLIC이나 PRIVATE로 변경하는 경우
-            if (newLevel === 'public' || newLevel === 'private') {
-                // 기존 규칙 모두 삭제
-                await Promise.all(rules.map(rule => deleteDocumentAccessRule(rule.rule_id)));
-
-                // 새 규칙 생성
-                await createDocumentAccessRule(document.file_bss_info_sno, {
-                    access_level: newLevel,
-                    is_inherited: 'N'
-                });
+            // 1. 기존 규칙 모두 삭제
+            if (rules.length > 0) {
+                console.log('🗑️ 기존 규칙 삭제 중:', rules.length, '개');
+                await Promise.all(rules.map(async (rule) => {
+                    try {
+                        await deleteDocumentAccessRule(rule.rule_id);
+                    } catch (e) {
+                        console.warn(`규칙 삭제 실패 (무시): ${rule.rule_id}`, e);
+                    }
+                }));
             }
 
-            setAccessLevel(newLevel);
+            // 2. 새 규칙 생성
+            if (accessLevel !== 'restricted') {
+                // Public 또는 Private
+                console.log('✨ 새 규칙 생성:', accessLevel);
+                await createDocumentAccessRule(document.file_bss_info_sno, {
+                    access_level: accessLevel,
+                    is_inherited: 'N'
+                });
+            } else {
+                // Restricted - 규칙이 없으면 기본 규칙 생성
+                console.log('✨ Restricted 기본 규칙 생성');
+                // Restricted 모드에서는 사용자가 추가한 규칙들이 이미 있음
+                // 규칙이 없으면 에러
+                const restrictedRules = rules.filter(r => r.access_level === 'restricted');
+                if (restrictedRules.length === 0) {
+                    setError('제한 모드에서는 최소 1개 이상의 접근 규칙을 추가해야 합니다.');
+                    return;
+                }
+            }
+
+            console.log('✅ 저장 완료');
+            setHasChanges(false);
+
+            // 규칙 목록 새로고침
             await loadAccessRules();
 
             if (onSuccess) {
                 onSuccess();
             }
-        } catch (err) {
-            console.error('Failed to change access level:', err);
-            setError('접근 레벨 변경에 실패했습니다.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
-    // 규칙 추가
+            // 모달 닫기
+            onClose();
+        } catch (err) {
+            console.error('❌ 저장 실패:', err);
+            setError('접근 권한 저장에 실패했습니다.');
+        } finally {
+            setIsSaving(false);
+        }
+    };    // 규칙 추가
     const handleAddRule = async () => {
         try {
             setIsLoading(true);
@@ -169,6 +216,7 @@ export const AccessControlModal: React.FC<AccessControlModalProps> = ({
             setSelectedTarget('');
             setDepartmentInput('');
             setPermissionLevel('view');
+            setHasChanges(true);
 
             await loadAccessRules();
 
@@ -246,11 +294,15 @@ export const AccessControlModal: React.FC<AccessControlModalProps> = ({
                         </label>
                         <div className="grid grid-cols-3 gap-4">
                             <button
-                                onClick={() => handleAccessLevelChange('public')}
-                                disabled={isLoading}
+                                type="button"
+                                onClick={() => {
+                                    console.log('🔵 공개 버튼 클릭 - 로컬 상태만 변경');
+                                    handleAccessLevelChange('public');
+                                }}
+                                disabled={isLoading || isSaving}
                                 className={`p-4 border-2 rounded-lg text-center transition-colors ${accessLevel === 'public'
-                                        ? 'border-green-500 bg-green-50'
-                                        : 'border-gray-200 hover:border-green-300'
+                                    ? 'border-green-500 bg-green-50'
+                                    : 'border-gray-200 hover:border-green-300'
                                     }`}
                             >
                                 <Globe className={`w-8 h-8 mx-auto mb-2 ${accessLevel === 'public' ? 'text-green-600' : 'text-gray-400'
@@ -260,11 +312,15 @@ export const AccessControlModal: React.FC<AccessControlModalProps> = ({
                             </button>
 
                             <button
-                                onClick={() => handleAccessLevelChange('restricted')}
-                                disabled={isLoading}
+                                type="button"
+                                onClick={() => {
+                                    console.log('🟡 제한 버튼 클릭 - 로컬 상태만 변경 (규칙 추가 패널 표시)');
+                                    handleAccessLevelChange('restricted');
+                                }}
+                                disabled={isLoading || isSaving}
                                 className={`p-4 border-2 rounded-lg text-center transition-colors ${accessLevel === 'restricted'
-                                        ? 'border-yellow-500 bg-yellow-50'
-                                        : 'border-gray-200 hover:border-yellow-300'
+                                    ? 'border-yellow-500 bg-yellow-50'
+                                    : 'border-gray-200 hover:border-yellow-300'
                                     }`}
                             >
                                 <Users className={`w-8 h-8 mx-auto mb-2 ${accessLevel === 'restricted' ? 'text-yellow-600' : 'text-gray-400'
@@ -274,11 +330,15 @@ export const AccessControlModal: React.FC<AccessControlModalProps> = ({
                             </button>
 
                             <button
-                                onClick={() => handleAccessLevelChange('private')}
-                                disabled={isLoading}
+                                type="button"
+                                onClick={() => {
+                                    console.log('🔴 비공개 버튼 클릭 - 로컬 상태만 변경');
+                                    handleAccessLevelChange('private');
+                                }}
+                                disabled={isLoading || isSaving}
                                 className={`p-4 border-2 rounded-lg text-center transition-colors ${accessLevel === 'private'
-                                        ? 'border-red-500 bg-red-50'
-                                        : 'border-gray-200 hover:border-red-300'
+                                    ? 'border-red-500 bg-red-50'
+                                    : 'border-gray-200 hover:border-red-300'
                                     }`}
                             >
                                 <Lock className={`w-8 h-8 mx-auto mb-2 ${accessLevel === 'private' ? 'text-red-600' : 'text-gray-400'
@@ -449,13 +509,37 @@ export const AccessControlModal: React.FC<AccessControlModalProps> = ({
                 </div>
 
                 {/* 푸터 */}
-                <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                    >
-                        닫기
-                    </button>
+                <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+                    <div className="text-sm text-gray-500">
+                        {hasChanges && (
+                            <span className="text-yellow-600 font-medium">
+                                ⚠️ 저장하지 않은 변경사항이 있습니다
+                            </span>
+                        )}
+                    </div>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={onClose}
+                            disabled={isSaving}
+                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                        >
+                            취소
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={isLoading || isSaving || !hasChanges}
+                            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {isSaving ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                    저장 중...
+                                </>
+                            ) : (
+                                '저장'
+                            )}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
