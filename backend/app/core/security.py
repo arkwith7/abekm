@@ -286,3 +286,44 @@ class SecurityUtils:
         
         reset_time = last_failed_attempt + timedelta(hours=24)
         return datetime.now(timezone.utc) > reset_time
+
+
+# WebSocket 인증 헬퍼
+async def get_current_user_ws(token: str, db):
+    """
+    WebSocket 연결용 사용자 인증
+    
+    Args:
+        token: JWT 액세스 토큰
+        db: DB 세션
+    
+    Returns:
+        User 모델 인스턴스
+    
+    Raises:
+        HTTPException: 인증 실패 시
+    """
+    from app.models.user import User
+    
+    try:
+        # 토큰 검증
+        token_data = AuthUtils.verify_token(token)
+        
+        # 사용자 조회
+        user = db.query(User).filter(User.emp_no == token_data.emp_no).first()
+        
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="사용자를 찾을 수 없습니다",
+            )
+        
+        return user
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"인증 실패: {str(e)}",
+        )

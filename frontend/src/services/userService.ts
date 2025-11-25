@@ -840,9 +840,10 @@ export const uploadChatAttachments = async (files: File[]): Promise<UploadedChat
   }));
 };
 
-export const transcribeChatAudio = async (blob: Blob): Promise<{ transcript: string }> => {
+export const transcribeChatAudio = async (blob: Blob, language: string = 'ko-KR'): Promise<{ transcript: string }> => {
   const formData = new FormData();
   formData.append('file', blob, `voice-${Date.now()}.webm`);
+  formData.append('language', language);
 
   const response = await axios.post(`/api/v1/chat/transcribe`, formData, {
     headers: {

@@ -32,10 +32,14 @@ async def get_current_user(
     """
     현재 로그인한 사용자 정보 조회 - 사번 기반
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     user_service = AsyncUserService(db)
     user = await user_service.get_user_by_emp_no(token_data.emp_no)
     
     if user is None:
+        logger.warning(f"🔍 사용자를 찾을 수 없음: emp_no={token_data.emp_no}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="사용자를 찾을 수 없습니다",
@@ -43,11 +47,13 @@ async def get_current_user(
         )
     
     if not user.is_active:
+        logger.warning(f"🚫 비활성 계정: emp_no={user.emp_no}, username={user.username}, is_active={user.is_active}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="비활성화된 계정입니다"
         )
     
+    logger.info(f"✅ 사용자 인증 성공: emp_no={user.emp_no}, username={user.username}")
     return user
 
 async def get_current_active_user(

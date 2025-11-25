@@ -32,53 +32,87 @@ module.exports = function (app) {
     target: target,
     changeOrigin: true,
     secure: false,
-    logLevel: isDebug ? 'debug' : 'info',
+    ws: true, // WebSocket 프록시 활성화 (/api 경로만)
+    logLevel: isDebug ? 'debug' : 'warn', // info → warn (로그 감소)
     timeout: 30000,
     proxyTimeout: 30000,
     onProxyReq: (proxyReq, req, res) => {
-      const fullUrl = target + req.url;
-      console.log('🚀 [PROXY REQUEST]', {
-        method: req.method,
-        originalUrl: req.url,
-        targetUrl: fullUrl,
-        headers: req.headers,
-        timestamp: new Date().toISOString()
-      });
+      // HTTP 요청만 로깅 (WebSocket 제외)
+      if (isDebug) {
+        const fullUrl = target + req.url;
+        console.log('🚀 [PROXY REQUEST]', {
+          method: req.method,
+          originalUrl: req.url,
+          targetUrl: fullUrl,
+          timestamp: new Date().toISOString()
+        });
+      }
+    },
+    onProxyReqWs: (proxyReq, req, socket, options, head) => {
+      // WebSocket 연결 로깅 (디버그 모드에서만)
+      if (isDebug) {
+        console.log('🔌 [WEBSOCKET PROXY]', {
+          url: req.url,
+          target: target + req.url,
+          timestamp: new Date().toISOString()
+        });
+      }
     },
     onProxyRes: (proxyRes, req, res) => {
-      console.log('📥 [PROXY RESPONSE]', {
-        statusCode: proxyRes.statusCode,
-        statusMessage: proxyRes.statusMessage,
-        url: req.url,
-        headers: proxyRes.headers,
-        timestamp: new Date().toISOString()
-      });
+      // HTTP 응답 로깅 (디버그 모드에서만)
+      if (isDebug) {
+        console.log('📥 [PROXY RESPONSE]', {
+          statusCode: proxyRes.statusCode,
+          url: req.url,
+          timestamp: new Date().toISOString()
+        });
+      }
     },
     onError: (err, req, res) => {
-      console.error('❌ [PROXY ERROR]', {
-        message: err.message,
-        code: err.code,
-        url: req.url,
-        target: target,
-        timestamp: new Date().toISOString()
-      });
-
-      // 에러 응답 전송
-      if (!res.headersSent) {
-        res.writeHead(502, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          error: 'Proxy Error',
+      // 에러 로깅 (디버그 모드에서만)
+      if (isDebug) {
+        console.error('❌ [PROXY ERROR]', {
           message: err.message,
-          target: target,
-          url: req.url
-        }));
+          code: err.code,
+          url: req.url,
+          timestamp: new Date().toISOString()
+        });
       }
+
+      // WebSocket 에러는 socket 처리, HTTP 에러는 res 처리
+      if (res && typeof res.writeHead === 'function') {
+        // HTTP 에러 응답
+        if (!res.headersSent) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: 'Proxy Error',
+            message: err.message
+          }));
+        }
+      }
+      // WebSocket 에러는 조용히 무시 (재연결 시도는 클라이언트가 처리)
     }
   });
 
+  // /ws 경로 차단 (HMR WebSocket, 백엔드로 프록시하지 않음)
+  // WebSocket 업그레이드 요청 차단
+  app.use('/ws', (req, res) => {
+    // WebSocket 연결 시도를 바로 거부
+    if (req.headers.upgrade === 'websocket') {
+      console.log('⏭️  [PROXY] /ws WebSocket 연결 거부');
+      res.status(400).send('WebSocket not supported on this path');
+      return;
+    }
+    // 일반 HTTP 요청도 거부
+    res.status(404).send('Not found');
+  });
+
+  // /api 경로만 프록시 적용
   app.use('/api', proxyMiddleware);
 
   console.log('✅ setupProxy.js 설정 완료');
+  console.log('📌 프록시 경로: /api/* -> ' + target);
+  console.log('⏭️  차단 경로: /ws (HMR WebSocket)');
 
   // 테스트용 엔드포인트 추가
   app.use('/debug/proxy', (req, res) => {

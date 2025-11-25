@@ -219,6 +219,7 @@ async def get_dashboard_summary(
     - AI 대화 세션 수
     - 대기중인 권한 요청 수
     """
+    logger.info(f"📊 대시보드 요약 요청 - 사용자: {current_user.username} (사번: {current_user.emp_no})")
     try:
         # 1. 내가 업로드한 문서 개수
         my_documents_result = await db.execute(

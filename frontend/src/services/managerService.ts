@@ -445,15 +445,10 @@ export const getUserPermissions = async (containerId?: string): Promise<UserPerm
 };
 
 export const getTeamMembers = async (): Promise<TeamMember[]> => {
-  try {
-    // TODO: 백엔드에 팀원 목록 API 구현 필요
-    // 임시로 빈 배열 반환
-    // console.warn('getTeamMembers API not implemented yet');
-    return [];
-  } catch (error) {
-    console.error('Failed to get team members:', error);
-    return [];
-  }
+  // TODO: 백엔드에 팀원 목록 API 구현 필요
+  // 임시로 빈 배열 반환
+  // console.warn('getTeamMembers API not implemented yet');
+  return [];
 };
 
 export const updateUserPermissions = async (

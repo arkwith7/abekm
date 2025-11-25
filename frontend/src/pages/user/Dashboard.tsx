@@ -100,8 +100,19 @@ export const UserDashboard: React.FC = () => {
             }
 
             console.log('✅ 대시보드 데이터 로드 완료');
-        } catch (error) {
+        } catch (error: any) {
             console.error('❌ 대시보드 데이터 로드 실패:', error);
+
+            // 403 에러 처리 (권한 없음)
+            if (error?.response?.status === 403) {
+                console.warn('⚠️ 대시보드 접근 권한이 없습니다. 관리자 권한이 필요합니다.');
+                // 기본 데이터로 설정하여 빈 화면 방지
+                setSummary({
+                    my_documents_count: 0,
+                    chat_sessions_count: 0,
+                    pending_requests_count: 0
+                });
+            }
         } finally {
             setIsLoading(false);
             loadingRef.current = false;

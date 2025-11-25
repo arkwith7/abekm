@@ -1,3 +1,306 @@
+# 별첨01. ABEKM 권한 관리 체계 (재구성 v3.4)
+
+문서 버전: v3.4  
+최종 업데이트: 2025-11-21  
+작성팀: WKMS 개발팀  
+이전 버전: v3.3 (섹션 기반 서술) → 관점형 구조로 재편
+
+## 1. 개요
+
+### 1.1 문서 목적
+ABEKM(AI Based Enterprise Knowledge Management)의 권한 관리 체계를 세 가지 핵심 관점(지식 컨테이너 / 문서 접근 권한 / 역할 기반 권한)으로 재구성하여 빠른 정신 모델과 운영·개발 의사결정을 지원합니다.
+
+### 1.2 권한 관리 범위 (3대 관점)
+1. 지식 컨테이너: 계층적 지식 저장소 구조 및 생성/상속/관리 범위
+2. 문서 접근 권한: 단일 문서 Access Level과 대상 기반 규칙(Restricted)
+3. 역할 기반 권한: RBAC 역할→권한 매핑 및 우선순위 결정 로직
+
+### 1.3 조직 데이터 Provider 개념
+벤더(SAP 등)에 종속되지 않도록 인사·조직 정보를 Provider로 일반화합니다.
+
+| 필드 | 설명 | 예시 |
+|------|------|------|
+| emp_no | 사용자 식별자 | MSS001 |
+| emp_nm | 사용자 이름 | 정MS |
+| dept_code | 부서 코드 | MS001 |
+| dept_nm | 부서 이름 | MS서비스팀 |
+| org_path | 조직 경로 | /CEO직속/클라우드본부/MS서비스팀 |
+| position | 직책 | 팀장 |
+
+트리거 유형: 스케줄(정기), 이벤트(웹훅), 수동(API) 병행 가능. 변경(입사/이동/퇴사/조직개편)은 권한 재배치 파이프라인으로 전달됩니다.
+
+### 1.4 빠른 탐색 인덱스
+| 섹션 | 목적 | 핵심 표 | 주요 결정 |
+|------|------|--------|-----------|
+| 2 관점 A | 컨테이너 구조·상속 | 계층 경로 & 생성 규칙 | OWNER/MANAGER 자동 부여 |
+| 3 관점 B | 문서 Access Level | Access Level 3단계 | Restricted 규칙 치환 저장 |
+| 4 관점 C | 역할 & 권한 | 역할→권한 매핑 | 우선순위(직접 > 하향 > 상향 > 역할) |
+| 5 통합 프로세스 | 요청/승인 & 동기화 | 요청 테이블 요약 | 자동 회수·재부여 |
+| 6 운영/거버넌스 | 모니터·감사·수정 | 감사 로그 요소 | 권한 누수 대응 |
+| 7 UI/도구 | 모달·대시보드 | 사용자 vs 관리자 비교 | 단일 vs 다중 규칙 |
+| 8 로드맵 | 향후 개선 | 기능 우선순위 | 트랜잭션·추가 권한 타입 |
+
+## 2. 관점 A: 지식 컨테이너 (Hierarchy & Lifecycle)
+
+### 2.1 계층 구조 모델
+```
+🏢 기업 조직 (ROOT - COMPANY)
+├── 📁 CEO직속 (DIVISION)
+│   ├── 📁 인사전략팀 (DEPARTMENT)
+│   │   ├── 📁 채용팀 (TEAM)
+│   │   │   └── 📄 채용가이드.pdf (DOCUMENT)
+│   │   └── 📁 교육팀
+│   └── 📁 기획팀
+├── 📁 클라우드사업본부
+│   ├── 📁 클라우드서비스팀
+│   └── 📁 MS서비스팀
+└── 📁 CTI사업본부
+    ├── 📁 인프라컨설팅팀
+    └── 📁 Biz운영1팀
+```
+
+### 2.2 핵심 데이터 (요약)
+| 필드 | 의미 | 비고 |
+|------|------|------|
+| container_id | 컨테이너 식별자 | 계층 경로 구성 요소 |
+| parent_container_id | 상위 ID | 루트 NULL |
+| external_org_code | Provider 조직 코드 | 이전 명칭 sap_org_code |
+| hierarchy_level | 깊이 (루트=1) | 탐색 최적화 |
+| hierarchy_path | 루트→현재 경로 | 상속·조회 캐시 키 |
+| container_type | COMPANY/DIVISION/... | 정책 분기 기준 |
+| is_active | 활성 상태 | Y/N |
+
+상속 스캔 성능: `hierarchy_path`를 활용해 상위 체인 캐시 → 반복 DB 탐색 최소화.
+
+### 2.3 생성 & 자동 권한 부여 규칙
+| 단계 | 처리 | 결과 |
+|------|------|------|
+| 컨테이너 생성 | parent 지정, 타입 설정 | 새 ID 발급 |
+| 생성자 권한 | OWNER 자동 부여 | 관리/편집 최우선 |
+| 상위 관리자 권한 | 상위 컨테이너 관리자 → MANAGER 권한 확장 | 관리 범위 하향 확장 |
+| 상향 READ 보장 (예정) | 생성자에게 상위 체인 READ | 상위 문맥 접근 용이 |
+
+예외: PERSONAL 컨테이너 삭제 시 문서 0건 + OWNER 확인 필요.
+
+### 2.4 상속 및 관리 범위 원칙
+| 원칙 | 설명 | 예 |
+|------|------|----|
+| 상향 최소 READ | 하위 관리자 상위 컨테이너 READ | 팀 관리자 → 본부/루트 READ |
+| 하향 관리자 확장 | 특정 컨테이너 MANAGER 권한은 하위 전체에 확장 | 본부 MANAGER → 하위 부서/팀 |
+| 직접 권한 우선 | 직접 부여 > 상속 | MANAGER + READ 충돌 시 MANAGER 유지 |
+
+### 2.5 조직 변경 동기화(Provider)
+사번/부서 이동 이벤트 → 권한 재배치 파이프라인:
+1. 변경 수집 (스케줄/웹훅)
+2. 이전 부서 직접 권한 회수
+3. 새 부서 기본 역할 권한 부여(Read 등)
+4. 개인 생성 자산(소유 문서)은 유지
+5. 감사 로그 기록 + 알림 발송
+
+### 2.6 운영 고려 사항
+- 순환 부모 방지(삽입 시 검증)
+- 대량 조직 개편 시 배치 트랜잭션 필요
+- 비활성 컨테이너 접근 차단(필터 전처리)
+
+## 3. 관점 B: 문서 접근 권한 (Access Levels & Rules)
+
+### 3.1 Access Level 정의
+| 표시 | 내부 값 | 범위 | 저장 형태 | 권한 효과 | 비고 |
+|------|--------|------|----------|-----------|------|
+| 공개 | public | 컨테이너 접근 가능한 전체 사용자 | 단일 레코드 | 조회(검색 결과 포함) | 기본 옵션 |
+| 제한 공개 | restricted | 지정 사용자/부서 집합 | ≥1 레코드(대상별) | 대상별 view/download/edit | 다중 대상 허용(관리자) |
+| 비공개 | private | 소유자 + 관리자 | 단일 레코드 | 일반 사용자 차단 | 감사 접근 허용 |
+
+### 3.2 Restricted 규칙 필드
+| 필드 | 의미 | 예시 | 비고 |
+|------|------|------|------|
+| rule_type | 대상 유형 | user/department | 확장 예정(group) |
+| target_id | 사번 또는 부서명 | MSS001 / MS서비스팀 | 표준화 필요 |
+| permission_level | 세부 권한 | view/download/edit | 추후 comment/external |
+| is_inherited | 상속 여부 | 'N' | 현재 직접 지정만 |
+| created_by/created_date | 감사 추적 | EMP001 / ISO8601 | 로그 기반 정합성 |
+
+### 3.3 업로드 시 초기 정책
+파일 메타데이터 + 권한 정책 동시 제출 → 저장 후 인덱싱 큐 등록.
+오류 조건: 잘못된 scope, 금지 조합(PRIVATE+외부공유), 과거 만료시각.
+
+### 3.4 권한 설정 모달 비교(요약)
+자세한 비교표는 7.1을 참조하세요. 핵심 차이만 요약합니다.
+- 사용자 모달: 단일 Restricted 규칙, 직접 입력 중심, 저장 시 전체 치환
+- 관리자 모달: 다중 규칙(사용자/부서 혼합), 검색 지원, 저장 전 변경 경고 표시
+
+### 3.5 저장 패턴 (원자 치환)
+1. 기존 규칙 조회 → 전체 삭제(무시 가능한 삭제 오류 로깅)
+2. 새 상태 기반 삽입(public/private 단일 / restricted N건)
+3. 최종 조회 동기화 → UI 반영
+장점: 병합 충돌 제거 / 단순 로직 / 감사 명확. 단점: 대량 규칙 시 순간적 공백(트랜잭션 개선 예정).
+
+### 3.6 권한 요청과 문서 접근 연결
+권한 요청 승인 완료 시:
+- 컨테이너 권한 레코드 생성 → 문서 조회 가능
+- 문서 access_level이 private인 경우에도 관리자/소유자 승인 후 Read 허용(직접 권한 우선)
+
+## 4. 관점 C: 역할 기반 권한 (RBAC & Priority)
+
+### 4.1 역할 목록
+| 역할 | 설명 | 대표 권한 범위 | 특수 권한 |
+|------|------|---------------|-----------|
+| SYSTEM_ADMIN | 전사 최고 관리자 | 전체 컨테이너/문서 | 모든 요청 승인, 설정 변경 |
+| ADMIN | 전사 또는 지정 범위 관리자 | 다수 컨테이너 | 역할 부여/회수 |
+| MANAGER | 지정 컨테이너 계층 관리 | 관리 컨테이너 + 하위 | 요청 승인/권한 수정 |
+| OWNER | 생성/소유 단위 최고 권한 | 해당 컨테이너/문서 | 업로드, 편집, 삭제 |
+| EDITOR | 편집자 | 컨테이너 내 문서 편집 | - |
+| VIEWER | 조회자 | 읽기/검색 | - |
+
+### 4.2 역할→권한 매핑 (리소스 유형)
+| role_id | DOCUMENT | CONTAINER | SEARCH | CHAT | 기본 제공 |
+|---------|----------|-----------|--------|------|----------|
+| SYSTEM_ADMIN | read/write/delete/admin | admin | all | all | Y |
+| ADMIN | read/write/admin | admin | all | manage | Y |
+| MANAGER | read/write | manage | scoped | moderate | Y |
+| OWNER | read/write/delete | manage | scoped | moderate | Y |
+| EDITOR | read/write | - | scoped | - | Y |
+| VIEWER | read | - | scoped | - | Y |
+
+### 4.3 권한 평가 우선순위
+1. 직접 권한 (문서/컨테이너 명시)  
+2. 관리자 하향 상속 (MANAGER/OWNER)  
+3. 상향 READ (하위 관리자 → 상위 컨테이너)  
+4. 역할 기본 매핑  
+5. 미충족 시 거부
+
+### 4.4 관리 범위 계산 (요약)
+`get_managed_container_ids(emp_no)`:
+| 단계 | 로직 | 결과 |
+|------|------|------|
+| 시스템 관리자 | SYSTEM_ADMIN 여부 검사 | 전체 조회(빈 필터) |
+| 루트 조회 | 관리자 역할 가진 컨테이너 식별 | root set 구성 |
+| 하향 확장 | 각 root 하위 재귀 수집 | 범위 합집합 |
+| 반환 | 리스트 정렬/중복 제거 | 관리 가능한 ID 목록 |
+
+### 4.5 생성 시 권한 부여 상호작용
+- OWNER 부여 후 MANAGER 하향 확장
+- 상향 READ 예정 기능으로 문맥 탐색성 향상
+
+## 5. 관점 통합 프로세스
+
+### 5.1 권한 요청/승인 워크플로우(요약)
+| 단계 | 설명 | 주체 |
+|------|------|------|
+| 요청 생성 | 접근 실패 후 요청 모달 | 사용자 |
+| 승인자 식별 | 컨테이너 관리자/OWNER | 시스템 |
+| 대기열 표시 | 승인 대기 목록 | 관리자 |
+| 승인/거부 | 권한 레코드 생성 또는 종료 | 관리자 |
+| 결과 통보 | 알림/상태 갱신 | 시스템 |
+
+요청 테이블 주요 필드: requester_emp_no, container_id, requested_permission, justification, request_status(pending/approved/rejected), approver_emp_no, approval_date.
+
+### 5.2 자동 조직 동기화 (이동/퇴사)
+| 이벤트 | 처리 | 결과 |
+|--------|------|------|
+| 부서 이동 | 이전 권한 회수 / 새 부서 기본 권한 부여 | 최소 권한 보장 |
+| 직무 변경 | 역할 재평가 | 역할 업데이트 |
+| 퇴사 | 모든 활성 권한 비활성화 | 접근 차단 |
+
+### 5.3 권한 평가 알고리즘 (통합)
+1. 직접 문서 권한 → 허용 시 종료
+2. 컨테이너 직접 권한 → 허용 시 종료
+3. 상위 체인 상속(inherited) 확인
+4. 역할 기반 매핑 조회
+5. 만료(valid_until) 확인 후 최종 결정
+
+### 5.4 업로드 권한 확인
+허용 레벨: OWNER, ADMIN, MANAGER, EDITOR, CONTRIBUTOR, MEMBER_DEPT  
+검증 실패 시: 현재 권한 레벨 포함한 거부 메시지 반환.
+
+## 6. 운영 및 거버넌스
+
+### 6.1 감사 & 모니터링
+- 변경 로그: 부여자, 이전/현재 상태, 타임스탬프
+- 접근 통계: 문서/사용자별 빈도, 과잉 권한 탐지
+- 최소 권한 원칙 주기 검사
+
+### 6.2 자동화 스크립트 요약
+| 스크립트 | 목적 | 주요 동작 |
+|---------|------|-----------|
+| add_admin_permissions_to_user_containers.py | USER_ 컨테이너 관리 | ADMIN001 권한 존재 여부 확인 후 생성 |
+| check_ms_permissions.py | 특정 팀 권한 정합 | OWNER 권한 교체 + 하위 VIEWER 부여 |
+| fix_chunk_counts.py | 문서 청크 수 정합 | 실제 청크 수 계산 후 0→실값 업데이트 |
+
+### 6.3 성능/정합 개선 사례
+- chunk_count 업데이트 누락 → 파이프라인 완료 시 통계 반영 로직 추가
+- 관계 로딩 None 표기 → selectinload로 N+1 최소화
+- 타입 변환 오류(integer vs string) → 엔드포인트 int 캐스팅 통일
+
+### 6.4 파일 뷰어 & 한글 파일명 처리
+SAS URL 생성 시 blob 경로/헤더 인코딩 불일치 문제 → 파일명 인코딩/쿼리 파라미터 정규화 후 RedirectResponse(307) 적용.
+
+## 7. UI 및 관리 도구
+
+### 7.1 접근 권한 설정 모달 비교
+| 항목 | 사용자 모달 | 관리자 모달 |
+|------|------------|------------|
+| 대상 | 업로더/소유자 | 지식관리자/시스템관리자 |
+| 제한 규칙 | 단일 | 다중(User+Dept 혼합) |
+| 검색 | 직접 사번/부서 입력 | 사용자 검색 API 지원 |
+| 변경 감지 | 없음 | hasChanges 배지 표시 |
+| 에러 처리 | 대상 미입력 알림 | 빈 Restricted 저장 차단 |
+
+### 7.2 권한 요청 화면
+- 사용자 전용: 나의 요청 목록 (필터 status/container/date)
+- 관리자 화면: 승인 대기 / 권한 현황 / 이력 탭
+- 상태 라벨: PENDING/APPROVED/REJECTED/CANCELLED → 로컬라이즈 배지 표시
+
+### 7.3 문서 업로드 권한 설정 UI (요약)
+| 옵션 | 공유 범위 | 자동 권한 대상 | 대표 사용 사례 |
+|------|----------|---------------|---------------|
+| 나만 보기 | PRIVATE | 본인 | 개인 초안 |
+| 팀 공유 | TEAM | 팀 전체 | 팀 업무 문서 |
+| 부서 공유 | DEPARTMENT | 부서 전체 | 부서 정책 |
+| 본부 공유 | DIVISION | 본부 전체 | 가이드라인 |
+| 전사 공유 | COMPANY | 전 직원 | 공통 규정 |
+
+## 8. 향후 개선 로드맵
+| 항목 | 우선순위 | 설명 |
+|------|---------|------|
+| 다중 규칙 트랜잭션 처리 | 높음 | 삭제→삽입 공백 제거, 원자성 확보 |
+| 상향 READ 자동화 구현 | 높음 | 관리자 상위 문맥 접근 표준화 |
+| 부서 자동완성/코드 표준화 | 중간 | Provider 조직 코드 기반 검색 |
+| 새로운 permission_level | 중간 | comment, share_external 등 확장 |
+| 대상 중복 방지 로직 | 중간 | Restricted 중복 레코드 차단 |
+| 변경 이력 UI | 낮음 | 규칙 Diff 타임라인 |
+| 상속 플래그 확장 | 낮음 | 상위 정책 하향 적용 시 시각화 |
+
+## 부록 A. 데이터베이스 테이블 요약
+| 테이블 | 목적 | 핵심 필드 (요약) |
+|--------|------|------------------|
+| tb_knowledge_containers | 컨테이너 계층 | container_id, parent_container_id, external_org_code, hierarchy_path |
+| tb_container_permissions | 컨테이너 권한 | permission_id, container_id, user_id, permission_type, is_inherited |
+| tb_user_roles | 사용자 역할 할당 | role_assignment_id, user_id, role_id, container_id |
+| tb_role_permissions | 역할→권한 정의 | role_permission_id, role_id, permission_type, resource_type |
+| tb_permission_requests | 권한 요청 | request_id, requester_emp_no, container_id, requested_permission, request_status |
+
+## 부록 B. 용어 사전
+| 용어 | 정의 | 구분 |
+|------|------|------|
+| Access Level | 문서 공개 범위(public/restricted/private) | 문서 단위 |
+| permission_level | Restricted 규칙 내부 세부 권한(view/download/edit) | 문서 규칙 |
+| role_id | RBAC 역할 (ADMIN/MANAGER 등) | 사용자-컨테이너 관계 |
+| 직접 권한 | 명시적으로 레코드로 부여된 권한 | 최고 우선 |
+| 상속 권한 | 상위/하위 확장에서 파생된 권한 | is_inherited='Y' |
+| Provider | 조직 데이터 공급자 (SAP/Workday 등) | 외부 연동 |
+
+## 부록 C. 시나리오 요약
+| 시나리오 | 흐름 | 결과 |
+|----------|------|------|
+| 문서 업로드(팀 공유) | 업로더 → 팀 공유 선택 → 저장 | 팀 전체 조회/다운로드 허용 |
+| 권한 요청 승인 | 사용자 요청 → 관리자 검토 → 승인 | 권한 레코드 생성 후 즉시 접근 |
+| 프로젝트 임시 권한 | 임시 컨테이너 생성 → 다양한 부서 참여 → 기간 종료 자동 회수 | 기간 제한 협업 안전성 |
+| 부서 이동 처리 | 이동 이벤트 감지 → 이전 권한 회수 + 새 부서 기본 권한 부여 | 최소 권한 원칙 유지 |
+| 사용자 컨테이너 생성 | 개인 컨테이너 생성 → OWNER 부여 + 시스템 ADMIN 권한 추가 | 개인 지식 공간 확보 |
+
+---
+본 재구성 버전(v3.4)은 기존 단일 흐름 중심 문서를 관점·운영·부록 체계로 재배치하여 탐색성과 유지보수성을 향상시켰습니다. 추가 요구(예: API 상세 부록 분리, 다이어그램 추가)가 있으면 후속 개정에서 반영 가능합니다.
 # 별첨01. ABEKM 권한 관리 체계
 
 ## 1. 개요
@@ -11,7 +314,28 @@
 - **지식 컨테이너**: 계층적 구조의 지식 저장소 권한 관리
 - **문서 접근 권한**: 파일별 세분화된 접근 권한 제어
 - **역할 기반 권한**: 사용자 역할에 따른 체계적 권한 할당
-- **SAP 연동 권한**: 조직도 기반 자동 권한 동기화
+- **조직 데이터 연동 권한**: HR/ERP 조직 데이터(Provider) 기반 자동 동기화
+
+### 1.3 조직 데이터 Provider 개념
+
+본 문서는 특정 벤더(SAP 등)에 종속되지 않도록 조직 데이터 연동을 "Provider"로 일반화합니다.
+
+- 목적: 인사/조직 정보의 변경을 권한 구조에 자동 반영(입사/이동/퇴사, 조직 개편)
+- 예시 Provider: SAP, Workday, Active Directory, CSV/ETL 등
+- 연동 방식: 스케줄러, 웹훅, 수동 트리거(API) 중 택일 또는 병행
+
+Provider 인터페이스(논리 모델):
+
+| 필드 | 설명 | 예시 |
+|------|------|------|
+| `emp_no` | 사용자 식별자 | MSS001 |
+| `emp_nm` | 사용자 이름 | 정MS |
+| `dept_code` | 부서 코드 | MS001 |
+| `dept_nm` | 부서 이름 | MS서비스팀 |
+| `org_path` | 최상위→하위 조직 경로 | /CEO직속/클라우드본부/MS서비스팀 |
+| `position` | 직책/직위 | 팀장 |
+
+트리거 유형: 정기 동기화(스케줄), 이벤트 기반(웹훅), 수동 동기화(API 호출)로 구분합니다.
 
 ## 2. 지식맵 계층 구조
 
@@ -47,64 +371,72 @@
 
 #### 3.1.1 지식 컨테이너 테이블 (tb_knowledge_containers)
 
-```sql
-CREATE TABLE tb_knowledge_containers (
-    container_id VARCHAR(50) PRIMARY KEY,
-    container_name VARCHAR(200) NOT NULL,
-    parent_container_id VARCHAR(50) REFERENCES tb_knowledge_containers(container_id),
-    sap_org_code VARCHAR(20),
-    container_type VARCHAR(20) NOT NULL DEFAULT 'DEPARTMENT',
-    hierarchy_level INTEGER NOT NULL DEFAULT 1,
-    hierarchy_path VARCHAR(500),
-    is_active CHAR(1) NOT NULL DEFAULT 'Y',
-    created_date TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
+지식 컨테이너는 조직/지식 단위를 계층적으로 표현하기 위한 기본 엔터티입니다. 아래는 각 컬럼의 목적과 의미입니다.
+
+| 컬럼명 | 타입 | 필수 | 설명 |
+|--------|------|------|------|
+| `container_id` | VARCHAR(50) | PK | 컨테이너 고유 식별자 |
+| `container_name` | VARCHAR(200) | Y | 표시명(사용자에게 보이는 이름) |
+| `parent_container_id` | VARCHAR(50) | N | 상위 컨테이너 ID. 루트는 NULL |
+| `external_org_code` | VARCHAR(20) | N | 조직 데이터 Provider 코드 매핑 값(예: SAP/AD/Workday) |
+| `container_type` | VARCHAR(20) | Y | COMPANY / DIVISION / DEPARTMENT / TEAM 등 유형 구분 |
+| `hierarchy_level` | INTEGER | Y | 루트(1)부터 시작하는 깊이 레벨 |
+| `hierarchy_path` | VARCHAR(500) | N | 루트부터 현재까지의 경로 문자열 (예: /COMPANY/DIVISION/DEPT/TEAM) |
+| `is_active` | CHAR(1) | Y | 활성 여부 (Y/N) |
+| `created_date` | TIMESTAMPTZ | 자동 | 생성 시각 |
+
+주요 특징: 상위-하위 구조 파악을 위한 경로(`hierarchy_path`)를 유지하고, 조직 연동 시 Provider 코드(`external_org_code`)를 이용하여 자동 권한 동기화 가능.
+
+용어 주의: 현재 구현 일부에서 컬럼명이 `sap_org_code`로 사용될 수 있으나, 본 문서에서는 일반화 명칭인 `external_org_code`를 사용합니다.
 
 #### 3.1.2 컨테이너별 권한 테이블 (tb_container_permissions)
 
-```sql
-CREATE TABLE tb_container_permissions (
-    permission_id SERIAL PRIMARY KEY,
-    container_id VARCHAR(50) NOT NULL REFERENCES tb_knowledge_containers(container_id),
-    user_id VARCHAR(50) NOT NULL,
-    permission_type VARCHAR(20) NOT NULL, -- READ, WRITE, DELETE, ADMIN
-    is_inherited CHAR(1) NOT NULL DEFAULT 'N',
-    granted_by VARCHAR(50),
-    valid_from TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    valid_until TIMESTAMP WITH TIME ZONE,
-    is_active CHAR(1) NOT NULL DEFAULT 'Y',
-    UNIQUE(container_id, user_id, permission_type)
-);
-```
+컨테이너 단위로 사용자에게 직접 혹은 상속된 권한을 저장합니다.
+
+| 컬럼명 | 타입 | 필수 | 설명 |
+|--------|------|------|------|
+| `permission_id` | SERIAL | PK | 권한 레코드 고유 ID |
+| `container_id` | VARCHAR(50) | Y | 대상 컨테이너 ID |
+| `user_id` | VARCHAR(50) | Y | 권한을 가진 사용자 ID(사번 등) |
+| `permission_type` | VARCHAR(20) | Y | READ / WRITE / DELETE / ADMIN 구분 |
+| `is_inherited` | CHAR(1) | Y | 상위 컨테이너로부터 상속 여부 (Y/N) |
+| `granted_by` | VARCHAR(50) | N | 권한 부여자 ID |
+| `valid_from` | TIMESTAMPTZ | 자동 | 권한 유효 시작 시점 |
+| `valid_until` | TIMESTAMPTZ | N | 만료 시점 (NULL이면 무기한) |
+| `is_active` | CHAR(1) | Y | 활성 여부 |
+
+권한 충돌 처리: 동일 사용자에게 여러 레벨 권한이 존재할 경우 가장 높은 수준(ADMIN > DELETE > WRITE > READ)을 최종 적용.
 
 #### 3.1.3 사용자 역할 테이블 (tb_user_roles)
 
-```sql
-CREATE TABLE tb_user_roles (
-    role_assignment_id SERIAL PRIMARY KEY,
-    user_id VARCHAR(50) NOT NULL,
-    role_id VARCHAR(20) NOT NULL, -- ADMIN, MANAGER, EDITOR, VIEWER
-    container_id VARCHAR(50) REFERENCES tb_knowledge_containers(container_id),
-    assigned_by VARCHAR(50),
-    assigned_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    is_active CHAR(1) NOT NULL DEFAULT 'Y',
-    UNIQUE(user_id, role_id, container_id)
-);
-```
+사용자별로 역할(RBAC)을 지정하여 기본 권한 세트를 구성합니다.
+
+| 컬럼명 | 타입 | 필수 | 설명 |
+|--------|------|------|------|
+| `role_assignment_id` | SERIAL | PK | 역할 할당 레코드 ID |
+| `user_id` | VARCHAR(50) | Y | 사용자 ID |
+| `role_id` | VARCHAR(20) | Y | ADMIN / MANAGER / EDITOR / VIEWER 등 역할 코드 |
+| `container_id` | VARCHAR(50) | N | 특정 컨테이너 범위 내 역할일 경우 지정 (전사 역할은 NULL 가능) |
+| `assigned_by` | VARCHAR(50) | N | 역할을 부여한 관리자 ID |
+| `assigned_date` | TIMESTAMPTZ | 자동 | 부여 일시 |
+| `is_active` | CHAR(1) | Y | 활성 여부 |
+
+역할과 권한 매핑은 별도 테이블(`tb_role_permissions`)을 통해 관리하며, 동적으로 확장 가능.
 
 #### 3.1.4 역할별 권한 정의 테이블 (tb_role_permissions)
 
-```sql
-CREATE TABLE tb_role_permissions (
-    role_permission_id SERIAL PRIMARY KEY,
-    role_id VARCHAR(20) NOT NULL,
-    permission_type VARCHAR(20) NOT NULL,
-    resource_type VARCHAR(20) NOT NULL, -- DOCUMENT, CONTAINER, SEARCH, CHAT
-    is_default CHAR(1) NOT NULL DEFAULT 'Y',
-    created_date TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
+역할별로 어떤 리소스 유형에 어떤 권한이 기본 포함되는지 정의합니다.
+
+| 컬럼명 | 타입 | 필수 | 설명 |
+|--------|------|------|------|
+| `role_permission_id` | SERIAL | PK | 역할-권한 정의 레코드 ID |
+| `role_id` | VARCHAR(20) | Y | 역할 코드 |
+| `permission_type` | VARCHAR(20) | Y | 권한 종류 (READ 등) |
+| `resource_type` | VARCHAR(20) | Y | DOCUMENT / CONTAINER / SEARCH / CHAT 구분 |
+| `is_default` | CHAR(1) | Y | 기본 포함 여부 (Y = 기본 제공) |
+| `created_date` | TIMESTAMPTZ | 자동 | 생성 일시 |
+
+이 정의를 통해 사용자에게 역할을 부여하면 해당 리소스 범위 내 기본 권한이 자동 활성화됩니다.
 
 ## 4. 지식생성자 권한 관리 시나리오
 
@@ -198,79 +530,29 @@ CREATE TABLE tb_role_permissions (
 
 ### 6.1 파일 접근 시 권한 확인 알고리즘
 
-```python
-def check_file_access(user_id: str, file_id: str, action: str) -> bool:
-    """파일 접근 권한 확인 (계층적 상속 고려)"""
-    
-    # 1. 직접 권한 확인
-    if check_direct_permission(user_id, file_id, action):
-        return True
-    
-    # 2. 파일이 속한 컨테이너의 권한 확인
-    file_container = get_file_container(file_id)
-    if check_container_permission(user_id, file_container.id, action):
-        return True
-    
-    # 3. 상위 컨테이너의 상속 권한 확인
-    parent_containers = get_parent_containers_hierarchy(file_container.id)
-    for parent_container in parent_containers:
-        if check_inherited_permission(user_id, parent_container.id, action):
-            return True
-    
-    # 4. 역할 기반 권한 확인
-    user_roles = get_user_roles(user_id, file_container.id)
-    for role in user_roles:
-        if check_role_permission(role.role_code, action, 'DOCUMENT'):
-            return True
-    
-    return False
-```
+파일 접근 권한은 다음 순서로 평가하여 가장 먼저 만족하는 조건에서 허용됩니다.
 
-### 6.2 권한 확인 PostgreSQL 함수
+1. 직접 권한: 문서 자체에 사용자에게 명시적으로 부여된 권한 존재 여부 검사
+2. 동일 컨테이너 권한: 문서가 속한 컨테이너에 대한 권한이 요청 액션을 충족하는지 확인
+3. 상위 컨테이너 상속: 상위 계층으로 거슬러 올라가며 상속된(inherited) 권한이 있는지 탐색
+4. 역할 기반 권한: 사용자에게 부여된 역할(RBAC)이 해당 리소스 유형(DOCUMENT)에 대해 요구 액션을 허용하는지 평가
+5. 최종 결정: 위 모든 단계에서 허용되지 않으면 접근 거부
 
-```sql
-CREATE OR REPLACE FUNCTION check_user_permission(
-    p_user_id VARCHAR(50),
-    p_container_id VARCHAR(50),
-    p_permission_type VARCHAR(20)
-) RETURNS BOOLEAN AS $$
-DECLARE
-    has_permission BOOLEAN := FALSE;
-    current_container_id VARCHAR(50) := p_container_id;
-BEGIN
-    -- 직접 권한 확인
-    SELECT COUNT(*) > 0 INTO has_permission
-    FROM tb_container_permissions
-    WHERE user_id = p_user_id
-      AND container_id = p_container_id
-      AND permission_type = p_permission_type
-      AND is_active = 'Y'
-      AND (valid_until IS NULL OR valid_until > NOW());
-    
-    -- 상속된 권한 확인 (상위 컨테이너)
-    WHILE NOT has_permission AND current_container_id IS NOT NULL LOOP
-        SELECT parent_container_id INTO current_container_id
-        FROM tb_knowledge_containers
-        WHERE container_id = current_container_id;
-        
-        IF current_container_id IS NOT NULL THEN
-            SELECT COUNT(*) > 0 INTO has_permission
-            FROM tb_container_permissions
-            WHERE user_id = p_user_id
-              AND container_id = current_container_id
-              AND permission_type = p_permission_type
-              AND is_active = 'Y'
-              AND is_inherited = 'Y'
-              AND (valid_until IS NULL OR valid_until > NOW());
-        END IF;
-    END LOOP;
-    
-    RETURN has_permission;
-END;
-$$ LANGUAGE plpgsql;
-```
+성능 최적화: 상위 컨테이너 탐색 시 계층 경로를 캐시하여 반복 조회 비용 최소화.
 
-## 7. SAP 연동 자동 권한 관리
+### 6.2 권한 확인 로직 (데이터베이스 관점)
+
+컨테이너 권한 확인은 다음 절차로 DB 레벨에서 수행됩니다.
+
+1. 직접 매칭: 요청 사용자 / 컨테이너 / 권한 유형이 활성 레코드인지 조회
+2. 상향 탐색: 현재 컨테이너의 `parent_container_id`를 따라 상위로 이동하며 상속(`is_inherited = 'Y'`)된 동일 권한이 있는지 반복 검사
+3. 기간 조건: `valid_until`이 설정된 경우 현재 시각 기준 유효성 재확인
+4. 첫 매칭 즉시 종료: 어느 단계에서든 조건을 만족하면 TRUE 반환
+5. 매칭 실패 시 FALSE 반환
+
+추가 고려사항: 상위 이동 루프는 최대 계층 깊이 제한을 두어 비정상 순환 구조로 인한 무한 루프를 예방.
+
+## 7. 조직 데이터 연동 자동 권한 관리
 
 ### 7.1 조직도 변경 시 자동 권한 업데이트
 
@@ -278,7 +560,7 @@ $$ LANGUAGE plpgsql;
 
 ```
 🔄 조직개편: 김신입 (마케팅팀 → 인사팀 이동)
-├── 📡 SAP 연동: 부서 이동 정보 자동 감지
+├── 📡 조직 데이터 연동: 부서 이동 정보 자동 감지
 ├── 🔒 권한회수: 마케팅팀 관련 문서 접근 권한 자동 회수
 ├── 🔓 권한부여: 인사팀 관련 문서 접근 권한 자동 부여
 └── 📧 알림발송: 권한 변경 내역 본인 및 관리자에게 통지
@@ -286,25 +568,15 @@ $$ LANGUAGE plpgsql;
 
 #### 7.1.2 자동 권한 동기화 프로세스
 
-```python
-def handle_employee_transfer(emp_no: str, from_dept: str, to_dept: str):
-    """직원 부서 이동 시 자동 권한 업데이트"""
-    
-    # 1. 기존 부서 권한 회수
-    revoke_department_permissions(emp_no, from_dept)
-    
-    # 2. 새 부서 기본 권한 부여
-    assign_default_department_permissions(emp_no, to_dept)
-    
-    # 3. 개인 권한은 유지 (생성한 문서 등)
-    preserve_personal_permissions(emp_no)
-    
-    # 4. 권한 변경 이력 기록
-    log_permission_change(emp_no, from_dept, to_dept)
-    
-    # 5. 관련자에게 알림 발송
-    send_permission_change_notification(emp_no, from_dept, to_dept)
-```
+부서 이동 발생 시 시스템은 다음 단계를 자동 실행하여 권한을 정확히 재배치합니다.
+
+1. 이전 부서 권한 회수: 이동 전 조직(컨테이너)과 직접 연결된 읽기/쓰기/관리 권한을 비활성화하여 정보 접근 범위를 축소
+2. 새 부서 기본 권한 부여: 표준 역할 매핑에 따라 새 조직 컨테이너에 대한 최소 기본 권한(Read 등)을 즉시 부여
+3. 개인 생성 자산 유지: 사용자가 생성한 문서나 개인 연구 노트 등 소유 기반 권한은 이동과 무관하게 지속
+4. 변경 이력 기록: 권한 변경 사유, 이전/현재 조직, 처리 시각을 감사 로그에 저장하여 추적 가능성 확보
+5. 알림 발송: 당사자와 해당 조직 관리자(지식관리자)에게 권한 변경 내역을 알림 채널(이메일/내부 메시지)로 통지
+
+예외 처리: 복수 프로젝트 임시 권한이 남아 있는 경우 프로젝트 종료 조건을 우선 평가 후 회수 여부 결정.
 
 ## 8. 실제 업무 시나리오 예시
 
@@ -350,23 +622,24 @@ def handle_employee_transfer(emp_no: str, from_dept: str, to_dept: str):
 | `/api/admin/containers/{id}/permissions`           | GET      | 컨테이너 권한 목록 | 사용자별 권한 현황   |
 | `/api/admin/containers/{id}/permissions`           | POST     | 권한 부여      | 사용자에게 권한 할당  |
 | `/api/admin/containers/{id}/permissions/{user_id}` | DELETE   | 권한 삭제      | 특정 사용자 권한 회수 |
-| `/api/admin/containers/{id}/sync`                  | POST     | SAP 조직 동기화 | 조직도 변경사항 반영  |
+| `/api/admin/containers/{id}/sync`                  | POST     | 조직 데이터 Provider 동기화 | 조직도 변경사항 반영  |
 
 ### 9.2 문서 업로드 시 권한 설정 API
 
-```json
-POST /api/documents/upload
-{
-  "file": "채용가이드.pdf",
-  "permissions": {
-    "access_scope": "TEAM",
-    "permissions": ["READ", "DOWNLOAD"],
-    "expires_at": "2025-12-31T23:59:59Z",
-    "specific_users": ["emp002", "emp003"],
-    "inherit_to_children": false
-  }
-}
-```
+문서 업로드 요청은 파일 메타데이터와 초기 권한 정책을 함께 전달하여 저장과 동시에 접근 범위를 확정합니다. 주요 필드 의미는 다음과 같습니다.
+
+| 필드 | 유형 | 필수 | 설명 |
+|------|------|------|------|
+| `file` | STRING | Y | 업로드 대상 파일명 또는 식별자 |
+| `permissions.access_scope` | ENUM | Y | PRIVATE / TEAM / DEPARTMENT / DIVISION / COMPANY 중 선택된 공유 범위 |
+| `permissions.permissions` | ARRAY(ENUM) | Y | 허용 권한 목록 (READ, DOWNLOAD, EDIT 등) |
+| `permissions.expires_at` | DATETIME | N | 권한 만료 시각 (지정 시 자동 회수) |
+| `permissions.specific_users` | ARRAY(STRING) | N | 기본 범위 외 추가로 권한을 부여할 개별 사용자 ID 리스트 |
+| `permissions.inherit_to_children` | BOOLEAN | N | 하위 컨테이너(있을 경우)로 동일 권한을 하향 적용할지 여부 |
+
+동작 개요: 요청 수신 후 파일 저장 → 권한 정책 레코드 생성 → 검색 인덱싱 큐 등록(비동기) → 응답으로 최종 문서 식별자 반환.
+
+오류 시나리오: 잘못된 범위 코드, 허용되지 않은 권한 조합(예: PRIVATE + 외부공유), 만료 시각 과거 지정 등은 400 응답.
 
 ## 10. 권한 관리 모니터링 및 감사
 
@@ -390,7 +663,7 @@ POST /api/documents/upload
 
 ---
 
-이 권한 관리 체계를 통해 ABEKM 시스템에서는 지식생성자와 지식관리자가 각자의 역할에 맞는 세분화된 권한 관리를 수행할 수 있으며, SAP 조직도와 연동하여 자동화된 권한 관리가 가능합니다.
+이 권한 관리 체계를 통해 ABEKM 시스템에서는 지식생성자와 지식관리자가 각자의 역할에 맞는 세분화된 권한 관리를 수행할 수 있으며, 조직 데이터 Provider와 연동하여 자동화된 권한 관리가 가능합니다.
 
 ## 11. 실제 구현 업데이트 (2025-10-31)
 
@@ -417,11 +690,12 @@ POST /api/documents/upload
     - EDITOR/WRITE 계열 → `write`
     - VIEWER/READ 계열 → `read`
 
-### 11.3 HR 연계 필드 정합성
+### 11.3 조직 데이터 연계 필드 정합성
 
-- 사용자 이름/부서:
-    - `TbSapHrInfo.emp_nm` → `user_name`
-    - `TbSapHrInfo.dept_nm` → `department`
+- 사용자 이름/부서(Provider 일반화):
+    - `TbHrPeople.emp_nm` → `user_name`
+    - `TbHrPeople.dept_nm` → `department`
+    - 참고: 현재 구현 테이블 명칭은 `TbSapHrInfo`이며, 문서에서는 일반화된 `TbHrPeople`로 표기합니다.
 
 - 권한 만료일:
     - `expires_date` 사용 (이전 `valid_until` 명칭 사용 금지)
@@ -1334,70 +1608,45 @@ REACT_APP_ENV=development
 
 ### 14.2 권한 요청 프로세스
 
-#### 14.2.1 권한 요청 흐름도
+#### 14.2.1 권한 요청 흐름 (단계 요약)
 
-```
-[사용자] 
-   ↓ (1) 컨테이너 접근 시도
-[권한 없음 확인]
-   ↓ (2) 권한 요청 버튼 클릭
-[권한 요청 모달]
-   ↓ (3) 요청 정보 입력
-      - 요청 권한 레벨 (VIEWER, EDITOR, etc.)
-      - 요청 사유 (필수, 최소 10자)
-      - 업무 필요성 (선택)
-      - 사용 예정 기간 (선택)
-      - 긴급도 (선택)
-   ↓ (4) 요청 생성
-[DB 저장: tb_permission_requests]
-   ↓ (5) 승인자 식별
-[컨테이너 관리자에게 알림]
-   ↓ (6) 관리자 검토
-[승인 대기 목록 표시]
-   ↓ (7) 승인/거부 결정
-[권한 부여 또는 거부]
-   ↓ (8) 요청자에게 결과 통보
-[완료]
-```
+1. 사용자가 컨테이너에 접근 시도
+2. 권한 없음 확인 후 "권한 요청" 버튼 노출
+3. 요청 모달에서 정보 입력 (요청 레벨, 사유(필수 10자 이상), 업무 필요성, 사용 기간, 긴급도)
+4. 요청 생성 후 DB(`tb_permission_requests`) 저장
+5. 승인 대상 관리자(ADMIN/MANAGER/OWNER) 자동 식별 및 알림 준비
+6. 관리자가 승인 대기 목록에서 요청 검토
+7. 승인 또는 거부 결정 (코멘트/사유 기록)
+8. 요청자에게 결과 통보
+9. 완료 후 접근 권한 갱신 반영
 
 #### 14.2.2 데이터베이스 스키마
 
 **권한 요청 테이블 (tb_permission_requests)**
 
-```sql
-CREATE TABLE tb_permission_requests (
-    -- 기본 정보
-    request_id SERIAL PRIMARY KEY,
-    requester_emp_no VARCHAR(20) NOT NULL REFERENCES tb_sap_hr_info(emp_no),
-    container_id VARCHAR(50) NOT NULL REFERENCES tb_knowledge_containers(container_id),
-    
-    -- 요청 내용
-    requested_permission VARCHAR(20) NOT NULL,
-    current_permission VARCHAR(20),
-    justification TEXT NOT NULL,
-    business_need TEXT,
-    requested_duration VARCHAR(50),
-    temp_end_date TIMESTAMP WITH TIME ZONE,
-    
-    -- 요청 상태
-    request_status VARCHAR(20) NOT NULL DEFAULT 'pending',
-    priority_level VARCHAR(10) NOT NULL DEFAULT 'normal',
-    
-    -- 승인 정보
-    approver_emp_no VARCHAR(20) REFERENCES tb_sap_hr_info(emp_no),
-    approval_date TIMESTAMP WITH TIME ZONE,
-    approval_comment TEXT,
-    rejection_reason TEXT,
-    
-    -- 자동 처리
-    auto_approved BOOLEAN NOT NULL DEFAULT FALSE,
-    notification_sent BOOLEAN NOT NULL DEFAULT FALSE,
-    
-    -- 시스템 필드
-    created_date TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL,
-    last_modified_date TIMESTAMP WITH TIME ZONE DEFAULT NOW() NOT NULL
-);
-```
+| 필드 | 타입 | 설명 | 비고 |
+|------|------|------|------|
+| request_id | SERIAL (PK) | 요청 식별자 | 자동 증가 |
+| requester_emp_no | VARCHAR(20) | 요청자 사번 | HR 정보 참조 |
+| container_id | VARCHAR(50) | 대상 컨테이너 | 컨테이너 테이블 참조 |
+| requested_permission | VARCHAR(20) | 요청 권한 레벨 | VIEWER/EDITOR 등 |
+| current_permission | VARCHAR(20) | 기존 권한(있을 경우) | NULL 가능 |
+| justification | TEXT | 요청 사유 (필수 10자 이상) | 필수 입력 |
+| business_need | TEXT | 업무 필요성 상세 | 선택 |
+| requested_duration | VARCHAR(50) | 사용 예정 기간 | 예: 1개월 |
+| temp_end_date | TIMESTAMP TZ | 임시 권한 종료 예정일 | 기간성 요청 시 |
+| request_status | VARCHAR(20) | 요청 상태 | 기본값 pending |
+| priority_level | VARCHAR(10) | 긴급도 | normal / high 등 |
+| approver_emp_no | VARCHAR(20) | 실제 승인자 사번 | NULL: 미승인 |
+| approval_date | TIMESTAMP TZ | 승인 처리 일시 | 승인 시 기록 |
+| approval_comment | TEXT | 승인 코멘트 | 선택 |
+| rejection_reason | TEXT | 거부 사유 | 거부 시 필수 |
+| auto_approved | BOOLEAN | 자동 승인 여부 | 정책 충족 시 true |
+| notification_sent | BOOLEAN | 알림 발송 여부 | 중복 발송 방지 |
+| created_date | TIMESTAMP TZ | 생성 일시 | NOW() 기본 |
+| last_modified_date | TIMESTAMP TZ | 수정 일시 | 상태 변경마다 |
+
+설계 포인트: 요청/승인/거부 전 과정을 단일 행에서 추적, 자동 승인 분기와 알림 발송 여부를 분리해 재처리 방지.
 
 ### 14.3 주요 API 엔드포인트
 
@@ -1405,17 +1654,25 @@ CREATE TABLE tb_permission_requests (
 
 **Endpoint**: `POST /api/v1/permission-requests`
 
-**Request**:
-```json
-{
-  "container_id": "WJ_INFRA_CONSULT",
-  "requested_permission_level": "VIEWER",
-  "request_reason": "프로젝트 참고 자료 열람을 위해 권한이 필요합니다",
-  "business_justification": "고객사 제안서 작성",
-  "expected_usage_period": "1개월",
-  "urgency_level": "normal"
-}
-```
+요청 본문 필드 정의:
+
+| 필드 | 필수 | 설명 | 예시 |
+|------|------|------|------|
+| container_id | ✅ | 대상 컨테이너 ID | WJ_INFRA_CONSULT |
+| requested_permission_level | ✅ | 요청 권한 레벨 | VIEWER |
+| request_reason | ✅ | 접근 사유 (10자 이상) | 프로젝트 참고 자료 열람 필요 |
+| business_justification | 선택 | 업무적 활용 목적 | 고객사 제안서 작성 |
+| expected_usage_period | 선택 | 예상 사용 기간 | 1개월 |
+| urgency_level | 선택 | 긴급도(normal/high) | normal |
+
+응답 개요:
+
+| 키 | 설명 | 예시 |
+|----|------|------|
+| success | 처리 성공 여부 | true |
+| message | 안내 문구 | 컨테이너 관리자의 승인이 필요합니다 (요청 ID: 3) |
+| request_id | 생성된 요청 식별자 | 3 |
+| auto_approved | 자동 승인 여부 | false |
 
 **Response**:
 ```json
@@ -1431,128 +1688,92 @@ CREATE TABLE tb_permission_requests (
 
 **Endpoint**: `GET /api/v1/permission-requests/pending`
 
-**Response**:
-```json
-{
-  "requests": [
-    {
-      "request_id": "3",
-      "requester_name": "홍길동",
-      "requester_department": "MS서비스팀",
-      "container_name": "인프라컨설팅팀",
-      "requested_permission_level": "VIEWER",
-      "request_reason": "프로젝트 열람권한을 신청합니다",
-      "status": "pending",
-      "requested_at": "2025-11-04T06:57:16+00:00"
-    }
-  ],
-  "total_count": 1
-}
-```
+응답 필드:
+
+| 필드 | 설명 | 비고 |
+|------|------|------|
+| requests[] | 승인 대기 목록 배열 | 필터링된 요청들 |
+| request_id | 개별 요청 ID | 문자열 또는 숫자 표현 |
+| requester_name | 요청자 이름 | HR 참조 |
+| requester_department | 요청자 소속 | 조직명 |
+| container_name | 대상 컨테이너 이름 | 사용자 친화 명칭 |
+| requested_permission_level | 신청 권한 | VIEWER 등 |
+| request_reason | 사유 | 입력 원문 |
+| status | 현재 상태 | pending/approved/rejected |
+| requested_at | 생성 시각 | ISO8601 |
+| total_count | 총 개수 | 페이지네이션 대비 |
 
 #### 14.3.3 승인 처리
 
 **Endpoint**: `POST /api/v1/permission-requests/{request_id}/approve`
 
-**Request**:
-```json
-{
-  "approval_comment": "업무 협업을 위해 승인합니다"
-}
-```
+요청 본문: 승인 코멘트(선택) 전달 → 권한 생성 + 상태 approved로 갱신.
+
+| 필드 | 필수 | 설명 |
+|------|------|------|
+| approval_comment | 선택 | 승인 사유 또는 메모 |
 
 #### 14.3.4 거부 처리
 
 **Endpoint**: `POST /api/v1/permission-requests/{request_id}/reject`
 
-**Request**:
-```json
-{
-  "rejection_reason": "해당 컨테이너는 내부 문서로 구성되어 있어 접근이 제한됩니다"
-}
-```
+거부 처리 시 필수 입력:
+
+| 필드 | 필수 | 설명 |
+|------|------|------|
+| rejection_reason | ✅ | 거부 사유 (사용자 안내용) |
 
 ### 14.4 주요 이슈 및 해결
 
 #### 14.4.1 타입 변환 오류 수정
 
-**문제**: PostgreSQL 타입 비교 오류
-```
-연산자 없음: integer = character varying
-```
+**문제**: PostgreSQL에서 정수형 비교 시 문자열 파라미터 전달로 연산자 불일치 발생 (`integer = character varying`).
 
-**원인**: FastAPI path parameter(string)와 서비스 메서드(int) 타입 불일치
+**원인**: FastAPI 경로 파라미터는 기본 문자열, 내부 서비스 로직은 정수 기대.
 
-**해결**:
-```python
-# 모든 엔드포인트에서 request_id 타입 변환 적용
-success = await service.approve_request(
-    request_id=int(request_id),  # ✅ string → int 변환
-    approver_emp_no=current_user.emp_no
-)
-```
+**해결 절차**:
+1. 모든 승인/거부/조회 엔드포인트에서 `request_id` 명시적 int 변환
+2. 서비스 계층 입력 검증 추가 (숫자 형식 미일치 시 400 반환)
+3. 변환 후 SQL 조건에서 타입 일관성 확보 → 오류 제거
 
 #### 14.4.2 관계 데이터 로딩 최적화
 
-**문제**: 요청자 이름, 부서, 컨테이너 이름이 `None`으로 표시
+**문제**: 요청 목록에서 요청자/컨테이너/승인자 정보가 `None` 표시 → 지연 로딩으로 참조 미로딩.
 
-**해결**: SQLAlchemy의 `selectinload` 사용
-```python
-from sqlalchemy.orm import selectinload
-
-result = await self.session.execute(
-    select(TbPermissionRequests)
-    .options(
-        selectinload(TbPermissionRequests.requester),
-        selectinload(TbPermissionRequests.knowledge_container),
-        selectinload(TbPermissionRequests.approver)
-    )
-    .where(and_(*conditions))
-)
-```
+**해결 전략**:
+1. 목록 조회 쿼리에 관계 로딩 옵션 추가 (`selectinload`)로 N+1 최소화
+2. 필요한 참조 (requester, knowledge_container, approver) 명시적 사전 로딩
+3. 직렬화 단계에서 값 누락 없이 DTO 생성 가능
+4. 결과: 표시 필드 안정화 및 쿼리 수 감소
 
 #### 14.4.3 프론트엔드 필드 매핑
 
-**문제**: 백엔드 새 스키마 필드와 프론트엔드 기존 필드 불일치
+**문제**: 백엔드 필드명 개편 후 프론트엔드 기존 컴포넌트가 구 필드명(`user_name`, `reason`)에 의존 → UI 공백 발생.
 
-**해결**: 매퍼 함수에서 fallback 처리
-```typescript
-const mapPermissionRequestDto = (dto: PermissionRequestDTO) => {
-  const userName = dto.requester_name || dto.user_name || '알 수 없음';
-  const department = dto.requester_department || dto.user_department || '';
-  const requestReason = dto.request_reason || dto.reason || '';
-  return { user_name: userName, user_department: department, reason: requestReason };
-};
-```
+**해결 방식 (매핑 계층 적용)**:
+| 항목 | 처리 로직 | 기본값 |
+|------|-----------|--------|
+| 사용자명 | `requester_name` 우선, 없으면 `user_name` | '알 수 없음' |
+| 부서 | `requester_department` 우선, 없으면 `user_department` | 빈 문자열 |
+| 요청사유 | `request_reason` 우선, 없으면 `reason` | 빈 문자열 |
+
+결과: 백엔드/프론트 필드 전환 기간 동안 하위 호환 유지.
 
 ### 14.5 테스트 시나리오
 
 #### 14.5.1 권한 요청 생성 테스트
 
-```
-1. 사용자 "홍길동"이 WJ_INFRA_CONSULT 선택
-2. "권한 요청" 버튼 클릭
-3. 요청 사유 입력 (10자 이상)
-4. 요청 생성 성공
-   ✅ request_id: 3
-   ✅ status: pending
-   ✅ 승인자: INF001
-```
+1. 사용자 "홍길동"이 대상 컨테이너 `WJ_INFRA_CONSULT` 선택
+2. "권한 요청" 버튼 클릭 후 모달 표시
+3. 사유 10자 이상 입력 및 필요 시 추가 항목 작성
+4. 요청 생성 성공 → `request_id = 3`, 상태 `pending`, 승인자 자동 식별 `INF001`
 
 #### 14.5.2 승인 처리 테스트
 
-```
-1. 관리자 INF001 로그인
-2. "승인 대기" 탭에서 요청 확인
-   ✅ 요청자: 홍길동
-   ✅ 부서: MS서비스팀
-   ✅ 요청사유: "프로젝트 열람권한을 신청합니다"
-3. "승인" 버튼 클릭
-4. 권한 부여 성공
-   ✅ tb_user_permissions에 레코드 생성
-   ✅ request_status = 'approved'
-   ✅ 사용자가 컨테이너 접근 가능
-```
+1. 관리자 `INF001` 로그인
+2. 승인 대기 목록에서 해당 요청 상세 확인 (요청자/부서/사유 모두 로딩)
+3. 승인 버튼 클릭 후 코멘트(선택) 입력
+4. 처리 성공: `tb_user_permissions` 레코드 생성, 상태 `approved`, 즉시 접근 가능
 
 ### 14.6 구현 요약
 
@@ -1577,4 +1798,133 @@ const mapPermissionRequestDto = (dto: PermissionRequestDTO) => {
 | 요청 만료 처리 | 중간 | 일정 기간 미처리 시 자동 만료 |
 | 일괄 승인/거부 | 중간 | 여러 요청 동시 처리 |
 | 요청 히스토리 | 낮음 | 승인/거부 이력 조회 |
+
+
+## 15. 문서 접근 권한 설정 UI 관리체계 (사용자/지식관리자 모달)
+
+### 15.1 개요
+
+문서 단위 세분권한 설정을 위해 두 종류의 접근 권한 설정 모달을 제공합니다.
+
+| 구분 | 파일 경로 | 대상 사용자 | 목적 | 특징 |
+|------|-----------|-------------|------|------|
+| 사용자 모달 | `frontend/src/pages/user/my-knowledge/components/DocumentAccessModal.tsx` | 일반 사용자(문서 소유/업로더) | 단일 규칙 기반 신속 설정 | 단일 Restricted 규칙만 저장, 직접 입력 방식 |
+| 지식관리자 모달 | `frontend/src/pages/manager/document-access-management/components/AccessControlModal.tsx` | 지식관리자 / 시스템 관리자 | 복수 규칙 관리/감사 | 다중 Restricted 규칙, 검색/검증, 변경사항 추적 |
+
+두 모달은 공통적으로 `access_level`을 중심으로 상태를 구성하며 저장 시 "기존 규칙 전체 삭제 후 신규 규칙 일괄 재삽입" 방식으로 원자적 치환을 수행하여 규칙 정합성을 유지합니다.
+
+### 15.2 접근 레벨 정의
+
+| UI 표시 | 내부 값(access_level) | 적용 범위 | DB 레코드 구성 | 권한 효과 | 비고 |
+|---------|----------------------|-----------|----------------|-----------|------|
+| 공개 | `public` | 컨테이너 접근 가능한 모든 사용자 | 1건 (access_level=public) | 조회(검색 결과 포함) | 문서 기본 공개 정책 |
+| 제한 공개 | `restricted` | 지정된 사용자/부서 집합 | ≥1건 (각 대상별 레코드) | 레코드별 permission_level 부여 | 사용자 모달은 단일, 관리자 모달은 다중 가능 |
+| 비공개 | `private` | 문서 소유자 + 컨테이너 관리자/시스템 관리자 | 1건 (access_level=private) | 나열된 관리자 외 접근 차단 | 상위 관리자 감사용 조회 허용 |
+
+`restricted` 상태에서 각각의 레코드는 다음 속성을 가집니다:
+
+| 필드 | 의미 | 값 예시 | 관리 주체 | 비고 |
+|------|------|---------|----------|------|
+| `rule_id` | 규칙 PK | 128 | 시스템 | 삭제/치환 기준 |
+| `file_bss_info_sno` | 대상 문서 식별 | 4521 | 시스템 | 내부 식별자 |
+| `access_level` | 접근 레벨 | restricted | UI/백엔드 | 제한 레코드 공통 지정 |
+| `rule_type` | 대상 유형 | user / department | 설정자 | 사용자 개별 / 부서 전체 |
+| `target_id` | 대상 식별자 | MSS001 / MS서비스팀 | 설정자 | 부서명 또는 사번 |
+| `permission_level` | 세부 권한 | view / download / edit | 설정자 | 확장 계획: comment 등 |
+| `is_inherited` | 상속 여부 | 'N' | 시스템 | 현재 문서 단위 직접 지정만 지원 |
+| `created_by` | 생성자 | EMP001 | 시스템 | 감사 추적 |
+| `created_date` | 생성 시각 | 2025-11-04T.. | 시스템 | ISO8601 |
+
+### 15.3 사용자 모달 (DocumentAccessModal) 동작
+
+| 항목 | 설명 |
+|------|------|
+| 초기 로드 | 첫 API 호출 결과가 있으면 첫 규칙을 폼 상태에 매핑 (대문자→소문자 정규화) |
+| 상태 변수 | `accessLevel`, `ruleType`, `targetId`, `permissionLevel`, `currentRules`, `isInitialLoad` |
+| 저장 로직 | 1) 기존 규칙 전체 삭제 → 2) 선택된 accessLevel 기준 신규 규칙 1건 생성 (`restricted` 시 대상 필수) |
+| 제한 공개 입력 | 대상 유형(user/department) 버튼 토글 + 단일 `targetId` 수기 입력 |
+| 권한 레벨 | view / download / edit 선택 (단일 선택) |
+| 검증 | `restricted`에서 `targetId` 미입력 시 저장 중단 및 알림 |
+| 접근 안내 | 모달 하단 안내 블록: 공개/제한/비공개 설명 제공 |
+| 사용성 최적화 | 최초 로드 이후 사용자 수동 변경 내용은 재호출로 덮어쓰지 않음 (`isInitialLoad` 플래그) |
+
+사용자 시나리오 (예):
+1. 문서 업로더가 "문서 접근 권한 설정" 열기
+2. 기본값 공개 → 제한 공개로 변경
+3. 대상 유형 'user' 선택 후 사번 입력 (예: MSS001)
+4. 권한 레벨 'download' 선택
+5. 저장 시 기존 규칙 제거 후 제한 규칙 1건 재생성
+6. 성공 알림 후 모달 닫힘
+
+### 15.4 지식관리자 모달 (AccessControlModal) 동작
+
+| 항목 | 설명 |
+|------|------|
+| 초기 로드 | 문서별 접근 규칙 전체 조회 후 첫 규칙의 `access_level`을 현재/원본 상태로 설정 |
+| 상태 변수 | `accessLevel`, `originalAccessLevel`, `rules`, `hasChanges`, `showAddRule`, `ruleType`, `searchQuery`, `searchResults`, `selectedTarget`, `departmentInput`, `permissionLevel` |
+| 변경 추적 | 로컬 상태 변경 시 `hasChanges=true` 표시 (푸터 경고 배지) |
+| 저장 로직 | ① 모든 기존 규칙 삭제 ② `public`/`private`면 단일 규칙 재생성 ③ `restricted`면 1개 이상 제한 레코드 존재 필수 (없으면 에러) |
+| 다중 규칙 | 사용자 + 부서 혼합 가능, 권한 레벨 각각 독립 (view/download/edit) |
+| 사용자 검색 | 2자 이상 입력 시 API 검색 → 사번/이름 매핑 후 선택 시 `selectedTarget` 설정 |
+| 부서 입력 | 수기 텍스트로 부서명 입력 (향후 자동완성 확장 예정) |
+| 규칙 추가 | `createDocumentAccessRule` 호출로 즉시 서버 반영 후 목록 재조회 (Optimistic UI 최소화, 일관성 유지) |
+| 규칙 삭제 | 개별 레코드 삭제 후 재조회, 변경사항 플래그 유지 |
+| 검증 | Restricted 저장 시 제한 레코드 0건 → 에러 메시지 표시, 저장 차단 |
+| 접근 수준 전환 | Restricted → Public/Private 변경 시 기존 제한 레코드 삭제 예고(저장해야 확정) |
+
+관리자 시나리오 (예):
+1. 문서 접근 모달 열기 → 기존 `restricted` 규칙 3건 로드
+2. 추가로 외부 협업자 사번 검색 후 조회 권한(view) 레코드 추가
+3. 특정 부서 권한을 download → edit로 변경하기 위해 기존 레코드 삭제 후 재추가
+4. 변경 배지(⚠️) 확인 후 저장 클릭 → 전체 규칙 원자 치환
+5. 저장 완료 후 모달 닫힘 및 상위 리스트 리프레시
+
+### 15.5 사용자 vs 지식관리자 기능 비교
+
+| 기능 | 사용자 모달 | 지식관리자 모달 | 설명 |
+|------|------------|----------------|------|
+| 접근 레벨 선택 | O | O | 동일 3단계 (공개/제한/비공개) |
+| 제한 규칙 수 | 1건 고정 | 여러 건 | 관리자 다중 대상 관리 |
+| 사용자 검색 | 직접 입력 | 이름/사번 검색 지원 | 정확도/편의성 향상 |
+| 부서 대상 | 문자열 입력 | 문자열 입력 | 향후 코드 표준화 예정 |
+| 권한 레벨 다양성 | view/download/edit | view/download/edit | 동일 옵션 |
+| 변경사항 경고 | X | O | 저장 전 `hasChanges` 표시 |
+| 빈 Restricted 저장 방지 | 대상 필수 체크 | 레코드 ≥1 요구 | 검증 방식 차이 |
+| 규칙 즉시 추가/삭제 | 저장 시 치환 | 추가/삭제 시 즉시 서버 반영 | 관리자 감사 추적 강화 |
+| 다중 혼합(User+Dept) | 불가 | 가능 | 규칙 목록 반복 |
+
+### 15.6 검증 및 예외 처리
+
+| 검증 항목 | 조건 | 사용자 모달 처리 | 관리자 모달 처리 | 실패 결과 |
+|-----------|------|------------------|------------------|-----------|
+| 제한 대상 입력 | Restricted 선택 시 | 빈 값 → 알림 후 중단 | 사용자/부서 입력 모두 비어 있으면 추가 중단 | 저장/추가 실패 메시지 |
+| 최소 규칙 수 | Restricted 저장 시 | 단일 규칙 존재 여부 | 제한 레코드 ≥1 | 저장 차단 + 에러 표시 |
+| 중복 대상 | 동일 대상 재입력 | 새 규칙 덮어쓰기(단일) | 중복 레코드 허용(향후 정합성 검증 예정) | 현재 허용 |
+| 권한 문자열 | view/download/edit | 선택 UI 강제 | 선택 UI 강제 | 잘못된 값 서버 검증 실패 |
+| 미저장 변경 | accessLevel 변경 후 저장 안 함 | 없음 | 푸터 경고 노출 | 사용자 취소 시 폐기 |
+
+### 15.7 저장 방식 (원자적 치환 패턴)
+
+1. 현재 문서의 기존 접근 규칙 전체 조회
+2. 저장 직전 전체 삭제(오류 무시/로깅) → 정리된 상태 확보
+3. 새 상태(access_level 및 제한 레코드 목록) 기준으로 재삽입
+4. 최종 조회로 반영 확인 후 클라이언트 상태 동기화
+
+장점: 부분 업데이트/병합 충돌 제거, 간결한 백엔드 로직, 감사 로그 명확화.
+주의: 대량 규칙 변경 시 일시적 공백 상태 → 트랜잭션 지원 고려(향후 개선 항목).
+
+### 15.8 향후 개선 계획
+
+| 개선 항목 | 우선순위 | 설명 |
+|-----------|---------|------|
+| 다중 규칙 트랜잭션 삽입 | 높음 | 삭제→삽입 사이 공백 제거, 원자성 확보 |
+| 부서 자동완성/코드 표준화 | 중간 | HR 조직 코드 기반 선택 컴포넌트 도입 |
+| 대상 중복 방지 로직 | 중간 | 동일 대상/권한 레벨 중복 삽입 차단 |
+| 추가 권한 타입 | 중간 | comment, share_external 등 확장 |
+| 상속 플래그 활용 | 낮음 | 향후 상위 컨테이너 정책 하향 반영 표시 |
+| 변경 이력 UI | 낮음 | 규칙 변경 Diff 및 타임라인 조회 |
+
+### 15.9 요약
+
+사용자 모달은 “단순/신속” 설정을 위한 단일 규칙 편집 인터페이스, 지식관리자 모달은 “복수 대상/감사 친화” 운영 인터페이스입니다. 두 방식 모두 일관된 접근 레벨 모델과 치환 저장 패턴을 적용하여 정책 정합성과 유지관리성을 확보하였습니다.
 

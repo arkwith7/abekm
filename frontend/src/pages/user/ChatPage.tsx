@@ -3,7 +3,6 @@ import { useSearchParams } from 'react-router-dom';
 import FileViewer from '../../components/common/FileViewer';
 import { useSelectedDocuments, useWorkContext } from '../../contexts/GlobalAppContext';
 import { Document as GlobalDocument } from '../../contexts/types';
-import { transcribeChatAudio } from '../../services/userService';
 import { Document as ViewerDocument } from '../../types/user.types';
 import ChatHeader from './chat/components/ChatHeader';
 import MessageComposer from './chat/components/MessageComposer';
@@ -459,7 +458,7 @@ const ChatPage: React.FC = () => {
     }
   }, [messages.length]);
 
-  const handleSendMessage = async (message: string, files?: File[], voiceBlob?: Blob) => {
+  const handleSendMessage = async (message: string, files?: File[]) => {
     // 현재 선택된 문서를 백엔드 스키마에 맞게 변환
     const currentSelectedDocuments = selectedDocuments.map((doc: any) => ({
       fileId: doc.fileId,
@@ -479,7 +478,7 @@ const ChatPage: React.FC = () => {
     // 모드별 분기: 백엔드 다중-응답 미지원 시, 우선 순차 전송 또는 주석 프리픽스
     const mode = workContext.mode || (workContext.isChainMode ? 'chain' : 'single');
     if (mode === 'chain') {
-      await sendMessage(message, workContext.selectedAgentChain || 'general', files, voiceBlob, currentSelectedDocuments);
+      await sendMessage(message, workContext.selectedAgentChain || 'general', files, currentSelectedDocuments);
       return;
     }
     if (mode === 'multi') {
@@ -490,20 +489,10 @@ const ChatPage: React.FC = () => {
       const annotated = agents.length > 1
         ? `[multi:${agents.join(',')}] ${message}`
         : message;
-      await sendMessage(annotated, agents[0], files, voiceBlob, currentSelectedDocuments);
+      await sendMessage(annotated, agents[0], files, currentSelectedDocuments);
       return;
     }
-    await sendMessage(message, workContext.selectedAgent || 'general', files, voiceBlob, currentSelectedDocuments);
-  };
-
-  const handleVoiceDraftTranscription = async (blob: Blob) => {
-    try {
-      const result = await transcribeChatAudio(blob);
-      return result?.transcript ?? '';
-    } catch (error) {
-      console.warn('음성 초안 변환 실패', error);
-      return '';
-    }
+    await sendMessage(message, workContext.selectedAgent || 'general', files, currentSelectedDocuments);
   };
 
   // File viewer state for in-chat document open
@@ -597,7 +586,6 @@ const ChatPage: React.FC = () => {
                   onSendMessage={handleSendMessage}
                   onStopStreaming={stopStreaming}
                   isLoading={isLoading}
-                  onDraftTranscription={handleVoiceDraftTranscription}
                   ragState={{
                     isActive: !!workContext.ragMode,
                     isCollapsed: !ragOpen,
@@ -671,7 +659,6 @@ const ChatPage: React.FC = () => {
                     onSendMessage={handleSendMessage}
                     onStopStreaming={stopStreaming}
                     isLoading={isLoading}
-                    onDraftTranscription={handleVoiceDraftTranscription}
                     ragState={{
                       isActive: !!workContext.ragMode,
                       isCollapsed: !ragOpen,

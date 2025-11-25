@@ -208,9 +208,10 @@ class Settings(BaseSettings):
     # 멀티모달(Vision) 전용 배포 (gpt-4o, gpt-4o-mini, gpt-4o-vision 등) - 선택
     azure_openai_multimodal_deployment: str = Field(default="")
     azure_openai_enable_vision_captioning: bool = True  # Vision 캡셔닝 활성화 플래그
-    azure_openai_audio_deployment: Optional[str] = None
-    azure_openai_audio_api_version: str = "2024-12-01-preview"
+    
+    # AWS Transcribe 음성 변환 설정
     enable_audio_transcription: bool = False  # 오디오 → 텍스트 변환 플래그
+    aws_transcribe_language_code: str = "ko-KR"  # 기본 언어 (ko-KR, en-US, ja-JP, zh-CN 등)
     
     # Azure CLIP 멀티모달 임베딩 모델
     azure_openai_multimodal_embedding_endpoint: Optional[str] = None

@@ -25,6 +25,7 @@ from app.api.v1.containers import router as containers_router
 from app.api.v1.documents import router as documents_router
 from app.api.v1.document_access import router as document_access_router
 from app.api.v1.agent import router as agent_router  # 🤖 Agent-based RAG
+from app.api.v1.endpoints.transcribe import router as transcribe_router  # 🎤 실시간 STT
 
 from app.core.config import settings
 
@@ -281,6 +282,9 @@ app.include_router(permission_requests_router, prefix="/api/v1/permission-reques
 
 # 📄 문서 접근 제어 API (Phase 2)
 app.include_router(document_access_router, prefix="/api/v1")
+
+# 🎤 실시간 음성→텍스트 변환 API (AWS Transcribe Streaming)
+app.include_router(transcribe_router, prefix="/api/v1/transcribe", tags=["🎤 Speech-to-Text"])
 
 @app.get("/")
 async def root():

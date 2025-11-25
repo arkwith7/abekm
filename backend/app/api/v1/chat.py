@@ -672,8 +672,19 @@ async def download_chat_asset(
 @router.post("/chat/transcribe")
 async def transcribe_chat_audio(
     file: UploadFile = File(...),
+    language: str = "ko-KR",  # 기본값: 한국어 (ko-KR, en-US, ja-JP, zh-CN 등)
     current_user: User = Depends(get_current_user)
 ):
+    """음성 파일을 텍스트로 변환 (AWS Transcribe)
+    
+    Args:
+        file: 오디오 파일 (webm, mp3, wav, m4a 등)
+        language: 언어 코드 (ko-KR, en-US, ja-JP, zh-CN 등)
+        current_user: 현재 사용자 (인증)
+    
+    Returns:
+        {"success": true, "transcript": "변환된 텍스트"}
+    """
     if not audio_transcription_service.enabled:
         raise HTTPException(status_code=503, detail="오디오 전사 기능이 비활성화되어 있습니다.")
 
@@ -683,6 +694,7 @@ async def transcribe_chat_audio(
     temp_path = Path(temp_path_str)
 
     try:
+        # 파일 저장
         async with aiofiles.open(temp_path, "wb") as out_file:
             while True:
                 chunk = await file.read(1024 * 1024)
@@ -690,10 +702,31 @@ async def transcribe_chat_audio(
                     break
                 await out_file.write(chunk)
 
-        transcript = await asyncio.to_thread(audio_transcription_service.transcribe, temp_path)
+        logger.info(
+            "🎤 [CHAT-TRANSCRIBE] 변환 요청 - user: %s, file: %s, size: %d bytes, language: %s",
+            current_user.username,
+            file.filename,
+            temp_path.stat().st_size,
+            language
+        )
+
+        # AWS Transcribe 변환 (동기 → 비동기 래핑)
+        transcript = await asyncio.to_thread(
+            audio_transcription_service.transcribe, 
+            temp_path,
+            language
+        )
+        
+        logger.info(
+            "✅ [CHAT-TRANSCRIBE] 변환 완료 - user: %s, text_length: %d",
+            current_user.username,
+            len(transcript)
+        )
+        
         return {"success": True, "transcript": transcript}
+        
     except Exception as exc:
-        logger.error(f"❌ 오디오 전사 실패: {exc}")
+        logger.error(f"❌ [CHAT-TRANSCRIBE] 변환 실패: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail="음성 텍스트 변환 중 오류가 발생했습니다.")
     finally:
         try:

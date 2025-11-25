@@ -3,14 +3,11 @@ import {
   ChevronDown,
   ChevronUp,
   File as FileIcon,
-  Mic,
   Paperclip,
-  Play,
   Plus,
+  Radio,
   Square,
   Trash2,
-  UploadCloud,
-  Volume2,
   X
 } from 'lucide-react';
 import React, {
@@ -21,14 +18,15 @@ import React, {
   useState
 } from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
+import { useRealtimeSTT } from '../../../../services/realtimeSTT';
 import { AttachmentCategory } from '../types/chat.types';
 
 interface MessageComposerProps {
-  onSendMessage: (message: string, files?: File[], voiceBlob?: Blob) => Promise<void> | void;
+  onSendMessage: (message: string, files?: File[]) => Promise<void> | void;
   onStopStreaming?: () => void;
   isLoading: boolean;
   placeholder?: string;
-  onDraftTranscription?: (blob: Blob) => Promise<string>;
+  onRealtimeSupportChange?: (supported: boolean) => void;
   ragState?: {
     isActive: boolean;
     isCollapsed: boolean;
@@ -72,26 +70,32 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
   onStopStreaming,
   isLoading,
   placeholder = '메시지를 입력하세요...',
-  onDraftTranscription,
+  onRealtimeSupportChange,
   ragState
 }) => {
   const [message, setMessage] = useState('');
   const [fileDrafts, setFileDrafts] = useState<FileDraft[]>([]);
   const [isDraggingFile, setDraggingFile] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
-  const [transcribing, setTranscribing] = useState(false);
-  const [voiceDraft, setVoiceDraft] = useState<Blob | null>(null);
-  const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [sttLanguage, setSttLanguage] = useState<string>('ko-KR'); // 🆕 STT 언어 (ko-KR, en-US, ja-JP, zh-CN)
+  const [isSTTPreparing, setIsSTTPreparing] = useState(false); // 🆕 STT 준비 중 상태
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPopupRef = useRef<HTMLDivElement>(null);
   const ragDocuments = useMemo(() => ragState?.documents ?? [], [ragState?.documents]);
+
+  // 🆕 실시간 STT Hook
+  const {
+    isRecording: isRealtimeRecording,
+    interimText: realtimeInterimText,
+    finalText: realtimeFinalText,
+    isSupported: isRealtimeSupported,
+    startRecording: startRealtimeSTT,
+    stopRecording: stopRealtimeSTT,
+    reset: resetRealtimeSTT
+  } = useRealtimeSTT();
 
   const cleanupPreviews = useCallback((drafts: FileDraft[]) => {
     drafts.forEach(draft => {
@@ -104,11 +108,8 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
   useEffect(() => {
     return () => {
       cleanupPreviews(fileDrafts);
-      if (voicePreviewUrl) {
-        URL.revokeObjectURL(voicePreviewUrl);
-      }
     };
-  }, [fileDrafts, cleanupPreviews, voicePreviewUrl]);
+  }, [fileDrafts, cleanupPreviews]);
 
   // TextareaAutosize를 사용하므로 수동 높이 조절 불필요
 
@@ -118,103 +119,75 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
     }
   }, [isLoading]);
 
-  const resetRecordingTimer = () => {
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-  };
-
   const handleSubmit = async () => {
     const trimmed = message.trim();
     const files = fileDrafts.map(draft => draft.file);
 
-    if (!trimmed && !files.length && !voiceDraft) {
+    if (!trimmed && !files.length) {
       return;
     }
 
-    await onSendMessage(trimmed, files, voiceDraft ?? undefined);
+    // 🆕 실시간 STT 중지 (메시지 전송 시)
+    if (isRealtimeRecording) {
+      stopRealtimeSTT();
+    }
+
+    await onSendMessage(trimmed, files);
 
     setMessage('');
     cleanupPreviews(fileDrafts);
     setFileDrafts([]);
-    setVoiceDraft(null);
-    if (voicePreviewUrl) {
-      URL.revokeObjectURL(voicePreviewUrl);
-      setVoicePreviewUrl(null);
-    }
   };
 
-  const startRecording = async () => {
-    if (!navigator.mediaDevices?.getUserMedia) {
-      alert('이 브라우저는 음성 녹음을 지원하지 않습니다.');
+  // 🆕 실시간 텍스트 동기화
+  useEffect(() => {
+    if (realtimeFinalText || realtimeInterimText) {
+      const combinedText = (realtimeFinalText + ' ' + realtimeInterimText).trim();
+      setMessage(combinedText);
+    }
+  }, [realtimeFinalText, realtimeInterimText]);
+
+  useEffect(() => {
+    if (onRealtimeSupportChange) {
+      onRealtimeSupportChange(isRealtimeSupported);
+    }
+  }, [isRealtimeSupported, onRealtimeSupportChange]);
+
+  const handleStartRealtimeSTT = async () => {
+    if (!isRealtimeSupported) {
+      alert('현재 브라우저에서는 실시간 음성인식을 사용할 수 없습니다. 최신 Chrome/Edge를 사용해주세요.');
       return;
     }
+
+    console.log('🎙️ [MessageComposer] 실시간 음성인식 시작 - 언어:', sttLanguage);
+
+    // 준비 중 상태 표시
+    setIsSTTPreparing(true);
+    setIsMenuOpen(false); // 메뉴 닫기
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-      const chunks: Blob[] = [];
+      resetRealtimeSTT();
+      setMessage(''); // 기존 텍스트 초기화
 
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
+      // STT 준비 완료 대기
+      const success = await startRealtimeSTT(sttLanguage);
 
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        setVoiceDraft(blob);
-        const preview = URL.createObjectURL(blob);
-        if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
-        setVoicePreviewUrl(preview);
-        stream.getTracks().forEach(track => track.stop());
-        resetRecordingTimer();
-        setRecordingTime(0);
+      if (!success) {
+        console.error('❌ [MessageComposer] STT 시작 실패');
+        alert('실시간 음성인식을 시작할 수 없습니다. 마이크 권한을 확인해주세요.');
+        return;
+      }
 
-        if (onDraftTranscription) {
-          setTranscribing(true);
-          onDraftTranscription(blob)
-            .then(text => {
-              if (text) {
-                setMessage(prev => prev ? `${prev}\n${text}` : text);
-              }
-            })
-            .catch(err => {
-              console.warn('음성 초안 변환 실패', err);
-            })
-            .finally(() => setTranscribing(false));
-        }
-      };
-
-      recorder.start();
-      mediaRecorderRef.current = recorder;
-      setIsRecording(true);
-      setRecordingTime(0);
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
+      console.log('✅ [MessageComposer] STT 준비 완료 - 마이크 아이콘 표시');
     } catch (error) {
-      console.error('음성 녹음 시작 실패:', error);
-      alert('마이크 권한을 확인해주세요.');
+      console.error('❌ [MessageComposer] STT 시작 중 오류:', error);
+    } finally {
+      // 준비 완료 (성공/실패 모두 준비 상태 해제)
+      setIsSTTPreparing(false);
     }
   };
 
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    setIsRecording(false);
-    mediaRecorderRef.current = null;
-    resetRecordingTimer();
-  }, []);
 
-  const removeVoiceDraft = () => {
-    setVoiceDraft(null);
-    if (voicePreviewUrl) {
-      URL.revokeObjectURL(voicePreviewUrl);
-      setVoicePreviewUrl(null);
-    }
-  };
 
   const handleFilesSelected = (input?: FileList | File[] | null) => {
     if (!input) return;
@@ -288,8 +261,8 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        if (isRecording) {
-          stopRecording();
+        if (isRealtimeRecording) {
+          stopRealtimeSTT();
         } else if (isDraggingFile) {
           setDraggingFile(false);
         } else if (isMenuOpen) {
@@ -299,7 +272,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isRecording, isDraggingFile, isMenuOpen, stopRecording]);
+  }, [isRealtimeRecording, isDraggingFile, isMenuOpen, stopRealtimeSTT]);
 
   // 팝업 메뉴 외부 클릭 감지
   useEffect(() => {
@@ -317,12 +290,6 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMenuOpen]);
-
-  const recordingLabel = useMemo(() => {
-    const minutes = Math.floor(recordingTime / 60);
-    const seconds = recordingTime % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  }, [recordingTime]);
 
   return (
     <div
@@ -360,13 +327,10 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
             첨부 파일을 드래그하거나 메시지를 입력해 주세요.
           </div>
         )}
-        {(fileDrafts.length > 0 || voiceDraft) && (
+        {fileDrafts.length > 0 && (
           <button
             type="button"
-            onClick={() => {
-              clearDrafts();
-              removeVoiceDraft();
-            }}
+            onClick={clearDrafts}
             className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-0.5 text-gray-500 hover:border-red-300 hover:text-red-500"
           >
             <Trash2 className="h-3 w-3" />
@@ -399,10 +363,10 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
         </div>
       )}
 
-      {(fileDrafts.length > 0 || voiceDraft) && (
+      {fileDrafts.length > 0 && (
         <div className="px-4 pt-3">
           <div className="mb-2 flex items-center justify-between text-xs font-medium text-gray-600">
-            <span>첨부 {fileDrafts.length + (voiceDraft ? 1 : 0)}개</span>
+            <span>첨부 {fileDrafts.length}개</span>
             {fileDrafts.length > 0 && (
               <button
                 type="button"
@@ -441,36 +405,41 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
                 </button>
               </div>
             ))}
-            {voiceDraft && (
-              <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                <Volume2 className="h-5 w-5 text-amber-500" />
-                <span>음성 초안 {formatFileSize(voiceDraft.size)}</span>
-                {voicePreviewUrl && (
-                  <audio controls src={voicePreviewUrl} className="h-8" />
-                )}
-                <button
-                  type="button"
-                  onClick={removeVoiceDraft}
-                  className="text-amber-500 hover:text-red-500"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            )}
+
           </div>
         </div>
       )}
 
       <div className="px-4 pb-3 pt-2.5">
-        {/* 녹음 상태 표시 */}
-        {isRecording && (
-          <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
-            <Play className="h-4 w-4 animate-pulse" />
-            <span className="font-medium">녹음 중... {recordingLabel}</span>
+        {!isRealtimeSupported && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-700">
+            <Radio className="h-4 w-4" />
+            <span>현재 브라우저에서는 실시간 음성인식이 제한됩니다. 최신 Chrome/Edge 또는 모바일 앱을 이용하세요.</span>
+          </div>
+        )}
+
+
+
+        {/* 🆕 STT 준비 중 상태 표시 */}
+        {isSTTPreparing && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-600">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-amber-600 border-t-transparent"></div>
+            <span className="font-medium">음성인식 준비 중...</span>
+          </div>
+        )}
+
+        {/* 🆕 실시간 STT 상태 표시 */}
+        {!isSTTPreparing && isRealtimeRecording && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-600">
+            <Radio className="h-4 w-4 animate-pulse" />
+            <span className="font-medium">말씀하세요...</span>
+            {realtimeInterimText && (
+              <span className="text-gray-500 italic">"{realtimeInterimText}"</span>
+            )}
             <button
               type="button"
-              onClick={stopRecording}
-              className="ml-auto rounded-md px-2 py-1 text-xs text-red-600 hover:bg-red-100"
+              onClick={stopRealtimeSTT}
+              className="ml-auto rounded-md px-2 py-1 text-xs text-blue-600 hover:bg-blue-100"
             >
               중지
             </button>
@@ -508,12 +477,6 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
               style={{ overflow: 'hidden' }}
               disabled={isLoading}
             />
-            {transcribing && (
-              <div className="mt-1 flex items-center gap-1.5 px-4 text-xs text-amber-600">
-                <UploadCloud className="h-3.5 w-3.5 animate-pulse" />
-                <span>음성 텍스트 변환 중...</span>
-              </div>
-            )}
           </div>
 
           {/* 2줄: 버튼 영역 (좌측 + 버튼, 우측 전송 버튼) */}
@@ -547,18 +510,36 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
                     <Paperclip className="h-5 w-5 text-gray-500" />
                     <span>파일 업로드</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      startRecording();
-                      setIsMenuOpen(false);
-                    }}
-                    disabled={isRecording}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Mic className="h-5 w-5 text-gray-500" />
-                    <span>음성으로 입력 (STT)</span>
-                  </button>
+                  <div className="px-4 py-3 border-b border-gray-100">
+                    <div className="flex items-center gap-3 mb-2">
+                      <Radio className="h-5 w-5 text-blue-500" />
+                      <span className="text-sm font-medium text-gray-700">실시간 음성인식</span>
+                    </div>
+                    <div className="ml-8">
+                      <select
+                        value={sttLanguage}
+                        onChange={(e) => setSttLanguage(e.target.value)}
+                        disabled={!isRealtimeSupported}
+                        className="w-full px-3 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <option value="ko-KR">🇰🇷 한국어</option>
+                        <option value="en-US">🇺🇸 영어 (미국)</option>
+                        <option value="ja-JP">🇯🇵 일본어</option>
+                        <option value="zh-CN">🇨🇳 중국어 (간체)</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleStartRealtimeSTT();
+                          setIsMenuOpen(false);
+                        }}
+                        disabled={isRealtimeRecording || !isRealtimeSupported}
+                        className="mt-2 w-full px-3 py-1.5 text-xs bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isRealtimeSupported ? '시작' : '브라우저에서 지원되지 않습니다'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -573,10 +554,10 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
                   void handleSubmit();
                 }
               }}
-              disabled={isLoading ? !onStopStreaming : (!message.trim() && !fileDrafts.length && !voiceDraft)}
+              disabled={isLoading ? !onStopStreaming : (!message.trim() && !fileDrafts.length)}
               className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full transition-all ${isLoading
                 ? 'bg-gray-400 text-white'
-                : message.trim() || fileDrafts.length > 0 || voiceDraft
+                : message.trim() || fileDrafts.length > 0
                   ? 'bg-blue-600 text-white hover:bg-blue-700'
                   : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 }`}

@@ -128,40 +128,19 @@ export const useChat = (options: UseChatOptions = {}) => {
     }
   }, [archiveSessionSilently]);
 
-  const prepareAttachments = useCallback(async (files: File[] | undefined, voiceBlob?: Blob | null) => {
-    const filesToUpload: File[] = [];
-
-    if (files?.length) {
-      filesToUpload.push(...files);
-    }
-
-    let voiceFileName: string | undefined;
-    if (voiceBlob) {
-      const inferredType = voiceBlob.type || 'audio/webm';
-      const generatedName = `voice-${Date.now()}.webm`;
-      const voiceFile = new File([voiceBlob], generatedName, { type: inferredType });
-      filesToUpload.push(voiceFile);
-      voiceFileName = generatedName;
-    }
-
-    if (!filesToUpload.length) {
+  const prepareAttachments = useCallback(async (files: File[] | undefined) => {
+    if (!files?.length) {
       return {
         uploadedAssets: [] as UploadedChatAsset[],
-        attachmentsForMessage: [] as ChatAttachment[],
-        voiceAssetId: undefined as string | undefined
+        attachmentsForMessage: [] as ChatAttachment[]
       };
     }
 
     try {
-      const uploadedAssets = await uploadChatAttachments(filesToUpload);
-      const voiceAssetId = voiceFileName
-        ? uploadedAssets.find(asset => asset.fileName === voiceFileName || asset.category === 'audio')?.assetId
-        : undefined;
-
+      const uploadedAssets = await uploadChatAttachments(files);
       return {
         uploadedAssets,
-        attachmentsForMessage: uploadedAssets.map(mapAssetToAttachment),
-        voiceAssetId
+        attachmentsForMessage: uploadedAssets.map(mapAssetToAttachment)
       };
     } catch (uploadError) {
       console.error('📁 첨부 파일 업로드 실패', uploadError);
@@ -492,23 +471,20 @@ export const useChat = (options: UseChatOptions = {}) => {
     content: string,
     agentType?: string,
     files?: File[],
-    voiceBlob?: Blob,
     currentSelectedDocuments?: Array<{ fileId: string; fileName: string; fileType: string; filePath?: string; metadata?: any }>
   ) => {
-    if ((!content.trim() && !files?.length && !voiceBlob) || isLoading) return;
+    if ((!content.trim() && !files?.length) || isLoading) return;
 
     setIsLoading(true);
     setError(null);
 
     let uploadedAssets: UploadedChatAsset[] = [];
     let attachmentsForMessage: ChatAttachment[] = [];
-    let voiceAssetId: string | undefined;
 
     try {
-      const attachmentResult = await prepareAttachments(files, voiceBlob);
+      const attachmentResult = await prepareAttachments(files);
       uploadedAssets = attachmentResult.uploadedAssets;
       attachmentsForMessage = attachmentResult.attachmentsForMessage;
-      voiceAssetId = attachmentResult.voiceAssetId;
     } catch (uploadErr: any) {
       console.error('📁 첨부 업로드 실패:', uploadErr);
       const errorMessage = uploadErr?.response?.data?.detail
@@ -533,9 +509,6 @@ export const useChat = (options: UseChatOptions = {}) => {
     let finalContent = content.trim();
     if (files?.length) {
       finalContent += `\n\n📎 첨부 파일: ${files.map(f => f.name).join(', ')}`;
-    }
-    if (voiceBlob) {
-      finalContent = finalContent || '🎤 음성 메시지';
     }
 
     const userMessage: ChatMessage = {
@@ -672,7 +645,6 @@ export const useChat = (options: UseChatOptions = {}) => {
               category: asset.category,
               file_name: asset.fileName
             })),
-            voice_asset_id: voiceAssetId,
             use_rag: true,
             search_mode: 'hybrid',
             max_chunks: 20,
@@ -916,16 +888,15 @@ export const useChat = (options: UseChatOptions = {}) => {
     content: string,
     agentType?: string,
     files?: File[],
-    voiceBlob?: Blob,
     currentSelectedDocuments?: Array<{ fileId: string; fileName: string; fileType: string; filePath?: string; metadata?: any }>
   ) => {
     // 스트리밍 사용 여부에 따라 다른 함수 호출
     if (options.useStreaming) {
-      return sendStreamingMessage(content, agentType, files, voiceBlob, currentSelectedDocuments);
+      return sendStreamingMessage(content, agentType, files, currentSelectedDocuments);
     }
 
     // 기존 비스트리밍 로직
-    if ((!content.trim() && !files?.length && !voiceBlob) || isLoading) return;
+    if ((!content.trim() && !files?.length) || isLoading) return;
 
     setIsLoading(true);
     setError(null);
@@ -934,19 +905,14 @@ export const useChat = (options: UseChatOptions = {}) => {
     if (files?.length) {
       finalContent += `\n\n📎 첨부 파일: ${files.map(f => f.name).join(', ')}`;
     }
-    if (voiceBlob) {
-      finalContent = finalContent || '🎤 음성 메시지';
-    }
 
     let uploadedAssets: UploadedChatAsset[] = [];
     let attachmentsForMessage: ChatAttachment[] = [];
-    let voiceAssetId: string | undefined;
 
     try {
-      const attachmentResult = await prepareAttachments(files, voiceBlob);
+      const attachmentResult = await prepareAttachments(files);
       uploadedAssets = attachmentResult.uploadedAssets;
       attachmentsForMessage = attachmentResult.attachmentsForMessage;
-      voiceAssetId = attachmentResult.voiceAssetId;
     } catch (uploadErr: any) {
       console.error('📁 첨부 업로드 실패(비스트리밍):', uploadErr);
       const errorMessage = uploadErr?.response?.data?.detail
@@ -990,8 +956,7 @@ export const useChat = (options: UseChatOptions = {}) => {
           asset_id: asset.assetId,
           category: asset.category,
           file_name: asset.fileName
-        })),
-        voice_asset_id: voiceAssetId
+        }))
       });
 
       const assistantMessage: ChatMessage = {

@@ -32,6 +32,7 @@ const DEFAULT_AGENT_SETTINGS = {
 
 const AgentChatPage: React.FC = () => {
     const [inputCentered, setInputCentered] = useState(true);
+    const [isRealtimeSttSupported, setRealtimeSttSupported] = useState(true);
 
     // 글로벌 상태
     const { selectedDocuments, setSelectedDocuments } = useSelectedDocuments();
@@ -118,7 +119,7 @@ const AgentChatPage: React.FC = () => {
     }, [selectedDocuments.length]);
 
     // 메시지 전송 핸들러
-    const handleSendMessage = async (content: string, files?: File[], voiceBlob?: Blob) => {
+    const handleSendMessage = async (content: string, files?: File[]) => {
         await sendMessage(content, selectedDocuments);
     };
 
@@ -172,6 +173,14 @@ const AgentChatPage: React.FC = () => {
                 />
             </div>
 
+            {!isRealtimeSttSupported && (
+                <div className="px-6">
+                    <div className="mx-auto mt-3 max-w-4xl rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
+                        현재 브라우저에서는 실시간 음성인식을 완전히 지원하지 않습니다. 최신 Chrome/Edge 또는 전용 앱에서 더 나은 경험을 얻을 수 있습니다.
+                    </div>
+                </div>
+            )}
+
             {/* 메인 콘텐츠 영역 */}
             <div className="flex-1 flex justify-center transition-all duration-200 min-h-0">
                 <div className="max-w-5xl w-full flex flex-col px-6 relative">
@@ -219,6 +228,7 @@ const AgentChatPage: React.FC = () => {
                                 {/* 중앙 입력창 */}
                                 <MessageComposer
                                     onSendMessage={handleSendMessage}
+                                    onRealtimeSupportChange={setRealtimeSttSupported}
                                     isLoading={isLoading}
                                     ragState={{
                                         isActive: ragActive,
@@ -254,6 +264,7 @@ const AgentChatPage: React.FC = () => {
                                 <div className="mx-auto max-w-4xl">
                                     <MessageComposer
                                         onSendMessage={handleSendMessage}
+                                        onRealtimeSupportChange={setRealtimeSttSupported}
                                         isLoading={isLoading}
                                         ragState={{
                                             isActive: ragActive,
