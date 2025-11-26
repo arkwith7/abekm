@@ -28,7 +28,7 @@ export class RealtimeSTTClient {
   private readonly supportsAudioWorklet = typeof AudioWorkletNode !== 'undefined';
 
   // 음량 임계값 (배경 잡음 필터링용)
-  private readonly energyThreshold = 0.02; // RMS 임계값 (0.02 = 배경 잡음 필터링)
+  private readonly energyThreshold = 0.001; // RMS 임계값 (0.001 = 고감도 설정)
   private silenceFrameCount = 0; // 연속 침묵 프레임 카운터
   private readonly maxSilenceFrames = 30; // 약 2초 침묵 후 필터링
   private chunkCount = 0; // 디버깅용 청크 카운터
@@ -40,7 +40,7 @@ export class RealtimeSTTClient {
 
   // 자동 중지 기능 (연속 침묵 감지)
   private continuousSilenceCount = 0; // 연속 침묵 청크 카운터
-  private readonly autoStopSilenceThreshold = 23; // 약 3초 침묵 (23 * 128ms = 2.94초)
+  private readonly autoStopSilenceThreshold = 40; // 약 5초 침묵 (40 * 128ms = 5.12초)
   private autoStopCallback: (() => void) | null = null; // 자동 중지 콜백
 
   /**
