@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AgentChatRequest, agentService } from '../../../../services/agentService';
+import { uploadChatAttachments, UploadedChatAsset } from '../../../../services/userService';
 import {
   clearPersistedAgentChatState,
   isAgentChatStateExpired,
@@ -34,6 +35,9 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 🆕 첨부 파일 상태
+  const [uploadedAssets, setUploadedAssets] = useState<UploadedChatAsset[]>([]);
 
   // 세션 상태
   const [sessionId, setSessionId] = useState<string>(() =>
@@ -190,7 +194,8 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
    */
   const sendAgentMessage = useCallback(async (
     content: string,
-    selectedDocuments?: Array<{ fileId: string; fileName: string; containerName?: string }>
+    selectedDocuments?: Array<{ fileId: string; fileName: string; containerName?: string }>,
+    files?: File[]
   ) => {
     if (!content.trim() || isLoading) return;
 
@@ -199,12 +204,69 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     setCurrentSteps([]);
     setCurrentMetrics(null);
 
-    // 사용자 메시지 추가
+    // 🆕 파일 업로드 처리
+    let currentUploadedAssets = uploadedAssets;
+    if (files && files.length > 0) {
+      // 파일 크기 제한 (3MB) - 업로드 전 체크
+      const MAX_FILE_SIZE = 3 * 1024 * 1024;
+      const oversizedFiles = files.filter(f => f.size > MAX_FILE_SIZE);
+
+      if (oversizedFiles.length > 0) {
+        const oversizedNames = oversizedFiles.map(f =>
+          `${f.name} (${(f.size / (1024 * 1024)).toFixed(1)}MB)`
+        ).join(', ');
+        const errorMsg = `📁 파일 크기 제한 초과\n\n${oversizedNames}\n\n채팅에서는 3MB 이하의 파일만 처리 가능합니다.\n큰 파일은 '문서 컨테이너' 메뉴에서 업로드해주세요.`;
+
+        console.error('❌ 파일 크기 초과:', oversizedNames);
+        setError(errorMsg);
+        setIsLoading(false);
+
+        // 사용자에게 즉시 알림
+        if (options.onError) {
+          options.onError(new Error(errorMsg));
+        }
+        return;
+      }
+
+      try {
+        console.log('📎 파일 업로드 시작:', files.length, '개');
+        const uploaded = await uploadChatAttachments(files);
+        currentUploadedAssets = [...uploadedAssets, ...uploaded];
+        setUploadedAssets(currentUploadedAssets);
+        console.log('✅ 파일 업로드 완료:', uploaded);
+      } catch (uploadError: any) {
+        const errorMsg = uploadError?.message || '파일 업로드 중 오류가 발생했습니다.';
+        console.error('❌ 파일 업로드 실패:', uploadError);
+        setError(errorMsg);
+        setIsLoading(false);
+
+        if (options.onError) {
+          options.onError(uploadError);
+        }
+        return;
+      }
+    }
+
+    // 사용자 메시지 추가 (🆕 첨부 파일 정보 포함)
     const userMessage: AgentMessage = {
       id: `user_${Date.now()}`,
       role: 'user',
       content: content.trim(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // 🆕 첨부 파일 정보 추가
+      attachments: currentUploadedAssets.length > 0 ? currentUploadedAssets.map(asset => ({
+        id: asset.assetId,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+        size: asset.size,
+        category: asset.category,
+        // 이미지는 미리보기 URL 추가 (백엔드 API 사용)
+        // 주의: 백엔드 URL인 경우 인증이 필요하므로 previewUrl에 설정하지 않음 (AuthenticatedImageAttachment가 downloadUrl을 통해 fetch하도록 함)
+        previewUrl: (asset.previewUrl && (asset.previewUrl.startsWith('blob:') || asset.previewUrl.startsWith('data:')))
+          ? asset.previewUrl
+          : undefined,
+        downloadUrl: asset.downloadUrl || `/api/v1/chat/assets/${asset.assetId}`
+      })) : undefined
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -224,7 +286,14 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
         max_tokens: settings.max_tokens,
         similarity_threshold: settings.similarity_threshold,
         container_ids: settings.container_ids,
-        document_ids: settings.document_ids
+        document_ids: settings.document_ids,
+        attachments: currentUploadedAssets.map(asset => ({
+          asset_id: asset.assetId,
+          id: asset.assetId,  // 백엔드 호환성
+          category: asset.category,
+          file_name: asset.fileName,
+          mime_type: asset.mimeType
+        }))
       };
 
       console.log('🤖 [useAgentChat] SSE 스트리밍 요청:', request);
@@ -330,6 +399,8 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
               metadata = data;
             } else if (eventType === 'done') {
               console.log('✅ [useAgentChat] 스트리밍 완료');
+              // 🆕 첨부 파일 초기화하지 않음 - 세션 내내 유지
+              // setUploadedAssets([]);  // ← 제거: 세션 종료 시에만 초기화
             } else if (eventType === 'error') {
               throw new Error(data.error || '스트리밍 오류');
             }
@@ -341,11 +412,14 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
 
       // 최종 메시지 업데이트
       if (metadata) {
+        // 첨부 파일 정보 추출
+        const attachedFiles = metadata.attached_files || [];
         updateStreamingMessage(msg => ({
           ...msg,
           intent: metadata.intent as any,
           strategy_used: metadata.strategy_used,
           detailed_chunks: metadata.detailed_chunks || [],
+          attached_files: attachedFiles,  // 🆕 첨부 파일 메타데이터
           references: metadata.detailed_chunks?.map((chunk: any) => ({
             title: chunk.file_name,
             excerpt: chunk.content_preview,
@@ -402,7 +476,7 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, sessionId, settings, options]);
+  }, [isLoading, sessionId, settings, options, uploadedAssets]);
 
   /**
    * 메시지 초기화
@@ -419,6 +493,9 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     setCurrentSteps([]);
     setCurrentMetrics(null);
     setError(null);
+
+    // 🆕 첨부 파일도 초기화 (새 세션 시작)
+    setUploadedAssets([]);
 
     console.log('✅ [useAgentChat] 새 세션:', freshSessionId);
   }, []);
@@ -631,6 +708,22 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     }
   }, [sessionId, settings]);
 
+  /**
+   * 🆕 개별 첨부 파일 제거
+   */
+  const removeAttachment = useCallback((assetId: string) => {
+    setUploadedAssets(prev => prev.filter(asset => asset.assetId !== assetId));
+    console.log('🗑️ [useAgentChat] 첨부 파일 제거:', assetId);
+  }, []);
+
+  /**
+   * 🆕 모든 첨부 파일 제거
+   */
+  const clearAttachments = useCallback(() => {
+    setUploadedAssets([]);
+    console.log('🗑️ [useAgentChat] 모든 첨부 파일 제거');
+  }, []);
+
   return {
     // 상태
     messages,
@@ -641,6 +734,7 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     currentSteps,
     currentMetrics,
     isSessionRestored,
+    uploadedAssets,  // 🆕 첨부 파일 상태
 
     // 액션
     sendMessage: sendAgentMessage,
@@ -650,6 +744,9 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     getMessage,
     getLastAgentMessage,
     compareWithOldArchitecture,
+    setUploadedAssets,  // 🆕 첨부 파일 관리
+    removeAttachment,   // 🆕 개별 파일 제거
+    clearAttachments,   // 🆕 전체 파일 제거
 
     // 🆕 세션 관리
     loadSession,

@@ -13,6 +13,8 @@ from app.schemas.chat import AgentSystemPrompt, AGENT_SYSTEM_PROMPTS, SelectedDo
 from app.services.chat.rag_search_service import rag_search_service, RAGSearchParams
 from app.services.chat.query_classification_service import QueryClassificationService
 from app.services.chat.conversation_context_service import conversation_context_service
+from app.services.document.extraction.text_extractor_service import TextExtractorService
+from app.services.chat.chat_attachment_service import chat_attachment_service
 from loguru import logger
 
 
@@ -34,6 +36,8 @@ class AIAgentService:
         self.rag_use_reranking = os.getenv("RAG_USE_RERANKING", "true").lower() == "true"
         # 질문 분류기
         self.classifier = QueryClassificationService()
+        # 텍스트 추출기
+        self.text_extractor = TextExtractorService()
 
         logger.info(
             f"🔧 RAG 설정 로드: threshold={self.rag_similarity_threshold}, "
@@ -181,7 +185,10 @@ class AIAgentService:
             # 🆕 이미지 첨부 시 질의문 추가 보강 (이미지 검색용)
             image_query_rewritten = False
             
+            # 🆕 문서 첨부 처리 (Chat with File)
+            attached_document_context = ""
             if attachments:
+                # 1. 이미지 처리
                 image_attachments = [
                     att for att in attachments 
                     if att.get('mime_type', '').startswith('image/')
@@ -200,6 +207,59 @@ class AIAgentService:
                         image_query_rewritten = True
                         context_metadata["image_rewrite"] = rewrite_metadata
                         logger.info(f"✍️ 이미지 질의문 재작성 완료: '{query[:30]}...' → '{search_query[:50]}...'")
+
+                # 2. 문서 처리 (PDF, DOCX 등)
+                doc_attachments = [
+                    att for att in attachments 
+                    if not att.get('mime_type', '').startswith('image/') and not att.get('mime_type', '').startswith('audio/')
+                ]
+                
+                if doc_attachments:
+                    logger.info(f"📎 문서 첨부 감지 ({len(doc_attachments)}개) - 텍스트 추출 및 컨텍스트 주입 시도")
+                    extracted_texts = []
+                    
+                    for doc_att in doc_attachments:
+                        asset_id = doc_att.get('asset_id')
+                        if not asset_id:
+                            continue
+                            
+                        stored_file = chat_attachment_service.get(asset_id)
+                        if not stored_file:
+                            logger.warning(f"⚠️ 첨부 파일 찾을 수 없음: {asset_id}")
+                            continue
+                            
+                        # 파일 크기 제한 (10MB)
+                        MAX_FILE_SIZE = 10 * 1024 * 1024
+                        if stored_file.size > MAX_FILE_SIZE:
+                            logger.warning(f"⚠️ 파일 크기 초과 ({stored_file.size} bytes) - 처리 건너뜀: {stored_file.file_name}")
+                            extracted_texts.append(f"[파일: {stored_file.file_name}]\n(파일이 너무 커서 내용을 읽을 수 없습니다. 10MB 이하의 파일만 지원합니다.)")
+                            continue
+                            
+                        try:
+                            # 텍스트 추출
+                            extraction_result = await self.text_extractor.extract_text_from_file(
+                                file_path=str(stored_file.path),
+                                file_extension=Path(stored_file.file_name).suffix
+                            )
+                            
+                            if extraction_result.get('success') and extraction_result.get('text'):
+                                text_content = extraction_result['text']
+                                # 텍스트 길이 제한 (30,000자)
+                                MAX_TEXT_LENGTH = 30000
+                                if len(text_content) > MAX_TEXT_LENGTH:
+                                    text_content = text_content[:MAX_TEXT_LENGTH] + "\n...(내용이 너무 길어 생략됨)"
+                                    
+                                extracted_texts.append(f"[첨부 파일 내용: {stored_file.file_name}]\n{text_content}")
+                                logger.info(f"✅ 문서 텍스트 추출 성공: {stored_file.file_name} ({len(text_content)}자)")
+                            else:
+                                logger.warning(f"⚠️ 텍스트 추출 실패: {stored_file.file_name}")
+                        except Exception as e:
+                            logger.error(f"❌ 문서 처리 중 오류: {e}")
+                            
+                    if extracted_texts:
+                        attached_document_context = "\n\n".join(extracted_texts)
+                        # 검색 쿼리에 문서 내용이 있다는 힌트 추가 (선택 사항)
+                        # search_query += " (첨부된 문서 내용을 참고하여 답변해줘)"
             
             # 멀티턴 컨텍스트 기반 검색어 보강 (이미지 재작성이 없었을 때만)
             if not image_query_rewritten and classification.needs_rag and session_id and db_session:
@@ -270,6 +330,17 @@ class AIAgentService:
                 document_info = "전체 문서를 대상으로 검색"
                 enhanced_query = self._enhance_query_for_agent(search_query, agent_type, document_info)
             
+            # 🆕 첨부 문서 컨텍스트가 있으면 프롬프트에 추가
+            if attached_document_context:
+                logger.info("📎 첨부 문서 컨텍스트를 프롬프트에 추가합니다.")
+                enhanced_query = f"""
+[첨부된 문서 내용]
+{attached_document_context}
+
+[사용자 질문]
+{enhanced_query}
+"""
+
             logger.info(f"🔧 RAG 파라미터: threshold={rag_params.similarity_threshold}, max_chunks={rag_params.limit}, reranking={rag_params.reranking}")
             
             # RAG 검색 실행 (간단 캐싱: 동일 세션 내 동일 쿼리/문서 셋 중복 호출 방지)

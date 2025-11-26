@@ -195,6 +195,20 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
     if (!filesArray.length) {
       return;
     }
+
+    // 파일 크기 제한 체크 (3MB)
+    const MAX_FILE_SIZE = 3 * 1024 * 1024;
+    const oversizedFiles = filesArray.filter(f => f.size > MAX_FILE_SIZE);
+
+    if (oversizedFiles.length > 0) {
+      const fileList = oversizedFiles.map(f =>
+        `• ${f.name} (${(f.size / (1024 * 1024)).toFixed(1)}MB)`
+      ).join('\n');
+
+      alert(`⚠️ 파일 크기 제한 초과\n\n다음 파일이 너무 큽니다:\n${fileList}\n\n채팅에서는 3MB 이하의 파일만 첨부 가능합니다.\n큰 파일은 '문서 컨테이너' 메뉴에서 업로드해주세요.`);
+      return;
+    }
+
     const drafts = filesArray.map(createFileDraft);
     setFileDrafts(prev => [...prev, ...drafts]);
   };
@@ -452,7 +466,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
           type="file"
           multiple
           className="hidden"
-          accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.md,image/*,audio/*"
+          accept=".pdf,.doc,.docx,.hwp,.hwpx,.ppt,.pptx,.xls,.xlsx,.txt,.md,image/*,audio/*"
           onChange={handleFileInputChange}
         />
 

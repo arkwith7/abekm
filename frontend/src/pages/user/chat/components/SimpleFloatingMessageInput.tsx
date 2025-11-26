@@ -235,7 +235,7 @@ const SimpleFloatingMessageInput: React.FC<SimpleFloatingMessageInputProps> = ({
                         multiple
                         onChange={handleFileSelect}
                         className="hidden"
-                        accept=".pdf,.doc,.docx,.txt,.ppt,.pptx,.xls,.xlsx,image/*"
+                        accept=".pdf,.doc,.docx,.hwp,.hwpx,.txt,.ppt,.pptx,.xls,.xlsx,image/*"
                     />
                     <button
                         type="button"

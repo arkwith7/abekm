@@ -85,6 +85,10 @@ class KeywordSearchTool(BaseTool):
             
             logger.info(f"🔍 [KeywordSearch] 키워드: {keywords}")
             
+            # 최소 매칭 개수 설정 (키워드가 2개 이상이면 최소 2개, 아니면 1개)
+            min_match_count = 2 if len(keywords) >= 2 else 1
+            logger.info(f"   - 최소 매칭 조건: {min_match_count}개 이상")
+            
             # 2) SQL 쿼리 구성 (ILIKE 기반)
             # 각 키워드에 대해 매칭 점수 계산
             keyword_conditions = []
@@ -114,12 +118,15 @@ class KeywordSearchTool(BaseTool):
                     fbi.file_extsn as file_ext
                 FROM doc_chunk dc
                 LEFT JOIN tb_file_bss_info fbi ON dc.file_bss_info_sno = fbi.file_bss_info_sno
-                WHERE ({match_score_expr}) > 0
+                WHERE ({match_score_expr}) >= :min_match_count
                 AND fbi.del_yn = 'N'
                 """
             ]
             
-            params: Dict[str, Any] = {"total_keywords": len(keywords)}
+            params: Dict[str, Any] = {
+                "total_keywords": len(keywords),
+                "min_match_count": min_match_count
+            }
             for i, kw in enumerate(keywords[:10]):
                 params[f"kw{i}"] = f"%{kw}%"
             

@@ -13,6 +13,7 @@ import base64
 import os
 import tempfile
 from pathlib import Path
+from botocore.exceptions import ClientError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text, select, desc, func, delete
 from app.core.database import get_db
@@ -25,6 +26,8 @@ from app.services.chat.ai_agent_service import ai_agent_service
 from app.services.chat.chat_attachment_service import chat_attachment_service
 from app.services.core.audio_transcription_service import audio_transcription_service
 from app.core.config import settings
+from app.core.security import AuthUtils
+from app.services.auth.async_user_service import AsyncUserService
 
 from app.services.multi_agent.integrated_service import integrated_multi_agent_service
 from app.schemas.chat import SelectedDocument
@@ -659,9 +662,46 @@ async def download_chat_asset(
     if not stored:
         raise HTTPException(status_code=404, detail="첨부 파일을 찾을 수 없습니다.")
 
-    if stored.owner_emp_no != str(current_user.emp_no):
+    stored_owner = str(stored.owner_emp_no) if stored.owner_emp_no else None
+    current_emp_no = str(current_user.emp_no)
+    logger.info(f"🔐 [ChatAsset] 접근 시도: asset={asset_id}, stored_owner={stored_owner}, current={current_emp_no}")
+
+    if stored_owner != current_emp_no:
+        logger.warning(f"❌ [ChatAsset] 권한 없음: {current_emp_no} != {stored_owner}")
         raise HTTPException(status_code=403, detail="첨부 파일에 대한 접근 권한이 없습니다.")
 
+    # S3 스토리지 처리
+    if stored.storage_backend == "s3":
+        if not chat_attachment_service.s3_client:
+            logger.error("S3 client is not initialized but storage_backend is s3")
+            raise HTTPException(status_code=500, detail="스토리지 설정 오류가 발생했습니다.")
+            
+        try:
+            # S3에서 파일 스트림 가져오기
+            s3_response = chat_attachment_service.s3_client.get_object(
+                Bucket=chat_attachment_service.s3_bucket,
+                Key=str(stored.path)
+            )
+            
+            # 파일명 인코딩 처리 (RFC 5987)
+            from urllib.parse import quote
+            encoded_filename = quote(stored.file_name)
+            
+            return StreamingResponse(
+                s3_response['Body'],
+                media_type=stored.mime_type,
+                headers={
+                    "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+                }
+            )
+        except ClientError as e:
+            logger.error(f"S3 Download Error: {e}")
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+        except Exception as e:
+            logger.error(f"S3 Streaming Error: {e}")
+            raise HTTPException(status_code=500, detail="파일 다운로드 중 오류가 발생했습니다.")
+
+    # 로컬 스토리지 처리
     return FileResponse(
         path=stored.path,
         media_type=stored.mime_type,

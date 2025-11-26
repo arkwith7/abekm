@@ -15,6 +15,9 @@ from app.models import User
 from app.agents import paper_search_agent
 from app.tools.contracts import AgentConstraints, AgentIntent, AgentResult
 from loguru import logger
+from app.services.document.extraction.text_extractor_service import TextExtractorService
+from app.services.chat.chat_attachment_service import chat_attachment_service
+from pathlib import Path
 
 
 router = APIRouter(tags=["agent"])
@@ -24,6 +27,7 @@ router = APIRouter(tags=["agent"])
 class AgentChatRequest(BaseModel):
     """Agent 기반 채팅 요청"""
     message: str = Field(..., min_length=1, description="사용자 질의")
+    images: Optional[List[str]] = Field(None, description="이미지 목록 (Base64)")
     session_id: Optional[str] = Field(None, description="세션 ID")
     
     # 제약 조건
@@ -34,6 +38,9 @@ class AgentChatRequest(BaseModel):
     # 필터링
     container_ids: Optional[List[str]] = Field(None, description="컨테이너 ID 필터")
     document_ids: Optional[List[str]] = Field(None, description="문서 ID 필터")
+    
+    # 🆕 첨부 파일 (Chat with File)
+    attachments: Optional[List[Dict[str, Any]]] = Field(None, description="첨부 파일 목록 (asset_id, mime_type 등)")
 
 
 class AgentStepResponse(BaseModel):
@@ -103,17 +110,17 @@ async def agent_chat(
         user_emp_no = str(current_user.emp_no)
         logger.info(f"🤖 [AgentChat] 사용자: {user_emp_no}, 질의: '{request.message[:50]}...'")
         
-        # similarity_threshold 보정 (0.5 이상이면 0.25로 낮춤)
-        effective_threshold = request.similarity_threshold
-        if effective_threshold >= 0.5:
-            logger.warning(f"⚠️ threshold {effective_threshold} → 0.25로 보정 (검색 결과 확보)")
-            effective_threshold = 0.25
+        # similarity_threshold 보정 로직 제거 (Agent 내부의 동적 Fallback 로직으로 대체)
+        # effective_threshold = request.similarity_threshold
+        # if effective_threshold >= 0.5:
+        #     logger.warning(f"⚠️ threshold {effective_threshold} → 0.25로 보정 (검색 결과 확보)")
+        #     effective_threshold = 0.25
         
         # 제약 조건 생성
         constraints = AgentConstraints(
             max_chunks=request.max_chunks,
             max_tokens=request.max_tokens,
-            similarity_threshold=effective_threshold,
+            similarity_threshold=request.similarity_threshold,
             container_ids=request.container_ids,
             document_ids=request.document_ids
         )
@@ -124,12 +131,39 @@ async def agent_chat(
             "session_id": request.session_id or str(uuid.uuid4())
         }
         
+        # 📚 대화 히스토리 조회 (멀티턴 지원)
+        chat_history_messages = []
+        if request.session_id:
+            try:
+                from app.models.chat.chat_models import TbChatHistory
+                from sqlalchemy import select
+                
+                history_stmt = (
+                    select(TbChatHistory)
+                    .where(TbChatHistory.session_id == request.session_id)
+                    .order_by(TbChatHistory.created_date.asc())
+                )
+                history_result = await db.execute(history_stmt)
+                history_records = history_result.scalars().all()
+                
+                for record in history_records:
+                    if record.user_message:
+                        chat_history_messages.append({"role": "user", "content": record.user_message})
+                    if record.assistant_response:
+                        chat_history_messages.append({"role": "assistant", "content": record.assistant_response})
+                        
+                logger.info(f"📚 [AgentChat] 히스토리 로드: {len(chat_history_messages)}개 메시지")
+            except Exception as e:
+                logger.warning(f"⚠️ 히스토리 로드 실패: {e}")
+        
         # Agent 실행
         result: AgentResult = await paper_search_agent.execute(
             query=request.message,
             db_session=db,
             constraints=constraints,
-            context=context
+            context=context,
+            history=chat_history_messages,
+            images=request.images or []
         )
         
         # 응답 변환
@@ -351,39 +385,316 @@ async def agent_chat_stream(
                 "session_id": request.session_id or str(uuid.uuid4())
             }
             
+            # 📚 대화 히스토리 조회 (멀티턴 지원)
+            chat_history_messages = []
+            session_attached_files = []  # 🆕 세션에 저장된 첨부 파일
+            if request.session_id:
+                try:
+                    from app.models.chat.chat_models import TbChatHistory
+                    from sqlalchemy import select
+                    
+                    history_stmt = (
+                        select(TbChatHistory)
+                        .where(TbChatHistory.session_id == request.session_id)
+                        .order_by(TbChatHistory.created_date.asc())
+                    )
+                    history_result = await db.execute(history_stmt)
+                    history_records = history_result.scalars().all()
+                    
+                    for record in history_records:
+                        if record.user_message:
+                            chat_history_messages.append({"role": "user", "content": record.user_message})
+                        if record.assistant_response:
+                            chat_history_messages.append({"role": "assistant", "content": record.assistant_response})
+                        
+                        # 🆕 세션의 첨부 파일 로드 (가장 최근 것만)
+                        if record.model_parameters and isinstance(record.model_parameters, dict):
+                            attached = record.model_parameters.get('attached_files', [])
+                            if attached and isinstance(attached, list):
+                                session_attached_files = attached  # 최신 파일 목록으로 갱신
+                            
+                    logger.info(f"📚 [AgentChatStream] 히스토리 로드: {len(chat_history_messages)}개 메시지, 세션 첨부파일: {len(session_attached_files)}개")
+                except Exception as e:
+                    logger.warning(f"⚠️ 히스토리 로드 실패: {e}")
+            
             # 🧠 Step 1: 질의 분석
             yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'started', 'message': '질문을 분석하고 있습니다...'}, ensure_ascii=False)}\n\n"
             await asyncio.sleep(0.1)  # UI 업데이트 시간
             
-            intent = paper_search_agent.classify_intent(request.message)
-            keywords = await paper_search_agent._extract_keywords(request.message)
+            # 🆕 이미지 분석 (request.images + attachments에서 이미지 추출)
+            image_description = ""
+            images_to_analyze = list(request.images) if request.images else []
+            
+            # 🆕 문서 첨부 처리 (Chat with File)
+            attached_document_context = ""
+            attached_files = []  # 첨부 파일 메타데이터 (프론트엔드 표시용)
+            
+            # 🆕 세션에 저장된 첨부 파일을 기본으로 사용
+            all_attachments = []
+            if session_attached_files:
+                # 세션의 첨부 파일을 첨부 목록으로 변환
+                for sf in session_attached_files:
+                    all_attachments.append({
+                        'asset_id': sf.get('asset_id') or sf.get('id'),
+                        'id': sf.get('asset_id') or sf.get('id'),
+                        'category': sf.get('category', 'document'),
+                        'file_name': sf.get('file_name', ''),
+                        'mime_type': sf.get('mime_type', ''),
+                        'file_size': sf.get('file_size', 0)
+                    })
+                logger.info(f"📎 [AgentChatStream] 세션 첨부 파일 복원: {len(all_attachments)}개")
+            
+            # 현재 요청의 첨부 파일 추가 (중복 제거)
+            if request.attachments:
+                existing_ids = {att.get('asset_id') or att.get('id') for att in all_attachments}
+                for att in request.attachments:
+                    att_id = att.get('asset_id') or att.get('id')
+                    if att_id and att_id not in existing_ids:
+                        all_attachments.append(att)
+                        logger.info(f"🆕 [AgentChatStream] 새 첨부 파일 추가: {att.get('file_name', att_id)}")
+            
+            if all_attachments:
+                # 🆕 첨부 파일에서 이미지 추출하여 분석 대상에 추가
+                image_attachments = [
+                    att for att in all_attachments 
+                    if att.get('mime_type', '').startswith('image/')
+                ]
+                
+                if image_attachments:
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'image_analysis', 'status': 'started', 'message': f'첨부된 이미지 {len(image_attachments)}개를 분석하고 있습니다...'}, ensure_ascii=False)}\n\n"
+                    
+                    # 이미지 파일 로드 (base64로 변환)
+                    for img_att in image_attachments:
+                        asset_id = img_att.get('asset_id') or img_att.get('id')
+                        if not asset_id:
+                            continue
+                        
+                        stored_file = chat_attachment_service.get(asset_id)
+                        if stored_file:
+                            try:
+                                import base64
+                                img_data = None
+                                
+                                # S3 스토리지 처리
+                                if getattr(stored_file, 'storage_backend', 'local') == 's3':
+                                    if chat_attachment_service.s3_client:
+                                        response = chat_attachment_service.s3_client.get_object(
+                                            Bucket=chat_attachment_service.s3_bucket,
+                                            Key=str(stored_file.path)
+                                        )
+                                        img_data = response['Body'].read()
+                                    else:
+                                        logger.error(f"❌ S3 클라이언트 초기화 실패: {asset_id}")
+                                        continue
+                                # 로컬 스토리지 처리
+                                else:
+                                    with open(stored_file.path, 'rb') as f:
+                                        img_data = f.read()
+                                
+                                if img_data:
+                                    img_base64 = base64.b64encode(img_data).decode('utf-8')
+                                    # MIME 타입에 따라 헤더 추가
+                                    mime = img_att.get('mime_type', 'image/jpeg')
+                                    images_to_analyze.append(f"data:{mime};base64,{img_base64}")
+                                    logger.info(f"📷 [AgentChatStream] 이미지 로드: {img_att.get('file_name')}")
+                            except Exception as e:
+                                logger.error(f"❌ 이미지 로드 실패: {asset_id}, {e}")
+                
+                # 🆕 이미지 분석 도구 실행
+                if images_to_analyze:
+                    try:
+                        image_tool = paper_search_agent.tools.get('image_analysis')
+                        if image_tool:
+                            image_description = await image_tool._arun(
+                                images=images_to_analyze,
+                                query=request.message,
+                                detail_level="detailed"
+                            )
+                            logger.info(f"✅ [AgentChatStream] 이미지 분석 완료: {len(image_description)}자")
+                            yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'image_analysis', 'status': 'completed', 'message': f'이미지 분석 완료 ({len(images_to_analyze)}개)'}, ensure_ascii=False)}\n\n"
+                    except Exception as e:
+                        logger.error(f"❌ [AgentChatStream] 이미지 분석 실패: {e}")
+                        yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'image_analysis', 'status': 'error', 'message': f'이미지 분석 실패: {str(e)}'}, ensure_ascii=False)}\n\n"
+                
+                # 문서 파일 필터링 (이미지/오디오 제외)
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'started', 'message': '첨부된 문서를 분석하고 있습니다...'}, ensure_ascii=False)}\n\n"
+                
+                doc_attachments = [
+                    att for att in all_attachments 
+                    if not att.get('mime_type', '').startswith('image/') and not att.get('mime_type', '').startswith('audio/')
+                ]
+                
+                if doc_attachments:
+                    text_extractor = TextExtractorService()
+                    extracted_texts = []
+                    
+                    for doc_att in doc_attachments:
+                        asset_id = doc_att.get('asset_id') or doc_att.get('id')
+                        if not asset_id:
+                            continue
+                            
+                        stored_file = chat_attachment_service.get(asset_id)
+                        if not stored_file:
+                            logger.warning(f"⚠️ 첨부 파일 찾을 수 없음: {asset_id}")
+                            continue
+                            
+                        # 파일 크기 제한 (3MB - Upstage API 제한 대응)
+                        MAX_FILE_SIZE = 3 * 1024 * 1024
+                        if stored_file.size > MAX_FILE_SIZE:
+                            file_size_mb = stored_file.size / (1024 * 1024)
+                            extracted_texts.append(f"[파일: {stored_file.file_name}]\n(파일이 너무 큽니다: {file_size_mb:.1f}MB. 채팅에서는 3MB 이하의 파일만 처리 가능합니다. 문서 업로드 기능을 사용해주세요.)")
+                            logger.warning(f"⚠️ 파일 크기 초과: {stored_file.file_name} ({file_size_mb:.1f}MB)")
+                            continue
+                            
+                        try:
+                            # 텍스트 추출
+                            import tempfile
+                            import os
+                            
+                            extraction_path = str(stored_file.path)
+                            is_temp_file = False
+                            
+                            # S3 스토리지인 경우 임시 파일로 다운로드
+                            if getattr(stored_file, 'storage_backend', 'local') == 's3':
+                                if chat_attachment_service.s3_client:
+                                    suffix = Path(stored_file.file_name).suffix
+                                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                                        chat_attachment_service.s3_client.download_fileobj(
+                                            chat_attachment_service.s3_bucket,
+                                            str(stored_file.path),
+                                            tmp
+                                        )
+                                        extraction_path = tmp.name
+                                        is_temp_file = True
+                                else:
+                                    logger.error(f"❌ S3 클라이언트 초기화 실패: {asset_id}")
+                                    continue
+                            
+                            file_ext = Path(stored_file.file_name).suffix
+                            
+                            extraction_result = await text_extractor.extract_text_from_file(
+                                file_path=extraction_path,
+                                file_extension=file_ext
+                            )
+                            
+                            # 임시 파일 삭제
+                            if is_temp_file and os.path.exists(extraction_path):
+                                os.unlink(extraction_path)
+                            
+                            if extraction_result.get('success') and extraction_result.get('text'):
+                                text_content = extraction_result['text']
+                                # 텍스트 길이 제한 (30,000자)
+                                MAX_TEXT_LENGTH = 30000
+                                if len(text_content) > MAX_TEXT_LENGTH:
+                                    text_content = text_content[:MAX_TEXT_LENGTH] + "\n...(내용이 너무 길어 생략됨)"
+                                    
+                                extracted_texts.append(f"[첨부 파일 내용: {stored_file.file_name}]\n{text_content}")
+                                attached_files.append({
+                                    "file_name": stored_file.file_name,
+                                    "file_size": stored_file.size,
+                                    "text_length": len(text_content)
+                                })
+                                logger.info(f"✅ 문서 텍스트 추출 성공: {stored_file.file_name} ({len(text_content)}자)")
+                            else:
+                                logger.warning(f"⚠️ 텍스트 추출 실패: {stored_file.file_name}")
+                        except Exception as e:
+                            logger.error(f"❌ 문서 처리 중 오류: {e}")
+                            # 임시 파일 정리 (에러 발생 시)
+                            if 'is_temp_file' in locals() and is_temp_file and 'extraction_path' in locals() and os.path.exists(extraction_path):
+                                try:
+                                    os.unlink(extraction_path)
+                                except:
+                                    pass
+                            
+                    if extracted_texts:
+                        attached_document_context = "\n\n".join(extracted_texts)
+                        yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'completed', 'message': f'첨부 문서 {len(extracted_texts)}개 내용을 추출했습니다.'}, ensure_ascii=False)}\n\n"
+
+            # 🆕 Query Rewrite 적용
+            rewritten_query = request.message
+            if chat_history_messages or image_description:
+                rewritten_query = await paper_search_agent.rewrite_query(request.message, chat_history_messages, image_description)
+                if rewritten_query != request.message:
+                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'started', 'message': f'문맥을 고려하여 질문을 구체화했습니다: {rewritten_query}'}, ensure_ascii=False)}\n\n"
+
+            intent = await paper_search_agent.classify_intent(rewritten_query)
+            keywords = await paper_search_agent._extract_keywords(rewritten_query)
             
             yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'completed', 'result': {'intent': intent.value, 'keywords': keywords}, 'message': f'의도: {intent.value}, 키워드: {keywords}'}, ensure_ascii=False)}\n\n"
             
             # 🔍 Step 2: 전략 선택
             strategy = paper_search_agent.select_strategy(intent, constraints)
-            yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': strategy}, 'message': f'검색 전략: {strategy}'}, ensure_ascii=False)}\n\n"
+            
+            # 🆕 멀티모달 검색: 이미지가 있으면 multimodal_search 추가
+            has_images = bool(images_to_analyze)
+            has_text_attachments = bool(attached_document_context)
+            
+            if has_images:
+                # 이미지가 있으면 멀티모달 검색을 전략에 추가
+                if "multimodal_search" not in strategy:
+                    # 검색 전략 앞부분에 추가 (벡터 검색과 병렬로 실행되도록)
+                    search_tools = ["vector_search", "keyword_search", "fulltext_search"]
+                    first_search_idx = next((i for i, t in enumerate(strategy) if t in search_tools), 0)
+                    strategy.insert(first_search_idx, "multimodal_search")
+                logger.info(f"📷 [AgentChatStream] 이미지 첨부 감지 → 멀티모달 검색 추가")
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': strategy, 'multimodal': True}, 'message': '이미지와 텍스트를 함께 검색합니다.'}, ensure_ascii=False)}\n\n"
+            elif has_text_attachments:
+                # 텍스트 문서만 있으면 기존 전략 유지
+                logger.info(f"📎 [AgentChatStream] 첨부 문서 컨텍스트: {len(attached_document_context)}자")
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': strategy}, 'message': '첨부 문서와 데이터베이스를 함께 검색합니다.'}, ensure_ascii=False)}\n\n"
+            else:
+                logger.info(f"🔍 [AgentChatStream] 검색 전략 선택: {strategy}")
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': strategy}, 'message': f'검색 전략: {strategy}'}, ensure_ascii=False)}\n\n"
             
             # 📊 Step 3: 도구 실행 (하이브리드 검색)
             all_chunks = []
             search_stats = {}
             
             for idx, tool_name in enumerate(strategy):
-                if tool_name in ["vector_search", "keyword_search", "fulltext_search"]:
+                if tool_name in ["vector_search", "keyword_search", "fulltext_search", "multimodal_search"]:
                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'search', 'status': 'started', 'tool': tool_name, 'message': f'{tool_name} 실행 중...'}, ensure_ascii=False)}\n\n"
                     
                     try:
-                        tool_result = await paper_search_agent._execute_tool(
-                            tool_name=tool_name,
-                            query=request.message,
-                            db_session=db,
-                            keywords=keywords,
-                            constraints=constraints,
-                            chunks=all_chunks,
-                            context=context
-                        )
+                        # 🆕 multimodal_search는 이미지 데이터 전달
+                        if tool_name == "multimodal_search":
+                            if not images_to_analyze:
+                                logger.warning("⚠️ multimodal_search 호출됨, 하지만 이미지 없음")
+                                continue
+                            
+                            # 첫 번째 이미지만 사용 (추후 다중 이미지 지원 가능)
+                            tool_result = await paper_search_agent._execute_tool(
+                                tool_name=tool_name,
+                                query=rewritten_query,
+                                db_session=db,
+                                keywords=keywords,
+                                constraints=constraints,
+                                chunks=all_chunks,
+                                context={
+                                    **context,
+                                    "image_data": images_to_analyze[0],  # Base64 이미지 (data:image/...;base64,...)
+                                    "top_k": 10
+                                }
+                            )
+                        else:
+                            tool_result = await paper_search_agent._execute_tool(
+                                tool_name=tool_name,
+                                query=rewritten_query,
+                                db_session=db,
+                                keywords=keywords,
+                                constraints=constraints,
+                                chunks=all_chunks,
+                                context=context
+                            )
                         
-                        if tool_result.success and hasattr(tool_result, 'data'):
+                        if not getattr(tool_result, 'success', False):
+                            logger.warning(f"⚠️ 도구 실행 실패: {tool_name}, errors={getattr(tool_result, 'errors', [])}")
+                            try:
+                                await db.rollback()
+                            except Exception as rollback_error:
+                                logger.error(f"롤백 실패 ({tool_name}): {rollback_error}")
+                            continue
+
+                        if hasattr(tool_result, 'data'):
                             new_chunks = tool_result.data
                             all_chunks.extend(new_chunks)
                             search_stats[tool_name] = {
@@ -395,6 +706,10 @@ async def agent_chat_stream(
                     
                     except Exception as e:
                         logger.error(f"검색 실패 ({tool_name}): {e}")
+                        try:
+                            await db.rollback()
+                        except Exception as rollback_error:
+                            logger.error(f"롤백 실패 ({tool_name}): {rollback_error}")
                         yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'search', 'status': 'error', 'tool': tool_name, 'message': f'검색 실패: {str(e)}'}, ensure_ascii=False)}\n\n"
                 
                 elif tool_name in ["deduplicate", "rerank"]:
@@ -403,7 +718,7 @@ async def agent_chat_stream(
                     try:
                         tool_result = await paper_search_agent._execute_tool(
                             tool_name=tool_name,
-                            query=request.message,
+                            query=rewritten_query,  # 🆕 재작성된 쿼리 사용
                             db_session=db,
                             keywords=keywords,
                             constraints=constraints,
@@ -411,20 +726,31 @@ async def agent_chat_stream(
                             context=context
                         )
                         
-                        if tool_result.success and hasattr(tool_result, 'data'):
+                        if not getattr(tool_result, 'success', False):
+                            logger.warning(f"⚠️ 후처리 도구 실패: {tool_name}, errors={getattr(tool_result, 'errors', [])}")
+                            try:
+                                await db.rollback()
+                            except Exception as rollback_error:
+                                logger.error(f"롤백 실패 ({tool_name}): {rollback_error}")
+                            continue
+                        if hasattr(tool_result, 'data'):
                             before_count = len(all_chunks)
                             all_chunks = tool_result.data
                             yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'postprocess', 'status': 'completed', 'tool': tool_name, 'before': before_count, 'after': len(all_chunks), 'message': f'{tool_name}: {before_count}개 → {len(all_chunks)}개'}, ensure_ascii=False)}\n\n"
                     
                     except Exception as e:
                         logger.error(f"후처리 실패 ({tool_name}): {e}")
+                        try:
+                            await db.rollback()
+                        except Exception as rollback_error:
+                            logger.error(f"롤백 실패 ({tool_name}): {rollback_error}")
             
             # 🏗️ Step 4: 컨텍스트 구성
             yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'context_building', 'status': 'started', 'message': '컨텍스트를 구성하고 있습니다...'}, ensure_ascii=False)}\n\n"
             
             context_result = await paper_search_agent._execute_tool(
                 tool_name="context_builder",
-                query=request.message,
+                query=rewritten_query,  # 🆕 재작성된 쿼리 사용
                 db_session=db,
                 keywords=keywords,
                 constraints=constraints,
@@ -435,25 +761,52 @@ async def agent_chat_stream(
             context_text = context_result.data if isinstance(context_result.data, str) else ""
             used_chunks = getattr(context_result, 'used_chunks', all_chunks[:5])
             
+            # 🆕 첨부 파일 컨텍스트 추가 (문서 + 이미지)
+            if attached_document_context or image_description:
+                parts = []
+                
+                # 이미지 설명 추가
+                if image_description:
+                    parts.append(f"[첨부 이미지 분석 결과]\n{image_description}")
+                
+                # 문서 내용 추가
+                if attached_document_context:
+                    parts.append(f"[첨부 문서 내용]\n{attached_document_context}")
+                
+                # 검색 결과 추가 (있는 경우)
+                if context_text and context_text.strip():
+                    parts.append(f"[참고: 데이터베이스 검색 결과]\n{context_text}")
+                
+                context_text = "\n\n".join(parts)
+            
             token_count = len(context_text.split())  # 간단한 토큰 추정
-            yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'context_building', 'status': 'completed', 'tokens': token_count, 'max_tokens': constraints.max_tokens, 'chunks_used': len(used_chunks), 'message': f'컨텍스트 구성 완료: {token_count} 토큰, {len(used_chunks)}개 청크 사용'}, ensure_ascii=False)}\n\n"
+            
+            # 컨텍스트 구성 완료 메시지
+            if attached_document_context or image_description:
+                source_types = []
+                if image_description:
+                    source_types.append("이미지")
+                if attached_document_context:
+                    source_types.append("문서")
+                source_msg = " + ".join(source_types)
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'context_building', 'status': 'completed', 'tokens': token_count, 'max_tokens': constraints.max_tokens, 'chunks_used': 0, 'message': f'첨부 {source_msg} 기반 컨텍스트 구성 완료: {token_count} 토큰'}, ensure_ascii=False)}\n\n"
+            else:
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'context_building', 'status': 'completed', 'tokens': token_count, 'max_tokens': constraints.max_tokens, 'chunks_used': len(used_chunks), 'message': f'컨텍스트 구성 완료: {token_count} 토큰, {len(used_chunks)}개 청크 사용'}, ensure_ascii=False)}\n\n"
             
             # ✍️ Step 5: 답변 생성
-            yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'answer_generation', 'status': 'started', 'message': '답변을 생성하고 있습니다...'}, ensure_ascii=False)}\n\n"
+            if image_description and not attached_document_context:
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'answer_generation', 'status': 'started', 'message': '이미지 분석 결과를 바탕으로 답변을 생성하고 있습니다...'}, ensure_ascii=False)}\n\n"
+            elif attached_document_context:
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'answer_generation', 'status': 'started', 'message': '첨부 파일을 분석하여 답변을 생성하고 있습니다...'}, ensure_ascii=False)}\n\n"
+            else:
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'answer_generation', 'status': 'started', 'message': '답변을 생성하고 있습니다...'}, ensure_ascii=False)}\n\n"
             
-            prompt = f"""다음 컨텍스트를 참고하여 질문에 답변해주세요.
-
-컨텍스트:
-{context_text}
-
-질문: {request.message}
-
-답변:"""
-            
-            # AI 답변 생성 (스트리밍)
-            answer = await paper_search_agent.ai_service.chat(
-                message=prompt,
-                provider="azure_openai"
+            # AI 답변 생성 (스트리밍) - DEFAULT_LLM_PROVIDER 설정 따름
+            answer = await paper_search_agent.generate_answer(
+                query=request.message, 
+                context=context_text, 
+                intent=intent,
+                history=chat_history_messages
             )
             
             # 답변을 청크로 나눠서 전송
@@ -488,7 +841,10 @@ async def agent_chat_stream(
                 "detailed_chunks": detailed_chunks,
                 "search_stats": search_stats,
                 "total_chunks_searched": len(all_chunks),
-                "chunks_used": len(used_chunks)
+                "chunks_used": len(used_chunks),
+                "attached_files": attached_files,  # 🆕 첨부 파일 메타데이터
+                "answer_source": "attached_documents" if (attached_files and not used_chunks) else "database_search" if used_chunks else "general",  # 🆕 답변 출처
+                "has_attachments": bool(attached_files)  # 🆕 첨부 파일 존재 여부
             }
             
             yield f"event: metadata\ndata: {json.dumps(metadata, ensure_ascii=False)}\n\n"
@@ -561,11 +917,14 @@ async def agent_chat_stream(
                         "intent": intent.value,
                         "strategy": strategy,
                         "max_chunks": request.max_chunks,
-                        "similarity_threshold": effective_threshold
+                        "similarity_threshold": effective_threshold,
+                        "attached_files": attached_files  # 🆕 첨부 파일 정보 저장
                     },
                     conversation_context={
                         "search_stats": search_stats,
-                        "reasoning_steps": len(strategy)
+                        "reasoning_steps": len(strategy),
+                        "has_attachments": bool(attached_document_context),  # 🆕 첨부 파일 존재 여부
+                        "attachment_context_length": len(attached_document_context) if attached_document_context else 0
                     }
                 )
                 db.add(chat_history)

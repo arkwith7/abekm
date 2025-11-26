@@ -262,7 +262,12 @@ class TextExtractorService:
                     primary_success = True
                     provider_success = "upstage"
                 else:
-                    logger.warning(f"⚠️ [UPSTAGE] Upstage 실패: {upstage_result.error}")
+                    # 413 오류 또는 파일 크기 문제 감지
+                    error_msg = str(upstage_result.error).lower()
+                    if '413' in error_msg or 'too large' in error_msg or 'payload' in error_msg:
+                        logger.warning(f"⚠️ [UPSTAGE] 파일 크기 초과 (HTTP 413) - 즉시 Fallback으로 전환")
+                    else:
+                        logger.warning(f"⚠️ [UPSTAGE] Upstage 실패: {upstage_result.error}")
             
             except Exception as e:
                 logger.error(f"❌ [UPSTAGE] Upstage 예외 발생: {e}", exc_info=True)

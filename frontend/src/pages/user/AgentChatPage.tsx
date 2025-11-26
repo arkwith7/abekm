@@ -48,7 +48,10 @@ const AgentChatPage: React.FC = () => {
         clearMessages,
         setContainerFilter,
         loadSession,
-        isSessionRestored
+        isSessionRestored,
+        uploadedAssets,      // 🆕 세션 첨부 파일
+        removeAttachment,    // 🆕 개별 파일 제거
+        clearAttachments     // 🆕 전체 파일 제거
     } = useAgentChat({
         defaultSettings: DEFAULT_AGENT_SETTINGS
     });
@@ -120,7 +123,7 @@ const AgentChatPage: React.FC = () => {
 
     // 메시지 전송 핸들러
     const handleSendMessage = async (content: string, files?: File[]) => {
-        await sendMessage(content, selectedDocuments);
+        await sendMessage(content, selectedDocuments, files);
     };
 
     // 문서 열기 핸들러 (향후 사용 예정)
@@ -177,6 +180,66 @@ const AgentChatPage: React.FC = () => {
                 <div className="px-6">
                     <div className="mx-auto mt-3 max-w-4xl rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
                         현재 브라우저에서는 실시간 음성인식을 완전히 지원하지 않습니다. 최신 Chrome/Edge 또는 전용 앱에서 더 나은 경험을 얻을 수 있습니다.
+                    </div>
+                </div>
+            )}
+
+            {/* 에러 메시지 표시 */}
+            {error && (
+                <div className="px-6">
+                    <div className="mx-auto mt-3 max-w-4xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                        <div className="flex items-start">
+                            <svg className="w-5 h-5 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                            </svg>
+                            <div className="whitespace-pre-line">{error}</div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 🆕 세션 첨부 파일 표시 */}
+            {uploadedAssets.length > 0 && (
+                <div className="px-6">
+                    <div className="mx-auto mt-3 max-w-4xl rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                        <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                                <div className="flex items-center gap-2 text-blue-800 font-medium mb-2">
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                    </svg>
+                                    <span>세션 첨부 파일 ({uploadedAssets.length}개)</span>
+                                    <span className="text-xs text-blue-600 font-normal">- 대화 종료 시까지 참조됩니다</span>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {uploadedAssets.map((asset) => (
+                                        <div key={asset.assetId} className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-blue-200 text-sm">
+                                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                            </svg>
+                                            <span className="text-gray-700">{asset.fileName}</span>
+                                            <span className="text-gray-500">({(asset.size / 1024).toFixed(0)}KB)</span>
+                                            <button
+                                                onClick={() => removeAttachment(asset.assetId)}
+                                                className="ml-1 text-red-500 hover:text-red-700 transition-colors"
+                                                title="파일 제거"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                            <button
+                                onClick={clearAttachments}
+                                className="ml-4 px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-100 rounded-lg transition-colors"
+                                title="모든 파일 제거"
+                            >
+                                전체 제거
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

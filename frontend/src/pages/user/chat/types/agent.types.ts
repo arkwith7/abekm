@@ -114,6 +114,13 @@ export interface AgentMessage extends ChatMessage {
 
   // 🆕 Reasoning (AI 사고 과정)
   reasoning?: ReasoningData;
+
+  // 🆕 첨부 파일 메타데이터
+  attached_files?: Array<{
+    file_name: string;
+    file_size: number;
+    text_length: number;
+  }>;
 }
 
 /**

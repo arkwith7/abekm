@@ -158,6 +158,7 @@ class AgentIntent(str, Enum):
     PPT_GENERATION = "ppt_generation"      # PPT 생성
     COMPARISON = "comparison"              # 비교 분석
     SUMMARIZATION = "summarization"        # 요약
+    WEB_SEARCH = "web_search"              # 🆕 인터넷 검색
 
 
 class AgentConstraints(BaseModel):

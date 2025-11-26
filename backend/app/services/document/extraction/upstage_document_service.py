@@ -225,10 +225,20 @@ class UpstageDocumentService:
                     retry_reasons.append(f"Attempt {attempt}: {last_error}")
                     logger.warning(f"[UPSTAGE] ⚠️ API 호출 실패: {call_elapsed:.2f}초, error={last_error}")
                     
+                    # 🆕 413 오류 시 즉시 중단 (재시도해도 해결 불가능)
+                    if '413' in str(last_error) or 'too large' in str(last_error).lower():
+                        logger.error(f"[UPSTAGE] 🚫 파일 크기 제한 초과 (HTTP 413) - 재시도 중단")
+                        return result
+                    
             except Exception as e:
                 last_error = str(e)
                 retry_reasons.append(f"Attempt {attempt}: {type(e).__name__}: {str(e)}")
                 logger.warning(f"[UPSTAGE] ⚠️ API 호출 예외: 시도 {attempt}, error={e}")
+                
+                # 🆕 413 오류 시 즉시 중단
+                if '413' in str(e):
+                    logger.error(f"[UPSTAGE] 🚫 파일 크기 제한 초과 (HTTP 413) - 재시도 중단")
+                    return UpstageResult(success=False, error=str(e))
             
             # 재시도 전 대기 (백오프)
             if attempt < self.retry_max_attempts:

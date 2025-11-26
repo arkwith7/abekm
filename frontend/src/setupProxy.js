@@ -28,7 +28,9 @@ module.exports = function (app) {
     console.error('   환경 변수 REACT_APP_API_URL을 확인하세요');
   }
 
-  const proxyMiddleware = createProxyMiddleware({
+  // ⚠️ 중요: /api 경로만 프록시 설정
+  // /ws, /ws-hmr, /sockjs-node 등은 제외 (HMR용)
+  const proxyMiddleware = createProxyMiddleware('/api', {
     target: target,
     changeOrigin: true,
     secure: false,
@@ -94,25 +96,12 @@ module.exports = function (app) {
     }
   });
 
-  // /ws 경로 차단 (HMR WebSocket, 백엔드로 프록시하지 않음)
-  // WebSocket 업그레이드 요청 차단
-  app.use('/ws', (req, res) => {
-    // WebSocket 연결 시도를 바로 거부
-    if (req.headers.upgrade === 'websocket') {
-      console.log('⏭️  [PROXY] /ws WebSocket 연결 거부');
-      res.status(400).send('WebSocket not supported on this path');
-      return;
-    }
-    // 일반 HTTP 요청도 거부
-    res.status(404).send('Not found');
-  });
-
   // /api 경로만 프록시 적용
-  app.use('/api', proxyMiddleware);
+  app.use(proxyMiddleware);
 
   console.log('✅ setupProxy.js 설정 완료');
   console.log('📌 프록시 경로: /api/* -> ' + target);
-  console.log('⏭️  차단 경로: /ws (HMR WebSocket)');
+  console.log('⏭️  HMR WebSocket: /ws 경로는 프록시하지 않음');
 
   // 테스트용 엔드포인트 추가
   app.use('/debug/proxy', (req, res) => {

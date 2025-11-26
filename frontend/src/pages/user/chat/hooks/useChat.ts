@@ -137,6 +137,17 @@ export const useChat = (options: UseChatOptions = {}) => {
     }
 
     try {
+      // 파일 크기 제한 (3MB)
+      const MAX_FILE_SIZE = 3 * 1024 * 1024;
+      const oversizedFiles = files.filter(f => f.size > MAX_FILE_SIZE);
+
+      if (oversizedFiles.length > 0) {
+        const oversizedNames = oversizedFiles.map(f =>
+          `${f.name} (${(f.size / (1024 * 1024)).toFixed(1)}MB)`
+        ).join(', ');
+        throw new Error(`파일 크기 제한 초과: ${oversizedNames}. 채팅에서는 3MB 이하의 파일만 처리 가능합니다. 문서 업로드 기능을 사용해주세요.`);
+      }
+
       const uploadedAssets = await uploadChatAttachments(files);
       return {
         uploadedAssets,

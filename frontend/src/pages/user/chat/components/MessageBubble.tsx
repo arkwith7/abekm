@@ -1,13 +1,94 @@
 import { Bot, Copy, FileText, Paperclip, User } from 'lucide-react';
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { downloadByUrl } from '../../../../services/userService';
+import { getAccessToken } from '../../../../utils/tokenStorage';
 import { ChatMessage } from '../types/chat.types';
 import HTMLCard from './HTMLCard';
 import ReferencePanel from './ReferencePanel';
 import PresentationActionBar from './presentation/PresentationActionBar';
+
+interface AttachmentProps {
+  id?: string;
+  fileName: string;
+  downloadUrl?: string;
+  previewUrl?: string;
+}
+
+const AuthenticatedImageAttachment: React.FC<{
+  attachment: AttachmentProps;
+  onClick?: () => void;
+}> = ({ attachment, onClick }) => {
+  const [resolvedUrl, setResolvedUrl] = useState<string | undefined>(() => {
+    if (attachment.previewUrl && (attachment.previewUrl.startsWith('blob:') || attachment.previewUrl.startsWith('data:'))) {
+      return attachment.previewUrl;
+    }
+    return undefined;
+  });
+
+  useEffect(() => {
+    // previewUrl이 있고, blob: 또는 data: 로 시작하는 경우에만 직접 사용 (로컬 미리보기)
+    if (attachment.previewUrl && (attachment.previewUrl.startsWith('blob:') || attachment.previewUrl.startsWith('data:'))) {
+      setResolvedUrl(attachment.previewUrl);
+      return;
+    }
+
+    if (!attachment.downloadUrl) {
+      return;
+    }
+
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+
+    const loadImage = async () => {
+      try {
+        const token = getAccessToken();
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+        const response = await fetch(attachment.downloadUrl!, {
+          headers,
+          signal: controller.signal
+        });
+        if (!response.ok) {
+          throw new Error(`이미지 로드 실패: ${response.status}`);
+        }
+        const blob = await response.blob();
+        objectUrl = URL.createObjectURL(blob);
+        setResolvedUrl(objectUrl);
+      } catch (error) {
+        console.error('이미지 미리보기 로드 실패:', error);
+        setResolvedUrl(attachment.downloadUrl);
+      }
+    };
+
+    loadImage();
+
+    return () => {
+      controller.abort();
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [attachment.downloadUrl, attachment.previewUrl]);
+
+  if (!resolvedUrl) {
+    return (
+      <div className="w-32 h-32 flex items-center justify-center rounded-lg border border-dashed border-gray-300 text-xs text-gray-400">
+        이미지 미리보기 실패
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={resolvedUrl}
+      alt={attachment.fileName}
+      className="w-32 h-32 object-cover rounded-lg border border-gray-200 cursor-pointer hover:border-blue-400 transition-colors"
+      onClick={onClick}
+    />
+  );
+};
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -31,6 +112,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
     (message.detailed_chunks && message.detailed_chunks.length > 0) ||
     (message.context_info?.chunks_count && message.context_info.chunks_count > 0)
   );
+
+  // 🆕 첨부 파일 기반 답변 체크
+  const hasAttachedFiles = (message as any).attached_files && (message as any).attached_files.length > 0;
 
   const hasPresentationIntent = !!message.presentation_intent;
 
@@ -158,30 +242,65 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
       return null;
     }
 
+    // 이미지와 문서 분리
+    const imageAttachments = message.attachments.filter(att => att.category === 'image');
+    const docAttachments = message.attachments.filter(att => att.category !== 'image');
+
     return (
       <div className={`mt-3 ${isAssistantMessage ? '' : 'text-left'}`}>
-        <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 mb-2">
-          <Paperclip className="w-4 h-4" />
-          <span>첨부 파일</span>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {message.attachments.map((attachment) => (
-            <button
-              key={attachment.id}
-              type="button"
-              onClick={() => handleAttachmentDownload(attachment)}
-              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 hover:border-blue-300 hover:text-blue-600 shadow-sm"
-              title={`${attachment.fileName} 다운로드`}
-            >
-              <span className="font-medium truncate max-w-[180px]">{attachment.fileName}</span>
-              {attachment.size ? (
-                <span className="text-[10px] text-gray-400">
-                  {formatAttachmentSize(attachment.size)}
-                </span>
-              ) : null}
-            </button>
-          ))}
-        </div>
+        {/* 🆕 이미지 미리보기 */}
+        {imageAttachments.length > 0 && (
+          <div className="mb-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 mb-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span>이미지 ({imageAttachments.length})</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {imageAttachments.map((attachment) => (
+                <div key={attachment.id} className="relative group">
+                  <AuthenticatedImageAttachment
+                    attachment={attachment}
+                    onClick={() => attachment.downloadUrl && window.open(attachment.downloadUrl, '_blank')}
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded-b-lg truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                    {attachment.fileName}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 문서 첨부 파일 */}
+        {docAttachments.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 mb-2">
+              <Paperclip className="w-4 h-4" />
+              <span>첨부 파일 ({docAttachments.length})</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {docAttachments.map((attachment) => (
+                <button
+                  key={attachment.id}
+                  type="button"
+                  onClick={() => handleAttachmentDownload(attachment)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 hover:border-blue-300 hover:text-blue-600 shadow-sm transition-colors"
+                  title={`${attachment.fileName} 다운로드`}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span className="font-medium truncate max-w-[180px]">{attachment.fileName}</span>
+                  {attachment.size ? (
+                    <span className="text-[10px] text-gray-400">
+                      {formatAttachmentSize(attachment.size)}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -209,6 +328,39 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
             {!isUser && getAgentBadge() && (
               <div className="mb-2">
                 {getAgentBadge()}
+              </div>
+            )}
+
+            {/* 🆕 답변 근거 표시 (assistant 메시지만) */}
+            {!isUser && (hasAttachedFiles || hasReferences) && (
+              <div className="mb-2 space-y-1.5">
+                {/* 첨부 파일 기반 답변 */}
+                {hasAttachedFiles && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm inline-block">
+                    <div className="flex items-center gap-2 text-blue-800">
+                      <Paperclip className="w-4 h-4" />
+                      <span className="font-medium">📎 참조 문서:</span>
+                    </div>
+                    <div className="mt-1 space-y-0.5">
+                      {(message as any).attached_files.map((file: any, idx: number) => (
+                        <div key={idx} className="text-blue-700 text-xs flex items-center gap-1">
+                          <FileText className="w-3 h-3" />
+                          <span>{file.file_name}</span>
+                          <span className="text-blue-500">({(file.file_size / 1024).toFixed(0)}KB)</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* 데이터베이스 검색 기반 답변 */}
+                {!hasAttachedFiles && hasReferences && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm inline-block">
+                    <div className="flex items-center gap-2 text-green-800">
+                      <FileText className="w-4 h-4" />
+                      <span className="font-medium">🔍 데이터베이스 검색 기반 답변 ({message.context_info?.chunks_count || 0}개 문서)</span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

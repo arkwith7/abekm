@@ -37,7 +37,8 @@ class RerankTool(BaseTool):
         chunks: List[SearchChunk],
         query: str,
         top_k: Optional[int] = None,
-        model_name: str = "bge-reranker-base"
+        model_name: str = "bge-reranker-base",
+        threshold: float = 0.3  # 관련성 임계값 추가
     ) -> ToolResult:
         """
         재순위화 실행
@@ -47,6 +48,7 @@ class RerankTool(BaseTool):
             query: 쿼리
             top_k: 반환할 상위 K개 (None이면 전체)
             model_name: 재순위화 모델 이름
+            threshold: 관련성 점수 임계값 (0.0~1.0)
         """
         start_time = datetime.utcnow()
         trace_id = f"rerank_{uuid.uuid4().hex[:8]}"
@@ -69,13 +71,14 @@ class RerankTool(BaseTool):
                     tool_version="1.0.0"
                 )
             
-            logger.info(f"[{trace_id}] 재순위화 시작: {len(chunks)}개 청크")
+            logger.info(f"[{trace_id}] 재순위화 시작: {len(chunks)}개 청크, threshold={threshold}")
             
             # Cross-encoder 점수 계산
             reranked_chunks = await self._compute_cross_encoder_scores(
                 chunks=chunks,
                 query=query,
-                model_name=model_name
+                model_name=model_name,
+                threshold=threshold
             )
             
             # Top-K 선택
@@ -84,7 +87,7 @@ class RerankTool(BaseTool):
             
             latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
             
-            logger.info(f"[{trace_id}] 재순위화 완료: {len(reranked_chunks)}개 반환, {latency_ms:.1f}ms")
+            logger.info(f"[{trace_id}] 재순위화 완료: {len(reranked_chunks)}개 반환 (필터링됨), {latency_ms:.1f}ms")
             
             return ToolResult(
                 success=True,
@@ -125,7 +128,8 @@ class RerankTool(BaseTool):
         self,
         chunks: List[SearchChunk],
         query: str,
-        model_name: str
+        model_name: str,
+        threshold: float = 0.3
     ) -> List[SearchChunk]:
         """
         LLM 기반 리랭킹 - Provider별 동적 처리
@@ -219,7 +223,7 @@ class RerankTool(BaseTool):
                 for i, chunk in enumerate(chunks)
             ])
             
-            rerank_prompt = f"""다음 문서들을 질문과의 관련도가 높은 순서대로 재정렬하세요.
+            rerank_prompt = f"""다음 문서들을 질문과의 관련도가 높은 순서대로 재정렬하고, 관련성 점수를 부여하세요.
 
 질문: "{query}"
 
@@ -227,9 +231,10 @@ class RerankTool(BaseTool):
 {chunks_text}
 
 지시사항:
-1. 질문과 가장 관련성이 높은 문서부터 낮은 순서로 번호를 나열하세요.
-2. 답변 형식: 숫자만 쉼표로 구분 (예: 3,1,5,2,4,6,7)
-3. 모든 문서 번호를 포함해야 합니다.
+1. 질문과 가장 관련성이 높은 문서부터 낮은 순서로 나열하세요.
+2. 각 문서에 대해 0.0~1.0 사이의 관련성 점수를 부여하세요 (1.0: 매우 관련됨, 0.0: 전혀 관련 없음).
+3. 답변 형식: 문서번호:점수 (예: 3:0.95, 1:0.80, 5:0.30, 2:0.10)
+4. 모든 문서 번호를 포함해야 합니다.
 
 관련도가 높은 순서:"""
             
@@ -243,48 +248,46 @@ class RerankTool(BaseTool):
             # 응답 파싱 (더 견고한 로직)
             import re
             
-            # 응답에서 숫자 추출 (다양한 형식 지원)
-            # 예: "3,1,5,2,4" or "3, 1, 5" or "순서: 3 1 5" or "[3,1,5]"
-            rerank_response_str = str(rerank_response)
+            # 응답에서 "숫자:점수" 패턴 추출
+            # 예: "3:0.95", "1: 0.8", "5 : 0.3"
+            matches = re.findall(r'(\d+)\s*:\s*([0-9.]+)', str(rerank_response))
             
-            # 1. 쉼표/공백으로 구분된 숫자 찾기
-            numbers = re.findall(r'\d+', rerank_response_str)
+            logger.debug(f"🔍 추출된 패턴: {matches}")
             
-            logger.debug(f"🔍 추출된 숫자: {numbers}")
+            reranked_chunks = []
+            seen_indices = set()
             
-            reranked_order = []
-            for num_str in numbers:
-                num = int(num_str) - 1  # 0-based index
-                if 0 <= num < len(chunks) and num not in reranked_order:
-                    reranked_order.append(num)
+            for idx_str, score_str in matches:
+                try:
+                    idx = int(idx_str) - 1  # 0-based index
+                    score = float(score_str)
+                    
+                    if 0 <= idx < len(chunks) and idx not in seen_indices:
+                        # 점수 임계값 필터링
+                        if score >= threshold:
+                            chunk = chunks[idx]
+                            # 점수 업데이트 (선택사항)
+                            chunk.score = score
+                            chunk.metadata["rerank_score"] = score
+                            reranked_chunks.append(chunk)
+                            seen_indices.add(idx)
+                        else:
+                            logger.debug(f"   - 문서 {idx+1} 제외 (점수 {score} < {threshold})")
+                except ValueError:
+                    continue
             
-            logger.debug(f"🔍 유효한 인덱스: {reranked_order}")
-            
-            # 재정렬 실패 시 원본 순서 유지
-            if len(reranked_order) == 0:
+            # 파싱 실패 시 원본 반환 (안전장치)
+            if not matches and not reranked_chunks:
                 logger.warning(f"⚠️ 리랭킹 응답 파싱 실패, 원본 순서 유지")
                 return chunks
             
-            # 새로운 순서로 재정렬
-            sorted_chunks = [chunks[i] for i in reranked_order if i < len(chunks)]
-            
-            # 리랭킹되지 않은 나머지 추가
-            remaining = [c for i, c in enumerate(chunks) if i not in reranked_order]
-            sorted_chunks.extend(remaining)
-            
-            logger.info(f"✅ LLM 리랭킹 완료: {len(reranked_order)}개 재정렬")
-            return sorted_chunks
+            logger.info(f"✅ LLM 리랭킹 완료: {len(reranked_chunks)}/{len(chunks)}개 선택 (threshold={threshold})")
+            return reranked_chunks
             
         except Exception as e:
             logger.warning(f"⚠️ 리랭킹 실패, 원본 점수 사용: {e}")
             # 폴백: 기존 점수 기준 정렬
-            sorted_chunks = sorted(
-                chunks,
-                key=lambda c: c.score,
-                reverse=True
-        )
-        
-        return sorted_chunks
+            return sorted(chunks, key=lambda x: x.score or 0, reverse=True)
 
 
 # 전역 인스턴스
