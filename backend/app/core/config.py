@@ -331,6 +331,20 @@ class Settings(BaseSettings):
     web_search_dual_language: bool = True  # ko/en 병렬 검색
     web_search_result_language: str = "ko"  # 결과 요약 언어
     web_search_log_queries: bool = False  # 개인정보 포함 질의 외부 전송 전에 마스킹 필요
+    
+    # -----------------------------
+    # Patent Search 설정 (Enterprise Intelligence)
+    # -----------------------------
+    patent_search_enabled: bool = True  # 특허 검색 기능 활성화
+    kipris_api_key: Optional[str] = None  # KIPRIS API 키 (한국 특허)
+    kipris_api_endpoint: str = "http://plus.kipris.or.kr/openapi/rest"  # KIPRIS REST API 엔드포인트
+    # SerpAPI Google Patents (글로벌 특허 검색)
+    serpapi_google_patents_enabled: bool = True  # SerpAPI Google Patents 사용 여부
+    # serpapi_api_key는 위 web_search에서 이미 정의됨 (공유 사용)
+    uspto_api_endpoint: str = "https://api.patentsview.org/patents"  # USPTO PatentsView API (무료)
+    patent_search_max_results: int = 20  # 최대 검색 결과 수
+    patent_search_timeout_seconds: int = 30  # API 타임아웃
+    patent_search_cache_ttl_seconds: int = 60 * 60 * 24  # 24시간 캐시 (특허 데이터는 변동이 적음)
 
     # Web page fetch (검색 결과 상세 페이지 추출) 설정
     web_fetch_enabled: bool = True

@@ -67,6 +67,8 @@ export interface ChatMessage {
     search_mode?: string;
     reranking_applied?: boolean;
     rag_used?: boolean;  // 🆕 RAG 사용 여부
+    answer_source?: 'internet_search' | 'mixed_search' | 'database_search' | 'attached_documents' | 'general';  // 🆕 답변 출처
+    has_internet_results?: boolean;  // 🆕 인터넷 검색 결과 포함 여부
   };
   rag_stats?: {
     query_length: number;
@@ -99,6 +101,26 @@ export interface ChatMessage {
 
   // 🆕 이 메시지가 생성된 시점의 대화 컨텍스트 (각 assistant 응답마다 고유)
   conversationContext?: ConversationState;
+
+  // 🆕 특허 분석 결과
+  patent_results?: {
+    patents: Array<{
+      title: string;
+      applicant?: string;
+      applicationNumber?: string;
+      applicationDate?: string;
+      publicationNumber?: string;
+      publicationDate?: string;
+      abstract?: string;
+      ipcCodes?: string[];
+      status?: string;
+      url?: string;
+    }>;
+    total_patents: number;
+    visualizations?: any[];
+    insights?: string[];
+    source?: string;
+  };
 }
 
 // 선택된 문서 정보 인터페이스 추가

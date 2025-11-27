@@ -72,28 +72,7 @@ const userMenuItems: MenuItem[] = [
     path: '/user/agent-chat',
     icon: MessageSquare,
     id: 'agent-chat',
-    badge: 'Beta',
-    hasSubmenu: true,
-    submenuItems: [
-      {
-        id: 'agent-chat-document',
-        name: '문서기반 채팅',
-        path: '/user/agent-chat',
-        targetMenuId: 'agent-chat'
-      },
-      {
-        id: 'agent-chat-presentation',
-        name: 'PPT 작성 채팅',
-        path: '/user/agent-chat/presentation',
-        targetMenuId: 'agent-chat'
-      },
-      {
-        id: 'agent-chat-web',
-        name: '웹검색 채팅',
-        path: '/user/agent-chat/web',
-        targetMenuId: 'agent-chat'
-      }
-    ]
+    badge: 'Beta'
   },
   {
     name: '대화 이력',

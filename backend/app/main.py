@@ -25,6 +25,7 @@ from app.api.v1.containers import router as containers_router
 from app.api.v1.documents import router as documents_router
 from app.api.v1.document_access import router as document_access_router
 from app.api.v1.agent import router as agent_router  # 🤖 Agent-based RAG
+from app.api.v1.patent import router as patent_router  # 🔬 Patent Intelligence
 from app.api.v1.endpoints.transcribe import router as transcribe_router  # 🎤 실시간 STT
 
 from app.core.config import settings
@@ -259,6 +260,9 @@ app.include_router(search_router, prefix="/api/v1")
 
 # 🤖 Agent-based RAG API (Phase 2)
 app.include_router(agent_router, prefix="/api/v1", tags=["🤖 Agent RAG"])
+
+# 🔬 Patent Intelligence API (Enterprise Intelligence)
+app.include_router(patent_router, prefix="/api/v1", tags=["🔬 Patent Intelligence"])
 
 # 🔍 멀티모달 검색 API (텍스트 + 이미지)
 app.include_router(multimodal_search_router, prefix="/api/v1", tags=["🔍 Multimodal Search"])

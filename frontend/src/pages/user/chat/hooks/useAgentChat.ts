@@ -195,7 +195,8 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
   const sendAgentMessage = useCallback(async (
     content: string,
     selectedDocuments?: Array<{ fileId: string; fileName: string; containerName?: string }>,
-    files?: File[]
+    files?: File[],
+    tool?: string
   ) => {
     if (!content.trim() || isLoading) return;
 
@@ -287,6 +288,7 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
         similarity_threshold: settings.similarity_threshold,
         container_ids: settings.container_ids,
         document_ids: settings.document_ids,
+        tool: tool, // 🆕 도구 강제 선택
         attachments: currentUploadedAssets.map(asset => ({
           asset_id: asset.assetId,
           id: asset.assetId,  // 백엔드 호환성
@@ -414,12 +416,15 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
       if (metadata) {
         // 첨부 파일 정보 추출
         const attachedFiles = metadata.attached_files || [];
+        // 🆕 특허 분석 결과 추출
+        const patentResults = metadata.patent_results || null;
         updateStreamingMessage(msg => ({
           ...msg,
           intent: metadata.intent as any,
           strategy_used: metadata.strategy_used,
           detailed_chunks: metadata.detailed_chunks || [],
           attached_files: attachedFiles,  // 🆕 첨부 파일 메타데이터
+          patent_results: patentResults,  // 🆕 특허 분석 결과
           references: metadata.detailed_chunks?.map((chunk: any) => ({
             title: chunk.file_name,
             excerpt: chunk.content_preview,
@@ -435,7 +440,9 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
           context_info: {
             chunks_count: metadata.chunks_used || 0,
             rag_used: (metadata.total_chunks_searched || 0) > 0,
-            total_chunks: metadata.total_chunks_searched || 0
+            total_chunks: metadata.total_chunks_searched || 0,
+            answer_source: metadata.patent_results ? 'patent_analysis' : (metadata.answer_source || 'general'),  // 🆕 특허 분석 시 출처 변경
+            has_internet_results: metadata.has_internet_results || false  // 🆕 인터넷 검색 결과 여부
           },
           reasoning: {
             steps: reasoningSteps,

@@ -1,4 +1,4 @@
-import { Bot, Copy, FileText, Paperclip, User } from 'lucide-react';
+import { Bot, Copy, ExternalLink, FileText, Paperclip, User } from 'lucide-react';
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
@@ -104,6 +104,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
   const [showReferences, setShowReferences] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showHtmlPreview, setShowHtmlPreview] = useState(true);
+  const [showPatentResults, setShowPatentResults] = useState(true);
   const isUser = message.role === 'user';
 
   // 🆕 백엔드에서 전달하는 detailed_chunks, context_info 기반 참고자료 체크
@@ -115,6 +116,9 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
 
   // 🆕 첨부 파일 기반 답변 체크
   const hasAttachedFiles = (message as any).attached_files && (message as any).attached_files.length > 0;
+
+  // 🆕 특허 분석 결과 체크
+  const hasPatentResults = message.patent_results && message.patent_results.patents && message.patent_results.patents.length > 0;
 
   const hasPresentationIntent = !!message.presentation_intent;
 
@@ -217,6 +221,132 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
             </div>
           </div>
         ))}
+      </div>
+    );
+  };
+
+  // 🆕 특허 분석 결과 렌더링
+  const renderPatentResults = () => {
+    if (!message.patent_results || !message.patent_results.patents) {
+      return null;
+    }
+
+    const { patents, total_patents, insights, source } = message.patent_results;
+
+    return (
+      <div className="mt-4 space-y-4">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🔬</span>
+            <h3 className="font-semibold text-gray-800">
+              특허 검색 결과 ({total_patents}건)
+            </h3>
+            <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+              {source === 'kipris' ? 'KIPRIS' : source === 'serpapi' ? 'Google Patents' : source}
+            </span>
+          </div>
+          <button
+            onClick={() => setShowPatentResults(!showPatentResults)}
+            className="text-xs text-gray-500 hover:text-gray-700"
+          >
+            {showPatentResults ? '접기 ▲' : '펼치기 ▼'}
+          </button>
+        </div>
+
+        {showPatentResults && (
+          <>
+            {/* 인사이트 */}
+            {insights && insights.length > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <h4 className="text-sm font-medium text-amber-800 mb-2">💡 주요 인사이트</h4>
+                <ul className="space-y-1">
+                  {insights.slice(0, 3).map((insight, idx) => (
+                    <li key={idx} className="text-sm text-amber-700 flex items-start gap-2">
+                      <span className="flex-shrink-0">•</span>
+                      <span>{insight}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* 특허 목록 */}
+            <div className="space-y-3">
+              {patents.slice(0, 10).map((patent, index) => (
+                <div
+                  key={index}
+                  className="p-3 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-gray-900 text-sm leading-tight">
+                        {patent.title}
+                      </h4>
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-500">
+                        {patent.applicant && (
+                          <span>출원인: {patent.applicant}</span>
+                        )}
+                        {patent.applicationDate && (
+                          <span>• 출원일: {patent.applicationDate}</span>
+                        )}
+                        {patent.status && (
+                          <span className={`px-1.5 py-0.5 rounded ${patent.status === '등록' ? 'bg-green-100 text-green-700' :
+                            patent.status === '공개' ? 'bg-blue-100 text-blue-700' :
+                              patent.status === '거절' ? 'bg-red-100 text-red-700' :
+                                'bg-gray-100 text-gray-700'
+                            }`}>
+                            {patent.status}
+                          </span>
+                        )}
+                      </div>
+                      {patent.abstract && (
+                        <p className="mt-2 text-xs text-gray-600 line-clamp-2">
+                          {patent.abstract}
+                        </p>
+                      )}
+                      {patent.ipcCodes && patent.ipcCodes.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {patent.ipcCodes.slice(0, 3).map((ipc, i) => (
+                            <span key={i} className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">
+                              {ipc}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {patent.url && (
+                      <a
+                        href={patent.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-shrink-0 p-1.5 text-blue-600 hover:bg-blue-50 rounded"
+                        title="특허 상세보기"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
+                  <div className="mt-2 flex gap-2 text-xs text-gray-400">
+                    {patent.applicationNumber && (
+                      <span>출원번호: {patent.applicationNumber}</span>
+                    )}
+                    {patent.publicationNumber && (
+                      <span>공개번호: {patent.publicationNumber}</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* 더 많은 결과 안내 */}
+            {total_patents > 10 && (
+              <div className="text-center text-sm text-gray-500">
+                총 {total_patents}건 중 상위 10건을 표시합니다.
+              </div>
+            )}
+          </>
+        )}
       </div>
     );
   };
@@ -332,8 +462,19 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
             )}
 
             {/* 🆕 답변 근거 표시 (assistant 메시지만) */}
-            {!isUser && (hasAttachedFiles || hasReferences) && (
+            {!isUser && (hasAttachedFiles || hasReferences || hasPatentResults) && (
               <div className="mb-2 space-y-1.5">
+                {/* 🆕 특허 분석 기반 답변 */}
+                {hasPatentResults && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 text-sm inline-block">
+                    <div className="flex items-center gap-2 text-purple-800">
+                      <span className="text-base">🔬</span>
+                      <span className="font-medium">
+                        특허 분석 결과 ({message.patent_results?.total_patents || 0}건 from {message.patent_results?.source === 'kipris' ? 'KIPRIS' : 'Google Patents'})
+                      </span>
+                    </div>
+                  </div>
+                )}
                 {/* 첨부 파일 기반 답변 */}
                 {hasAttachedFiles && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-sm inline-block">
@@ -352,12 +493,29 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
                     </div>
                   </div>
                 )}
-                {/* 데이터베이스 검색 기반 답변 */}
+                {/* 데이터베이스 검색 기반 답변 / 인터넷 검색 기반 답변 */}
                 {!hasAttachedFiles && hasReferences && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-sm inline-block">
-                    <div className="flex items-center gap-2 text-green-800">
+                  <div className={`border rounded-lg px-3 py-2 text-sm inline-block ${message.context_info?.answer_source === 'internet_search'
+                    ? 'bg-blue-50 border-blue-200'
+                    : message.context_info?.answer_source === 'mixed_search'
+                      ? 'bg-purple-50 border-purple-200'
+                      : 'bg-green-50 border-green-200'
+                    }`}>
+                    <div className={`flex items-center gap-2 ${message.context_info?.answer_source === 'internet_search'
+                      ? 'text-blue-800'
+                      : message.context_info?.answer_source === 'mixed_search'
+                        ? 'text-purple-800'
+                        : 'text-green-800'
+                      }`}>
                       <FileText className="w-4 h-4" />
-                      <span className="font-medium">🔍 데이터베이스 검색 기반 답변 ({message.context_info?.chunks_count || 0}개 문서)</span>
+                      <span className="font-medium">
+                        {message.context_info?.answer_source === 'internet_search'
+                          ? `🌐 웹 검색 기반 답변 (${message.context_info?.chunks_count || 0}개 결과)`
+                          : message.context_info?.answer_source === 'mixed_search'
+                            ? `🔍🌐 통합 검색 기반 답변 (${message.context_info?.chunks_count || 0}개 문서)`
+                            : `📚 데이터베이스 검색 기반 답변 (${message.context_info?.chunks_count || 0}개 문서)`
+                        }
+                      </span>
                     </div>
                   </div>
                 )}
@@ -610,6 +768,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
                       </ReactMarkdown>
                     )}
                     {renderAttachments(true)}
+                    {/* 🆕 특허 분석 결과 */}
+                    {hasPatentResults && renderPatentResults()}
                   </div>
                 )}
               </div>

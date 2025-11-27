@@ -10,6 +10,7 @@ except ImportError:  # pragma: no cover
 
 from app.agents.summary import SummaryAgentTool
 from app.agents.presentation import PresentationAgentTool
+from app.agents.patent import PatentAnalysisAgentTool
 
 
 class AgentRegistry:
@@ -19,6 +20,7 @@ class AgentRegistry:
         self._agents: Dict[str, BaseTool] = {
             "summarizer": SummaryAgentTool(),
             "presentation": PresentationAgentTool(),
+            "patent_analysis": PatentAnalysisAgentTool(),
         }
 
     def get_agent_tool(self, agent_type: str) -> Optional[BaseTool]:

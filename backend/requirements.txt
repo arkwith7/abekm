@@ -47,7 +47,8 @@ langchain-openai==0.3.28
 langchain-aws==0.2.29
 langchain-community==0.3.27
 langgraph==0.2.70
-duckduckgo-search==5.3.0  # 인터넷 검색 도구
+duckduckgo-search==5.3.0  # 인터넷 검색 도구 (폴백)
+tavily-python>=0.5.0  # Tavily AI 검색 도구 (권장)
 
 # 비동기 및 파일 처리
 aiofiles==24.1.0

@@ -13,6 +13,8 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models import User
 from app.agents import paper_search_agent
+from app.agents.supervisor_agent import supervisor_agent
+from langchain_core.messages import HumanMessage
 from app.tools.contracts import AgentConstraints, AgentIntent, AgentResult
 from loguru import logger
 from app.services.document.extraction.text_extractor_service import TextExtractorService
@@ -41,6 +43,9 @@ class AgentChatRequest(BaseModel):
     
     # 🆕 첨부 파일 (Chat with File)
     attachments: Optional[List[Dict[str, Any]]] = Field(None, description="첨부 파일 목록 (asset_id, mime_type 등)")
+    
+    # 🆕 도구 강제 선택
+    tool: Optional[str] = Field(None, description="강제 선택할 도구 (ppt, web-search 등)")
 
 
 class AgentStepResponse(BaseModel):
@@ -96,141 +101,118 @@ async def agent_chat(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Agent 기반 채팅 엔드포인트
+    Agent 기반 채팅 엔드포인트 (Supervisor Architecture)
     
-    PaperSearchAgent를 사용하여:
-    1. 질의 의도 분석
-    2. 동적 전략 선택 (도구 조합)
-    3. 도구 순차 실행
-    4. 컨텍스트 구성 및 답변 생성
-    
-    기존 /chat/message와 병행 운영 가능 (A/B 테스트)
+    Supervisor Agent를 사용하여:
+    1. 사용자 의도 파악 (검색 vs PPT 생성 vs 기타)
+    2. 적절한 Worker Agent (SearchAgent, PresentationAgent) 호출
+    3. 결과 통합 및 반환
     """
     try:
         user_emp_no = str(current_user.emp_no)
         logger.info(f"🤖 [AgentChat] 사용자: {user_emp_no}, 질의: '{request.message[:50]}...'")
         
-        # similarity_threshold 보정 로직 제거 (Agent 내부의 동적 Fallback 로직으로 대체)
-        # effective_threshold = request.similarity_threshold
-        # if effective_threshold >= 0.5:
-        #     logger.warning(f"⚠️ threshold {effective_threshold} → 0.25로 보정 (검색 결과 확보)")
-        #     effective_threshold = 0.25
-        
-        # 제약 조건 생성
-        constraints = AgentConstraints(
-            max_chunks=request.max_chunks,
-            max_tokens=request.max_tokens,
-            similarity_threshold=request.similarity_threshold,
-            container_ids=request.container_ids,
-            document_ids=request.document_ids
-        )
-        
-        # 컨텍스트 생성
-        context = {
-            "user_emp_no": user_emp_no,
-            "session_id": request.session_id or str(uuid.uuid4())
+        # Supervisor 실행
+        initial_state = {
+            "messages": [HumanMessage(content=request.message)],
+            "next": "",
+            "shared_context": {}
         }
         
-        # 📚 대화 히스토리 조회 (멀티턴 지원)
-        chat_history_messages = []
-        if request.session_id:
-            try:
-                from app.models.chat.chat_models import TbChatHistory
-                from sqlalchemy import select
-                
-                history_stmt = (
-                    select(TbChatHistory)
-                    .where(TbChatHistory.session_id == request.session_id)
-                    .order_by(TbChatHistory.created_date.asc())
-                )
-                history_result = await db.execute(history_stmt)
-                history_records = history_result.scalars().all()
-                
-                for record in history_records:
-                    if record.user_message:
-                        chat_history_messages.append({"role": "user", "content": record.user_message})
-                    if record.assistant_response:
-                        chat_history_messages.append({"role": "assistant", "content": record.assistant_response})
-                        
-                logger.info(f"📚 [AgentChat] 히스토리 로드: {len(chat_history_messages)}개 메시지")
-            except Exception as e:
-                logger.warning(f"⚠️ 히스토리 로드 실패: {e}")
+        # LangGraph 실행
+        final_state = await supervisor_agent.ainvoke(initial_state)
         
-        # Agent 실행
-        result: AgentResult = await paper_search_agent.execute(
-            query=request.message,
-            db_session=db,
-            constraints=constraints,
-            context=context,
-            history=chat_history_messages,
-            images=request.images or []
-        )
+        # 결과 추출
+        messages = final_state["messages"]
+        last_message = messages[-1]
+        answer = last_message.content
+        shared_context = final_state.get("shared_context", {})
         
-        # 응답 변환
-        steps_response = []
-        for step in result.steps:
-            steps_response.append(AgentStepResponse(
-                step_number=step.step_number,
-                tool_name=step.tool_name,
-                reasoning=step.reasoning,
-                latency_ms=step.tool_output.metrics.latency_ms,
-                items_returned=step.tool_output.metrics.items_returned,
-                success=step.tool_output.success
-            ))
+        # SearchAgent 결과 복원
+        search_result = shared_context.get("search_agent_result")
         
+        # 기본값 설정
         references_response = []
         detailed_chunks_response = []
+        steps_response = []
+        metrics = {}
+        intent = "general"
+        strategy_used = []
         
-        for idx, ref in enumerate(result.references):
-            # SearchChunk에서 file_id와 metadata 정보 추출
-            file_id = ref.file_id  # SearchChunk.file_id (직접 필드)
-            file_name = None
-            chunk_index = 0
-            page_number = None
+        if search_result:
+            # SearchAgent가 실행된 경우 정보 복원
+            intent = search_result.intent.value
+            strategy_used = search_result.strategy_used
+            metrics = search_result.metrics
             
-            if ref.metadata:
-                file_name = ref.metadata.get("file_name") or ref.metadata.get("title")
-                chunk_index = ref.metadata.get("chunk_index", 0)
-                page_number = ref.metadata.get("page_number")
+            # Steps
+            for step in search_result.steps:
+                steps_response.append(AgentStepResponse(
+                    step_number=step.step_number,
+                    tool_name=step.tool_name,
+                    reasoning=step.reasoning,
+                    latency_ms=step.tool_output.metrics.latency_ms,
+                    items_returned=step.tool_output.metrics.items_returned,
+                    success=step.tool_output.success
+                ))
             
-            # ReferenceDocument (기존 호환성)
-            references_response.append(ReferenceDocument(
-                chunk_id=ref.chunk_id,
-                content=ref.content,
-                score=ref.score,
-                document_id=ref.metadata.get("document_id") if ref.metadata else None,
-                title=file_name,  # file_name을 title로 사용
-                page_number=page_number
-            ))
-            
-            # DetailedChunk (일반 채팅과 동일 형식)
-            detailed_chunks_response.append(DetailedChunk(
-                index=idx + 1,
-                file_id=int(file_id) if file_id and str(file_id).isdigit() else 0,
-                file_name=file_name or "문서",
-                chunk_index=chunk_index,
-                page_number=page_number,
-                content_preview=ref.content[:200] if ref.content else "",
-                similarity_score=ref.score,
-                search_type="agent",
-                section_title=file_name or ""
-            ))
+            # References & Chunks
+            for idx, ref in enumerate(search_result.references):
+                file_id = ref.file_id
+                file_name = None
+                chunk_index = 0
+                page_number = None
+                
+                if ref.metadata:
+                    file_name = ref.metadata.get("file_name") or ref.metadata.get("title")
+                    chunk_index = ref.metadata.get("chunk_index", 0)
+                    page_number = ref.metadata.get("page_number")
+                
+                references_response.append(ReferenceDocument(
+                    chunk_id=ref.chunk_id,
+                    content=ref.content,
+                    score=ref.score,
+                    document_id=ref.metadata.get("document_id") if ref.metadata else None,
+                    title=file_name,
+                    page_number=page_number
+                ))
+                
+                detailed_chunks_response.append(DetailedChunk(
+                    index=idx + 1,
+                    file_id=int(file_id) if file_id and str(file_id).isdigit() else 0,
+                    file_name=file_name or "문서",
+                    chunk_index=chunk_index,
+                    page_number=page_number,
+                    content_preview=ref.content[:200] if ref.content else "",
+                    similarity_score=ref.score,
+                    search_type="agent",
+                    section_title=file_name or ""
+                ))
         
-        logger.info(
-            f"✅ [AgentChat] 완료: {result.metrics.get('total_latency_ms', 0):.1f}ms, "
-            f"{len(result.references)}개 참조, {len(result.steps)}개 단계"
-        )
+        # PresentationAgent가 실행된 경우 (마지막 메시지가 PresentationAgent인 경우)
+        if getattr(last_message, "name", "") == "PresentationAgent":
+            intent = "presentation_generation"
+            # PPT 생성 관련 메트릭이나 스텝 추가 가능
+            steps_response.append(AgentStepResponse(
+                step_number=len(steps_response) + 1,
+                tool_name="PresentationAgent",
+                reasoning="Generated presentation based on search results.",
+                latency_ms=0,
+                success=True
+            ))
+
+        logger.info(f"✅ [AgentChat] 완료: {len(references_response)}개 참조")
         
         return AgentChatResponse(
-            answer=result.answer,
-            intent=result.intent.value,
-            strategy_used=result.strategy_used,
+            answer=answer,
+            intent=intent,
+            strategy_used=strategy_used,
             references=references_response,
-            detailed_chunks=detailed_chunks_response,  # 🆕 일반 채팅과 동일 형식
+            detailed_chunks=detailed_chunks_response,
             steps=steps_response,
-            metrics=result.metrics,
-            success=result.success,
-            errors=result.errors
+            metrics=metrics,
+            success=True,
+            errors=[]
         )
         
     except Exception as e:
@@ -610,20 +592,164 @@ async def agent_chat_stream(
                         attached_document_context = "\n\n".join(extracted_texts)
                         yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'completed', 'message': f'첨부 문서 {len(extracted_texts)}개 내용을 추출했습니다.'}, ensure_ascii=False)}\n\n"
 
-            # 🆕 Query Rewrite 적용
+            # 🆕 특허 관련 의도 선감지 (리라이터/도구 선택에 활용)
+            patent_keywords = ['특허', '출원', '등록특허', '공개특허', 'patent', 'kipris', '특허분석']
+            normalized_message = request.message.lower()
+            is_patent_query = any(kw in normalized_message for kw in patent_keywords)
+            normalized_tool = (request.tool or "").lower()
+            if request.tool and request.tool != normalized_tool:
+                request.tool = normalized_tool
+            skip_rewrite = is_patent_query or (request.tool == 'patent')
+
+            # 🆕 Query Rewrite 적용 (특허 의도는 원문 유지)
             rewritten_query = request.message
-            if chat_history_messages or image_description:
+            if not skip_rewrite and (chat_history_messages or image_description):
                 rewritten_query = await paper_search_agent.rewrite_query(request.message, chat_history_messages, image_description)
                 if rewritten_query != request.message:
-                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'started', 'message': f'문맥을 고려하여 질문을 구체화했습니다: {rewritten_query}'}, ensure_ascii=False)}\n\n"
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'started', 'message': f'문맥을 고려하여 질문을 구체화했습니다: {rewritten_query}'}, ensure_ascii=False)}\n\n"
+            elif skip_rewrite:
+                logger.info("🛑 [AgentChatStream] 특허/강제 도구 질의는 리라이트를 건너뜁니다")
 
             intent = await paper_search_agent.classify_intent(rewritten_query)
             keywords = await paper_search_agent._extract_keywords(rewritten_query)
             
             yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'completed', 'result': {'intent': intent.value, 'keywords': keywords}, 'message': f'의도: {intent.value}, 키워드: {keywords}'}, ensure_ascii=False)}\n\n"
             
+            # 🆕 PPT 생성 의도 감지 시 PresentationAgent로 전환
+            if intent == AgentIntent.PPT_GENERATION:
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': ['presentation_agent']}, 'message': 'PPT 생성 전문가에게 작업을 위임합니다.'}, ensure_ascii=False)}\n\n"
+                
+                # PresentationAgent 실행
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'presentation', 'status': 'started', 'message': 'PPT 구조를 기획하고 있습니다...'}, ensure_ascii=False)}\n\n"
+                
+                try:
+                    # PresentationAgent 호출
+                    from app.agents.presentation_agent import presentation_agent
+                    from langchain_core.messages import HumanMessage
+                    
+                    # 검색 결과가 필요한 경우 (컨텍스트가 있는 경우)
+                    input_state = {
+                        "messages": [HumanMessage(content=request.message)],
+                        "context": attached_document_context # 첨부 파일 내용을 컨텍스트로 전달
+                    }
+                    
+                    result = await presentation_agent.ainvoke(input_state)
+                    
+                    ppt_url = result.get("ppt_file_url")
+                    final_response = result.get("final_response")
+                    
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'presentation', 'status': 'completed', 'message': 'PPT 생성이 완료되었습니다.'}, ensure_ascii=False)}\n\n"
+                    
+                    # 답변 전송
+                    yield f"event: content\ndata: {json.dumps({'delta': final_response}, ensure_ascii=False)}\n\n"
+                    
+                    # 메타데이터 전송
+                    metadata = {
+                        "intent": intent.value,
+                        "strategy_used": ["presentation_agent"],
+                        "detailed_chunks": [],
+                        "has_attachments": bool(attached_files),
+                        "ppt_url": ppt_url
+                    }
+                    yield f"event: metadata\ndata: {json.dumps(metadata, ensure_ascii=False)}\n\n"
+                    
+                    yield f"event: done\ndata: {json.dumps({'success': True, 'session_id': context.get('session_id')}, ensure_ascii=False)}\n\n"
+                    return
+                except Exception as ppt_error:
+                    logger.error(f"PPT 생성 실패: {ppt_error}")
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'presentation', 'status': 'error', 'message': f'PPT 생성 실패: {str(ppt_error)}'}, ensure_ascii=False)}\n\n"
+                    yield f"event: error\ndata: {json.dumps({'error': str(ppt_error)}, ensure_ascii=False)}\n\n"
+                    return
+
             # 🔍 Step 2: 전략 선택
             strategy = paper_search_agent.select_strategy(intent, constraints)
+            
+            if not request.tool and is_patent_query:
+                # 특허 관련 쿼리인데 도구가 선택되지 않았으면 자동으로 특허 에이전트 호출
+                logger.info(f"🔬 [AgentChatStream] 특허 쿼리 자동 감지: '{request.message[:50]}...'")
+                request.tool = 'patent'  # 특허 도구로 설정
+            
+            # 🆕 도구 강제 선택 적용
+            if request.tool:
+                if request.tool == 'web-search':
+                    strategy = ['internet_search', 'context_builder']
+                    intent = AgentIntent.WEB_SEARCH
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': strategy}, 'message': '사용자 요청에 따라 웹 검색을 수행합니다.'}, ensure_ascii=False)}\n\n"
+                elif request.tool == 'ppt':
+                    intent = AgentIntent.PPT_GENERATION
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': ['presentation_agent']}, 'message': '사용자 요청에 따라 PPT 생성을 수행합니다.'}, ensure_ascii=False)}\n\n"
+                elif request.tool == 'patent':
+                    # 🆕 특허 분석 에이전트 실행
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': ['patent_analysis']}, 'message': '특허 분석 전문가에게 작업을 위임합니다.'}, ensure_ascii=False)}\n\n"
+                    
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'patent_analysis', 'status': 'started', 'message': 'KIPRIS/Google Patents에서 특허를 검색하고 있습니다...'}, ensure_ascii=False)}\n\n"
+                    
+                    try:
+                        from app.agents.patent import patent_analysis_agent_tool
+                        
+                        # 특허 분석 실행
+                        patent_result = await patent_analysis_agent_tool._arun(
+                            query=request.message,
+                            analysis_type="search",  # 기본: 검색
+                            jurisdiction="KR",
+                            max_results=20,
+                            include_visualization=True
+                        )
+                        
+                        # 특허 분석 결과를 답변으로 포맷
+                        total_patents = patent_result.get("total_patents", 0)
+                        summary = patent_result.get("summary", "")
+                        
+                        completed_msg = f"특허 검색 완료: {total_patents}건"
+                        yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'patent_analysis', 'status': 'completed', 'message': completed_msg}, ensure_ascii=False)}\n\n"
+                        patents = patent_result.get("patents", [])
+                        visualizations = patent_result.get("visualizations", [])
+                        insights = patent_result.get("insights", [])
+                        
+                        # 답변 전송
+                        yield f"event: content\ndata: {json.dumps({'delta': summary}, ensure_ascii=False)}\n\n"
+                        
+                        # 메타데이터 전송 (특허 목록, 시각화 포함)
+                        metadata = {
+                            "intent": "patent_analysis",
+                            "strategy_used": ["patent_analysis"],
+                            "detailed_chunks": [],
+                            "patent_results": {
+                                "patents": patents[:10],  # 상위 10건
+                                "total_patents": patent_result.get("total_patents", 0),
+                                "visualizations": visualizations,
+                                "insights": insights,
+                                "source": patent_result.get("analysis_result", {}).get("source", "kipris")
+                            }
+                        }
+                        yield f"event: metadata\ndata: {json.dumps(metadata, ensure_ascii=False)}\n\n"
+                        
+                        # 히스토리 저장
+                        try:
+                            from app.models.chat.chat_models import TbChatHistory
+                            
+                            history_entry = TbChatHistory(
+                                session_id=context.get("session_id"),
+                                user_emp_no=user_emp_no,
+                                user_message=request.message,
+                                assistant_response=summary,
+                                model_parameters={"tool": "patent", "total_patents": total_patents},
+                                created_date=datetime.utcnow()
+                            )
+                            db.add(history_entry)
+                            await db.commit()
+                        except Exception as save_error:
+                            logger.warning(f"⚠️ 히스토리 저장 실패: {save_error}")
+                        
+                        yield f"event: done\ndata: {json.dumps({'success': True, 'session_id': context.get('session_id')}, ensure_ascii=False)}\n\n"
+                        return
+                        
+                    except Exception as patent_error:
+                        logger.error(f"❌ 특허 분석 실패: {patent_error}")
+                        error_msg = f"특허 분석 실패: {str(patent_error)}"
+                        yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'patent_analysis', 'status': 'error', 'message': error_msg}, ensure_ascii=False)}\n\n"
+                        yield f"event: error\ndata: {json.dumps({'error': str(patent_error)}, ensure_ascii=False)}\n\n"
+                        return
             
             # 🆕 멀티모달 검색: 이미지가 있으면 multimodal_search 추가
             has_images = bool(images_to_analyze)
@@ -651,7 +777,7 @@ async def agent_chat_stream(
             search_stats = {}
             
             for idx, tool_name in enumerate(strategy):
-                if tool_name in ["vector_search", "keyword_search", "fulltext_search", "multimodal_search"]:
+                if tool_name in ["vector_search", "keyword_search", "fulltext_search", "multimodal_search", "internet_search"]:
                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'search', 'status': 'started', 'tool': tool_name, 'message': f'{tool_name} 실행 중...'}, ensure_ascii=False)}\n\n"
                     
                     try:
@@ -823,6 +949,21 @@ async def agent_chat_stream(
                 file_id = chunk.file_id
                 file_name = chunk.metadata.get("file_name") if chunk.metadata else "문서"
                 
+                # 🆕 인터넷 검색 결과인지 확인
+                is_internet_search = (
+                    chunk.match_type == "internet" or 
+                    chunk.container_id in ["internet", "tavily", "bing", "duckduckgo"] or
+                    (chunk.metadata and chunk.metadata.get("source") in ["internet", "tavily", "bing", "duckduckgo"])
+                )
+                
+                # 🆕 인터넷 검색 결과용 필드
+                url = chunk.metadata.get("url") if chunk.metadata else None
+                search_type = "internet" if is_internet_search else "hybrid"
+                
+                # 🆕 인터넷 검색 결과인 경우 파일명을 타이틀로 설정
+                if is_internet_search and chunk.metadata:
+                    file_name = chunk.metadata.get("title") or chunk.metadata.get("file_name") or "웹 검색 결과"
+                
                 detailed_chunks.append({
                     "index": idx + 1,
                     "file_id": int(file_id) if file_id and str(file_id).isdigit() else 0,
@@ -831,9 +972,34 @@ async def agent_chat_stream(
                     "page_number": chunk.metadata.get("page_number") if chunk.metadata else None,
                     "content_preview": chunk.content[:200] if chunk.content else "",
                     "similarity_score": chunk.score,
-                    "search_type": "hybrid",
-                    "section_title": file_name
+                    "search_type": search_type,
+                    "section_title": file_name,
+                    "url": url,  # 🆕 인터넷 검색 결과 URL
+                    "full_content": chunk.content if is_internet_search else None  # 🆕 전체 콘텐츠 (인터넷 검색)
                 })
+            
+            # 🆕 인터넷 검색만 사용했는지 확인
+            has_internet_only = (
+                len(detailed_chunks) > 0 and 
+                all(c.get("search_type") == "internet" for c in detailed_chunks)
+            )
+            has_mixed_search = (
+                len(detailed_chunks) > 0 and 
+                any(c.get("search_type") == "internet" for c in detailed_chunks) and
+                any(c.get("search_type") != "internet" for c in detailed_chunks)
+            )
+            
+            # 🆕 answer_source 결정 (인터넷 검색 구분)
+            if attached_files and not used_chunks:
+                answer_source = "attached_documents"
+            elif has_internet_only:
+                answer_source = "internet_search"
+            elif has_mixed_search:
+                answer_source = "mixed_search"
+            elif used_chunks:
+                answer_source = "database_search"
+            else:
+                answer_source = "general"
             
             metadata = {
                 "intent": intent.value,
@@ -843,8 +1009,9 @@ async def agent_chat_stream(
                 "total_chunks_searched": len(all_chunks),
                 "chunks_used": len(used_chunks),
                 "attached_files": attached_files,  # 🆕 첨부 파일 메타데이터
-                "answer_source": "attached_documents" if (attached_files and not used_chunks) else "database_search" if used_chunks else "general",  # 🆕 답변 출처
-                "has_attachments": bool(attached_files)  # 🆕 첨부 파일 존재 여부
+                "answer_source": answer_source,  # 🆕 답변 출처 (internet_search, mixed_search, database_search, attached_documents, general)
+                "has_attachments": bool(attached_files),  # 🆕 첨부 파일 존재 여부
+                "has_internet_results": has_internet_only or has_mixed_search  # 🆕 인터넷 검색 결과 포함 여부
             }
             
             yield f"event: metadata\ndata: {json.dumps(metadata, ensure_ascii=False)}\n\n"

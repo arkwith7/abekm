@@ -1,10 +1,11 @@
 """
-Internet Search Tool - 인터넷 검색 도구
-DuckDuckGo 등을 사용하여 외부 웹 검색 수행
+Internet Search Tool - 통합 인터넷 검색 도구
+Tavily, Bing, DuckDuckGo 등 다양한 검색 엔진을 지원하는 통합 도구
 """
 import asyncio
 import uuid
-import json
+import time
+import random
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from loguru import logger
@@ -14,41 +15,114 @@ try:
 except ImportError:
     from langchain.tools import BaseTool
 
-# langchain_community가 설치되어 있다고 가정
-try:
-    from langchain_community.tools import DuckDuckGoSearchResults
-    from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
-    HAS_DDG = True
-except ImportError:
-    HAS_DDG = False
-
 from app.tools.contracts import (
     SearchToolResult, SearchChunk, ToolMetrics
 )
+from app.core.config import settings
+
+# 개별 검색 도구 import (지연 로딩)
+_tavily_tool = None
+_bing_tool = None
+_HAS_TAVILY = None
+
+def _get_tavily_tool():
+    global _tavily_tool, _HAS_TAVILY
+    if _tavily_tool is None:
+        try:
+            from app.tools.retrieval.tavily_search_tool import tavily_search_tool, HAS_TAVILY
+            _tavily_tool = tavily_search_tool
+            _HAS_TAVILY = HAS_TAVILY
+        except ImportError:
+            _HAS_TAVILY = False
+    return _tavily_tool, _HAS_TAVILY
+
+def _get_bing_tool():
+    global _bing_tool
+    if _bing_tool is None:
+        try:
+            from app.tools.retrieval.bing_search_tool import bing_search_tool
+            _bing_tool = bing_search_tool
+        except ImportError:
+            pass
+    return _bing_tool
+
+# DuckDuckGo 폴백
+try:
+    from duckduckgo_search import DDGS
+    from duckduckgo_search.exceptions import RatelimitException, DuckDuckGoSearchException
+    HAS_DDG = True
+except ImportError:
+    HAS_DDG = False
+    RatelimitException = Exception
+    DuckDuckGoSearchException = Exception
+
 
 class InternetSearchTool(BaseTool):
     """
-    인터넷 검색 도구
+    통합 인터넷 검색 도구
+    
+    우선순위:
+    1. Tavily (API 키 설정 시) - AI 에이전트 최적화
+    2. Bing Search (API 키 설정 시) - 엔터프라이즈 안정성
+    3. DuckDuckGo (폴백) - 무료, Rate Limit 주의
     
     책임:
-    - 외부 검색 엔진(DuckDuckGo 등)을 통한 웹 검색
-    - 검색 결과를 SearchChunk 형태로 변환
-    
-    책임 없음:
-    - 내부 문서 검색
-    - 중복 제거
+    - 설정에 따른 적절한 검색 엔진 선택
+    - 검색 결과를 SearchChunk 형태로 통합 반환
     """
     name: str = "internet_search"
     description: str = "인터넷 검색을 수행하여 최신 정보나 외부 지식을 찾습니다."
-    version: str = "1.0.0"
+    version: str = "2.0.0"
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._log_available_providers()
+    
+    def _log_available_providers(self):
+        """사용 가능한 검색 제공자 로깅"""
+        providers = []
+        _, has_tavily = _get_tavily_tool()
+        
+        if settings.tavily_api_key and has_tavily:
+            providers.append("Tavily ✅")
+        if settings.bing_search_api_key:
+            providers.append("Bing ✅")
+        if HAS_DDG:
+            providers.append("DuckDuckGo (폴백)")
+        
+        if providers:
+            logger.info(f"🔍 [InternetSearch] 사용 가능한 제공자: {', '.join(providers)}")
+        else:
+            logger.warning("⚠️ [InternetSearch] 사용 가능한 검색 제공자가 없습니다")
+    
+    def _get_preferred_provider(self) -> str:
+        """설정에 따른 선호 제공자 반환"""
+        provider = settings.web_search_provider.lower()
+        _, has_tavily = _get_tavily_tool()
+        
+        # 명시적 설정이 있으면 해당 제공자 사용
+        if provider == "tavily" and settings.tavily_api_key and has_tavily:
+            return "tavily"
+        elif provider == "bing" and settings.bing_search_api_key:
+            return "bing"
+        elif provider == "duckduckgo" and HAS_DDG:
+            return "duckduckgo"
+        
+        # 자동 선택 (우선순위: tavily > bing > duckduckgo)
+        if settings.tavily_api_key and has_tavily:
+            return "tavily"
+        elif settings.bing_search_api_key:
+            return "bing"
+        elif HAS_DDG:
+            return "duckduckgo"
+        
+        return "none"
         
     async def _arun(
         self,
         query: str,
         top_k: int = 5,
+        provider: Optional[str] = None,  # 명시적 제공자 선택
         **kwargs
     ) -> SearchToolResult:
         """
@@ -57,9 +131,115 @@ class InternetSearchTool(BaseTool):
         Args:
             query: 검색 질의
             top_k: 반환할 최대 결과 수
+            provider: 사용할 검색 제공자 (tavily, bing, duckduckgo)
         """
         start_time = datetime.utcnow()
         trace_id = str(uuid.uuid4())
+        
+        # 제공자 결정
+        selected_provider = provider or self._get_preferred_provider()
+        
+        logger.info(f"🔍 [InternetSearch] 제공자: {selected_provider}, 쿼리: '{query[:50]}...'")
+        
+        # 제공자별 검색 실행
+        if selected_provider == "tavily":
+            result = await self._search_with_tavily(query, top_k, trace_id, **kwargs)
+        elif selected_provider == "bing":
+            result = await self._search_with_bing(query, top_k, trace_id, **kwargs)
+        elif selected_provider == "duckduckgo":
+            result = await self._search_with_duckduckgo(query, top_k, trace_id)
+        else:
+            return SearchToolResult(
+                success=False,
+                data=[],
+                total_found=0,
+                filtered_count=0,
+                search_params={"query": query},
+                metrics=ToolMetrics(latency_ms=0, provider="none", trace_id=trace_id),
+                errors=["사용 가능한 검색 제공자가 없습니다. TAVILY_API_KEY 또는 BING_SEARCH_API_KEY를 설정하세요."],
+                trace_id=trace_id,
+                tool_name=self.name,
+                tool_version=self.version
+            )
+        
+        # 실패 시 폴백 시도
+        if not result.success and selected_provider != "duckduckgo" and HAS_DDG:
+            logger.warning(f"⚠️ [InternetSearch] {selected_provider} 실패, DuckDuckGo로 폴백")
+            result = await self._search_with_duckduckgo(query, top_k, trace_id)
+        
+        return result
+
+    async def _search_with_tavily(
+        self, query: str, top_k: int, trace_id: str, **kwargs
+    ) -> SearchToolResult:
+        """Tavily로 검색"""
+        try:
+            tavily_tool, _ = _get_tavily_tool()
+            if not tavily_tool:
+                raise Exception("Tavily 도구를 로드할 수 없습니다")
+            
+            result = await tavily_tool._arun(
+                query=query,
+                top_k=top_k,
+                search_depth=kwargs.get("search_depth", "basic"),
+                include_answer=kwargs.get("include_answer", True)
+            )
+            # trace_id 업데이트
+            result.trace_id = trace_id
+            return result
+        except Exception as e:
+            logger.error(f"❌ [InternetSearch] Tavily 오류: {e}")
+            return SearchToolResult(
+                success=False,
+                data=[],
+                total_found=0,
+                filtered_count=0,
+                search_params={"query": query},
+                metrics=ToolMetrics(latency_ms=0, provider="tavily", trace_id=trace_id),
+                errors=[str(e)],
+                trace_id=trace_id,
+                tool_name=self.name,
+                tool_version=self.version
+            )
+
+    async def _search_with_bing(
+        self, query: str, top_k: int, trace_id: str, **kwargs
+    ) -> SearchToolResult:
+        """Bing으로 검색"""
+        try:
+            bing_tool = _get_bing_tool()
+            if not bing_tool:
+                raise Exception("Bing 도구를 로드할 수 없습니다")
+            
+            result = await bing_tool._arun(
+                query=query,
+                top_k=top_k,
+                search_type=kwargs.get("search_type", "web"),
+                market=kwargs.get("market", "ko-KR"),
+                freshness=kwargs.get("freshness")
+            )
+            result.trace_id = trace_id
+            return result
+        except Exception as e:
+            logger.error(f"❌ [InternetSearch] Bing 오류: {e}")
+            return SearchToolResult(
+                success=False,
+                data=[],
+                total_found=0,
+                filtered_count=0,
+                search_params={"query": query},
+                metrics=ToolMetrics(latency_ms=0, provider="bing", trace_id=trace_id),
+                errors=[str(e)],
+                trace_id=trace_id,
+                tool_name=self.name,
+                tool_version=self.version
+            )
+
+    async def _search_with_duckduckgo(
+        self, query: str, top_k: int, trace_id: str
+    ) -> SearchToolResult:
+        """DuckDuckGo로 검색 (폴백)"""
+        start_time = datetime.utcnow()
         
         if not HAS_DDG:
             return SearchToolResult(
@@ -68,49 +248,56 @@ class InternetSearchTool(BaseTool):
                 total_found=0,
                 filtered_count=0,
                 search_params={"query": query},
-                metrics=ToolMetrics(latency_ms=0, provider="internet", trace_id=trace_id),
-                errors=["langchain-community 또는 duckduckgo-search 패키지가 필요합니다."],
+                metrics=ToolMetrics(latency_ms=0, provider="duckduckgo", trace_id=trace_id),
+                errors=["duckduckgo-search 패키지가 설치되지 않았습니다."],
                 trace_id=trace_id,
                 tool_name=self.name,
                 tool_version=self.version
             )
-            
+        
         try:
-            # DuckDuckGo 검색 실행
-            wrapper = DuckDuckGoSearchAPIWrapper(max_results=top_k, region="kr-kr")
-            search = DuckDuckGoSearchResults(api_wrapper=wrapper)
+            max_retries = 3
             
-            # 동기 함수이므로 스레드 풀에서 실행
-            results_str = await asyncio.to_thread(search.run, query)
+            def do_search():
+                for attempt in range(max_retries):
+                    try:
+                        with DDGS() as ddgs:
+                            results = list(ddgs.text(query, region="kr-kr", max_results=top_k))
+                        return results
+                    except (RatelimitException, DuckDuckGoSearchException) as e:
+                        if "Ratelimit" in str(e) or isinstance(e, RatelimitException):
+                            if attempt < max_retries - 1:
+                                wait_time = (2 ** attempt) + random.uniform(0.5, 1.5)
+                                logger.warning(f"⏳ [DuckDuckGo] Rate limit, {wait_time:.1f}초 후 재시도")
+                                time.sleep(wait_time)
+                            else:
+                                raise
+                        else:
+                            raise
+                return []
             
-            # 결과 파싱 (DuckDuckGoSearchResults는 문자열로 반환됨, 보통 snippet, title, link 포함)
-            # 포맷: [snippet: ..., title: ..., link: ...], ...
-            # 정규식이나 파싱이 필요할 수 있음. 
-            # langchain의 DuckDuckGoSearchResults는 기본적으로 포맷팅된 문자열을 반환함.
-            # 여기서는 간단히 문자열을 청크로 변환하거나, 가능하다면 raw results를 가져오는 것이 좋음.
-            
-            # 직접 wrapper를 사용하여 raw results 가져오기 시도
-            raw_results = await asyncio.to_thread(wrapper.results, query, max_results=top_k)
+            raw_results = await asyncio.to_thread(do_search)
             
             chunks = []
-            for idx, res in enumerate(raw_results):
-                content = f"제목: {res.get('title', '')}\n내용: {res.get('snippet', '')}\n출처: {res.get('link', '')}"
-                
-                chunk = SearchChunk(
-                    chunk_id=f"web_{trace_id}_{idx}",
-                    content=content,
-                    score=0.9 - (idx * 0.05),  # 순위 기반 가상 점수
-                    file_id=None,
-                    match_type="internet",
-                    container_id="internet",
-                    metadata={
-                        "source": "internet",
-                        "url": res.get('link'),
-                        "title": res.get('title'),
-                        "snippet": res.get('snippet')
-                    }
-                )
-                chunks.append(chunk)
+            if raw_results:
+                for idx, res in enumerate(raw_results):
+                    content = f"제목: {res.get('title', '')}\n내용: {res.get('body', '')}\n출처: {res.get('href', '')}"
+                    
+                    chunk = SearchChunk(
+                        chunk_id=f"ddg_{trace_id}_{idx}",
+                        content=content,
+                        score=0.9 - (idx * 0.05),
+                        file_id=None,
+                        match_type="internet",
+                        container_id="duckduckgo",
+                        metadata={
+                            "source": "duckduckgo",
+                            "url": res.get('href'),
+                            "title": res.get('title'),
+                            "snippet": res.get('body')
+                        }
+                    )
+                    chunks.append(chunk)
             
             latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
             
@@ -133,7 +320,7 @@ class InternetSearchTool(BaseTool):
             )
             
         except Exception as e:
-            logger.error(f"❌ [InternetSearch] 실패: {e}")
+            logger.error(f"❌ [DuckDuckGo] 실패: {e}")
             latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
             
             return SearchToolResult(
@@ -142,7 +329,7 @@ class InternetSearchTool(BaseTool):
                 total_found=0,
                 filtered_count=0,
                 search_params={"query": query},
-                metrics=ToolMetrics(latency_ms=latency_ms, provider="internet", trace_id=trace_id),
+                metrics=ToolMetrics(latency_ms=latency_ms, provider="duckduckgo", trace_id=trace_id),
                 errors=[str(e)],
                 trace_id=trace_id,
                 tool_name=self.name,
@@ -153,11 +340,39 @@ class InternetSearchTool(BaseTool):
         self,
         query: str,
         top_k: int = 5,
+        provider: Optional[str] = None,
         **kwargs
     ) -> SearchToolResult:
-        """
-        인터넷 검색 실행 (동기)
-        """
+        """인터넷 검색 실행 (동기)"""
+        selected_provider = provider or self._get_preferred_provider()
+        
+        if selected_provider == "tavily":
+            tavily_tool, _ = _get_tavily_tool()
+            if tavily_tool:
+                return tavily_tool._run(query=query, top_k=top_k, **kwargs)
+        elif selected_provider == "bing":
+            bing_tool = _get_bing_tool()
+            if bing_tool:
+                return bing_tool._run(query=query, top_k=top_k, **kwargs)
+        elif selected_provider == "duckduckgo":
+            return self._run_duckduckgo(query, top_k)
+        
+        trace_id = str(uuid.uuid4())
+        return SearchToolResult(
+            success=False,
+            data=[],
+            total_found=0,
+            filtered_count=0,
+            search_params={"query": query},
+            metrics=ToolMetrics(latency_ms=0, provider="none", trace_id=trace_id),
+            errors=["사용 가능한 검색 제공자가 없습니다."],
+            trace_id=trace_id,
+            tool_name=self.name,
+            tool_version=self.version
+        )
+    
+    def _run_duckduckgo(self, query: str, top_k: int) -> SearchToolResult:
+        """DuckDuckGo 동기 검색"""
         start_time = datetime.utcnow()
         trace_id = str(uuid.uuid4())
         
@@ -168,36 +383,48 @@ class InternetSearchTool(BaseTool):
                 total_found=0,
                 filtered_count=0,
                 search_params={"query": query},
-                metrics=ToolMetrics(latency_ms=0, provider="internet", trace_id=trace_id),
-                errors=["langchain-community 또는 duckduckgo-search 패키지가 필요합니다."],
+                metrics=ToolMetrics(latency_ms=0, provider="duckduckgo", trace_id=trace_id),
+                errors=["duckduckgo-search 패키지가 설치되지 않았습니다."],
                 trace_id=trace_id,
                 tool_name=self.name,
                 tool_version=self.version
             )
-            
+        
         try:
-            # DuckDuckGo 검색 실행
-            wrapper = DuckDuckGoSearchAPIWrapper(max_results=top_k, region="kr-kr")
+            max_retries = 3
+            raw_results = []
             
-            # 직접 wrapper를 사용하여 raw results 가져오기
-            raw_results = wrapper.results(query, max_results=top_k)
+            for attempt in range(max_retries):
+                try:
+                    with DDGS() as ddgs:
+                        raw_results = list(ddgs.text(query, region="kr-kr", max_results=top_k))
+                    break
+                except (RatelimitException, DuckDuckGoSearchException) as e:
+                    if "Ratelimit" in str(e) or isinstance(e, RatelimitException):
+                        if attempt < max_retries - 1:
+                            wait_time = (2 ** attempt) + random.uniform(0.5, 1.5)
+                            time.sleep(wait_time)
+                        else:
+                            raise
+                    else:
+                        raise
             
             chunks = []
             for idx, res in enumerate(raw_results):
-                content = f"제목: {res.get('title', '')}\n내용: {res.get('snippet', '')}\n출처: {res.get('link', '')}"
+                content = f"제목: {res.get('title', '')}\n내용: {res.get('body', '')}\n출처: {res.get('href', '')}"
                 
                 chunk = SearchChunk(
-                    chunk_id=f"web_{trace_id}_{idx}",
+                    chunk_id=f"ddg_{trace_id}_{idx}",
                     content=content,
-                    score=0.9 - (idx * 0.05),  # 순위 기반 가상 점수
+                    score=0.9 - (idx * 0.05),
                     file_id=None,
                     match_type="internet",
-                    container_id="internet",
+                    container_id="duckduckgo",
                     metadata={
-                        "source": "internet",
-                        "url": res.get('link'),
+                        "source": "duckduckgo",
+                        "url": res.get('href'),
                         "title": res.get('title'),
-                        "snippet": res.get('snippet')
+                        "snippet": res.get('body')
                     }
                 )
                 chunks.append(chunk)
@@ -223,21 +450,20 @@ class InternetSearchTool(BaseTool):
             )
             
         except Exception as e:
-            logger.error(f"❌ [InternetSearch] 실패: {e}")
             latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
-            
             return SearchToolResult(
                 success=False,
                 data=[],
                 total_found=0,
                 filtered_count=0,
                 search_params={"query": query},
-                metrics=ToolMetrics(latency_ms=latency_ms, provider="internet", trace_id=trace_id),
+                metrics=ToolMetrics(latency_ms=latency_ms, provider="duckduckgo", trace_id=trace_id),
                 errors=[str(e)],
                 trace_id=trace_id,
                 tool_name=self.name,
                 tool_version=self.version
             )
+
 
 # 전역 인스턴스
 internet_search_tool = InternetSearchTool()

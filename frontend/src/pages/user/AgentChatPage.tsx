@@ -17,6 +17,8 @@ import FileViewer from '../../components/common/FileViewer';
 import ChatHeader from './chat/components/ChatHeader';
 import MessageComposer from './chat/components/MessageComposer';
 import MessageList from './chat/components/MessageList';
+import PresentationOutlineModal from './chat/components/presentation/PresentationOutlineModal';
+import { usePresentation } from './chat/components/presentation/usePresentation';
 
 // Hooks & Types
 import { Document as ViewerDocument } from '../../types/user.types';
@@ -51,10 +53,16 @@ const AgentChatPage: React.FC = () => {
         isSessionRestored,
         uploadedAssets,      // 🆕 세션 첨부 파일
         removeAttachment,    // 🆕 개별 파일 제거
-        clearAttachments     // 🆕 전체 파일 제거
+        clearAttachments,    // 🆕 전체 파일 제거
+        sessionId            // 🆕 세션 ID
     } = useAgentChat({
         defaultSettings: DEFAULT_AGENT_SETTINGS
     });
+
+    // PPT 생성 관련 상태
+    const [outlineModalOpen, setOutlineModalOpen] = useState(false);
+    const [targetMessageId, setTargetMessageId] = useState<string | null>(null);
+    const { buildFromMessage } = usePresentation(sessionId);
 
     // 파일 뷰어 상태
     const [selectedDocument, setSelectedDocument] = useState<ViewerDocument | null>(null);
@@ -75,6 +83,46 @@ const AgentChatPage: React.FC = () => {
             updateWorkContext({ sourcePageType: 'agent-chat' });
         }
     }, [workContext.sourcePageType, updateWorkContext]);
+
+    // 🆕 PPT 생성 이벤트 리스너
+    useEffect(() => {
+        const handleOpenOutline = (e: CustomEvent) => {
+            const { sourceMessageId } = e.detail;
+            console.log('📝 [AgentChat] PPT 생성 설정 요청:', sourceMessageId);
+            setTargetMessageId(sourceMessageId);
+            setOutlineModalOpen(true);
+        };
+
+        const handleBuildOneClick = (e: CustomEvent) => {
+            const { sourceMessageId } = e.detail;
+            console.log('📊 [AgentChat] PPT 바로 생성 요청:', sourceMessageId);
+
+            // 바로 생성 로직 (또는 모달 열기)
+            // 현재는 안전하게 모달을 열어서 확인하도록 함
+            setTargetMessageId(sourceMessageId);
+            setOutlineModalOpen(true);
+
+            // 만약 바로 생성을 원한다면 아래 주석 해제
+            /*
+            if (window.confirm('PPT를 바로 생성하시겠습니까?')) {
+                buildFromMessage(sourceMessageId, {
+                    onComplete: (url) => {
+                        // 생성 완료 처리 (예: 다운로드 또는 뷰어 열기)
+                        window.open(url, '_blank');
+                    }
+                });
+            }
+            */
+        };
+
+        window.addEventListener('presentation:openOutline', handleOpenOutline as EventListener);
+        window.addEventListener('presentation:buildOneClick', handleBuildOneClick as EventListener);
+
+        return () => {
+            window.removeEventListener('presentation:openOutline', handleOpenOutline as EventListener);
+            window.removeEventListener('presentation:buildOneClick', handleBuildOneClick as EventListener);
+        };
+    }, [buildFromMessage]);
 
     // 🆕 URL 파라미터 기반 세션 복원
     useEffect(() => {
@@ -122,8 +170,8 @@ const AgentChatPage: React.FC = () => {
     }, [selectedDocuments.length]);
 
     // 메시지 전송 핸들러
-    const handleSendMessage = async (content: string, files?: File[]) => {
-        await sendMessage(content, selectedDocuments, files);
+    const handleSendMessage = async (content: string, files?: File[], tool?: string) => {
+        await sendMessage(content, selectedDocuments, files, tool);
     };
 
     // 문서 열기 핸들러 (향후 사용 예정)
@@ -165,7 +213,7 @@ const AgentChatPage: React.FC = () => {
     }, [messages.length]);
 
     return (
-        <div className="relative flex flex-col h-full bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        <div className="relative flex flex-col h-full bg-white">
             {/* 헤더 */}
             <div className="flex-shrink-0">
                 <ChatHeader
@@ -265,29 +313,6 @@ const AgentChatPage: React.FC = () => {
                                     </p>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8">
-                                    <FeatureCard
-                                        icon="🔍"
-                                        title="지능형 검색"
-                                        description="벡터, 키워드, 전문 검색을 자동으로 조합"
-                                    />
-                                    <FeatureCard
-                                        icon="⚡"
-                                        title="실행 단계 표시"
-                                        description="각 도구의 실행 과정을 실시간으로 확인"
-                                    />
-                                    <FeatureCard
-                                        icon="📊"
-                                        title="성능 분석"
-                                        description="검색 속도, 정확도, 토큰 사용량 추적"
-                                    />
-                                    <FeatureCard
-                                        icon="🎯"
-                                        title="의도 분석"
-                                        description="질문 의도를 파악하여 최적화된 전략 선택"
-                                    />
-                                </div>
-
                                 {/* 중앙 입력창 */}
                                 <MessageComposer
                                     onSendMessage={handleSendMessage}
@@ -308,6 +333,9 @@ const AgentChatPage: React.FC = () => {
                                         }
                                     }}
                                 />
+                                <div className="mt-4 text-center text-xs text-gray-400">
+                                    AI는 실수를 할 수 있습니다. 중요한 정보는 확인이 필요합니다.
+                                </div>
                             </div>
                         </div>
                     ) : (
@@ -344,6 +372,9 @@ const AgentChatPage: React.FC = () => {
                                             }
                                         }}
                                     />
+                                    <div className="mt-2 text-center text-xs text-gray-400">
+                                        AI는 실수를 할 수 있습니다. 중요한 정보는 확인이 필요합니다.
+                                    </div>
                                     {error && (
                                         <div className="mt-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded">
                                             ❌ {error}
@@ -364,23 +395,36 @@ const AgentChatPage: React.FC = () => {
                     onClose={handleCloseViewer}
                 />
             )}
-        </div>
-    );
-};
 
-// Feature Card 컴포넌트
-interface FeatureCardProps {
-    icon: string;
-    title: string;
-    description: string;
-}
+            {/* PPT 아웃라인 모달 */}
+            {outlineModalOpen && targetMessageId && (
+                <PresentationOutlineModal
+                    open={outlineModalOpen}
+                    onClose={() => setOutlineModalOpen(false)}
+                    sourceContent={messages.find(m => m.id === targetMessageId || m.message_id === targetMessageId)?.content}
+                    onConfirm={(outline) => {
+                        console.log('✅ [AgentChat] PPT 생성 시작:', outline);
+                        // TODO: 아웃라인 기반 PPT 생성 API 호출
+                        // 현재는 usePresentation의 buildFromMessage가 아웃라인을 직접 받지 않고 sourceMessageId를 사용함
+                        // 따라서 여기서는 buildFromMessage를 호출하거나, 아웃라인을 수정해서 보내는 별도 API가 필요함
 
-const FeatureCard: React.FC<FeatureCardProps> = ({ icon, title, description }) => {
-    return (
-        <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
-            <div className="text-2xl mb-2">{icon}</div>
-            <h3 className="font-semibold text-gray-800 mb-1">{title}</h3>
-            <p className="text-sm text-gray-600">{description}</p>
+                        // 임시: buildFromMessage 호출 (수정된 아웃라인 반영은 백엔드 지원 필요)
+                        buildFromMessage(targetMessageId, {
+                            onComplete: (url) => {
+                                console.log('✅ PPT 생성 완료:', url);
+                                // 다운로드 트리거
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = 'presentation.pptx';
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                setOutlineModalOpen(false);
+                            }
+                        });
+                    }}
+                />
+            )}
         </div>
     );
 };

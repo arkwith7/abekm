@@ -3,9 +3,14 @@ import {
   ChevronDown,
   ChevronUp,
   File as FileIcon,
+  Globe,
+  Image as ImageIcon,
+  LayoutTemplate,
   Paperclip,
   Plus,
   Radio,
+  Search,
+  Settings2,
   Square,
   Trash2,
   X
@@ -22,7 +27,7 @@ import { useRealtimeSTT } from '../../../../services/realtimeSTT';
 import { AttachmentCategory } from '../types/chat.types';
 
 interface MessageComposerProps {
-  onSendMessage: (message: string, files?: File[]) => Promise<void> | void;
+  onSendMessage: (message: string, files?: File[], tool?: string) => Promise<void> | void;
   onStopStreaming?: () => void;
   isLoading: boolean;
   placeholder?: string;
@@ -65,6 +70,66 @@ const formatFileSize = (size: number) => {
   return `${(size / (1024 * 1024)).toFixed(1)}MB`;
 };
 
+type ToolType = 'ppt' | 'web-search' | 'deep-research' | 'image-gen' | 'patent';
+
+interface ToolConfig {
+  id: ToolType;
+  name: string;
+  icon: React.ElementType;
+  colorClass: string;
+  bgClass: string;
+  textClass: string;
+  iconBgClass: string;
+}
+
+const TOOLS: Record<ToolType, ToolConfig> = {
+  'ppt': {
+    id: 'ppt',
+    name: 'PPT 에이전트',
+    icon: LayoutTemplate,
+    colorClass: 'text-orange-600',
+    bgClass: 'bg-orange-50',
+    textClass: 'text-orange-700',
+    iconBgClass: 'bg-orange-100'
+  },
+  'web-search': {
+    id: 'web-search',
+    name: '웹 검색',
+    icon: Globe,
+    colorClass: 'text-blue-600',
+    bgClass: 'bg-blue-50',
+    textClass: 'text-blue-700',
+    iconBgClass: 'bg-blue-100'
+  },
+  'patent': {
+    id: 'patent',
+    name: '특허 분석',
+    icon: FileIcon,
+    colorClass: 'text-teal-600',
+    bgClass: 'bg-teal-50',
+    textClass: 'text-teal-700',
+    iconBgClass: 'bg-teal-100'
+  },
+  'deep-research': {
+    id: 'deep-research',
+    name: 'Deep Research',
+    icon: Search,
+    colorClass: 'text-purple-600',
+    bgClass: 'bg-purple-50',
+    textClass: 'text-purple-700',
+    iconBgClass: 'bg-purple-100'
+  },
+  'image-gen': {
+    id: 'image-gen',
+    name: '이미지 생성',
+    icon: ImageIcon,
+    colorClass: 'text-green-600',
+    bgClass: 'bg-green-50',
+    textClass: 'text-green-700',
+    iconBgClass: 'bg-green-100'
+  }
+};
+
 const MessageComposer: React.FC<MessageComposerProps> = ({
   onSendMessage,
   onStopStreaming,
@@ -76,9 +141,16 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
   const [message, setMessage] = useState('');
   const [fileDrafts, setFileDrafts] = useState<FileDraft[]>([]);
   const [isDraggingFile, setDraggingFile] = useState(false);
+  const [isToolMenuOpen, setIsToolMenuOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [sttLanguage, setSttLanguage] = useState<string>('ko-KR'); // 🆕 STT 언어 (ko-KR, en-US, ja-JP, zh-CN)
-  const [isSTTPreparing, setIsSTTPreparing] = useState(false); // 🆕 STT 준비 중 상태
+  const [sttLanguage, setSttLanguage] = useState('ko-KR');
+  const [isSTTPreparing, setIsSTTPreparing] = useState(false);
+  const [selectedTool, setSelectedTool] = useState<ToolType | null>(null);
+
+  const toolMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const toolMenuPopupRef = useRef<HTMLDivElement>(null);
+
+  // 🆕 실시간 STT Hook
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
@@ -132,11 +204,12 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
       stopRealtimeSTT();
     }
 
-    await onSendMessage(trimmed, files);
+    await onSendMessage(trimmed, files, selectedTool || undefined);
 
     setMessage('');
     cleanupPreviews(fileDrafts);
     setFileDrafts([]);
+    setSelectedTool(null); // 🆕 전송 후 도구 선택 초기화
   };
 
   // 🆕 실시간 텍스트 동기화
@@ -293,17 +366,29 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
     const handleClickOutside = (event: MouseEvent) => {
       if (
         isMenuOpen &&
-        menuPopupRef.current &&
         menuButtonRef.current &&
-        !menuPopupRef.current.contains(event.target as Node) &&
-        !menuButtonRef.current.contains(event.target as Node)
+        !menuButtonRef.current.contains(event.target as Node) &&
+        menuPopupRef.current &&
+        !menuPopupRef.current.contains(event.target as Node)
       ) {
         setIsMenuOpen(false);
       }
+      if (
+        isToolMenuOpen &&
+        toolMenuButtonRef.current &&
+        !toolMenuButtonRef.current.contains(event.target as Node) &&
+        toolMenuPopupRef.current &&
+        !toolMenuPopupRef.current.contains(event.target as Node)
+      ) {
+        setIsToolMenuOpen(false);
+      }
     };
+
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isMenuOpen]);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen, isToolMenuOpen]);
 
   return (
     <div
@@ -496,18 +581,144 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
           {/* 2줄: 버튼 영역 (좌측 + 버튼, 우측 전송 버튼) */}
           <div className="flex items-center justify-between">
             {/* 좌측: + 버튼 (팝업 메뉴) */}
-            <div className="relative">
+            <div className="relative flex items-center gap-2">
               <button
                 ref={menuButtonRef}
                 type="button"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
-                title="도구 메뉴"
+                title="첨부 메뉴"
               >
                 <Plus className="h-5 w-5" />
               </button>
 
-              {/* 팝업 메뉴 */}
+              {/* 🆕 도구 버튼 */}
+              <div className="relative">
+                {selectedTool ? (
+                  <div className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${TOOLS[selectedTool].bgClass} ${TOOLS[selectedTool].textClass}`}>
+                    {React.createElement(TOOLS[selectedTool].icon, { className: `h-4 w-4 ${TOOLS[selectedTool].colorClass}` })}
+                    <span>{TOOLS[selectedTool].name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTool(null)}
+                      className={`ml-1 rounded-full p-0.5 hover:bg-black/5 ${TOOLS[selectedTool].colorClass}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    ref={toolMenuButtonRef}
+                    type="button"
+                    onClick={() => setIsToolMenuOpen(!isToolMenuOpen)}
+                    className="flex h-9 items-center gap-1.5 rounded-full bg-gray-100 px-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-200 hover:text-gray-800"
+                    title="도구 선택"
+                  >
+                    <Settings2 className="h-4 w-4" />
+                    <span>도구</span>
+                  </button>
+                )}
+
+                {/* 도구 팝업 메뉴 */}
+                {isToolMenuOpen && !selectedTool && (
+                  <div
+                    ref={toolMenuPopupRef}
+                    className="absolute bottom-full left-0 mb-2 w-64 rounded-xl border border-gray-200 bg-white shadow-lg overflow-hidden z-10 p-1"
+                  >
+                    <div className="px-3 py-2 text-xs font-semibold text-gray-500">에이전트 선택</div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTool('ppt');
+                        setIsToolMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-gray-700 rounded-lg transition-colors hover:bg-blue-50 hover:text-blue-700"
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-orange-600">
+                        <LayoutTemplate className="h-4 w-4" />
+                      </div>
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">PPT 에이전트</span>
+                        <span className="text-xs text-gray-500">발표 자료 자동 생성</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTool('web-search');
+                        setIsToolMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-gray-700 rounded-lg transition-colors hover:bg-blue-50 hover:text-blue-700"
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                        <Globe className="h-4 w-4" />
+                      </div>
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">웹 검색</span>
+                        <span className="text-xs text-gray-500">실시간 인터넷 정보 검색</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTool('patent');
+                        setIsToolMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-gray-700 rounded-lg transition-colors hover:bg-blue-50 hover:text-blue-700"
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-100 text-teal-600">
+                        <FileIcon className="h-4 w-4" />
+                      </div>
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">특허 분석</span>
+                        <span className="text-xs text-gray-500">특허 검색 및 경쟁사 비교</span>
+                      </div>
+                    </button>
+
+                    <div className="my-1 border-t border-gray-100"></div>
+                    <div className="px-3 py-2 text-xs font-semibold text-gray-500">실험실 (Labs)</div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTool('deep-research');
+                        setIsToolMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-gray-700 rounded-lg transition-colors hover:bg-blue-50 hover:text-blue-700"
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-100 text-purple-600">
+                        <Search className="h-4 w-4" />
+                      </div>
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">Deep Research</span>
+                        <span className="text-xs text-gray-500">심층 분석 및 리포트</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedTool('image-gen');
+                        setIsToolMenuOpen(false);
+                      }}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-gray-700 rounded-lg transition-colors hover:bg-blue-50 hover:text-blue-700"
+                    >
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-100 text-green-600">
+                        <ImageIcon className="h-4 w-4" />
+                      </div>
+                      <div className="flex flex-col items-start">
+                        <span className="font-medium">이미지 생성</span>
+                        <span className="text-xs text-gray-500">DALL-E 3 이미지 생성</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 팝업 메뉴 (기존 + 버튼 메뉴) */}
               {isMenuOpen && (
                 <div
                   ref={menuPopupRef}

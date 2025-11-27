@@ -33,6 +33,9 @@ interface DetailedChunk {
   similarity_score: number;
   search_type: string;
   section_title?: string | null;
+  // 🆕 인터넷 검색 결과용 추가 필드
+  full_content?: string;
+  url?: string;
 }
 
 // Union type for references
@@ -98,7 +101,9 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
         documentType: null,
         relevanceGrade: null,
         aiSummary: null,
-        url: null
+        url: ref.url || null,
+        fullContent: ref.full_content || ref.content_preview,
+        isInternetSearch: ref.search_type === 'internet' || ref.file_id === 0
       };
     } else {
       return {
@@ -115,7 +120,9 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
         documentType: ref.document_type,
         relevanceGrade: ref.relevance_grade,
         aiSummary: ref.ai_summary,
-        url: ref.url
+        url: ref.url,
+        fullContent: ref.excerpt,
+        isInternetSearch: false
       };
     }
   };
@@ -228,8 +235,18 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                   </span>
                 </div>
 
-                {/* 오른쪽: 상세보기 버튼 */}
-                {(data.fileId !== undefined || data.excerpt) && (
+                {/* 오른쪽: 상세보기 버튼 또는 외부 링크 */}
+                {data.isInternetSearch && data.url ? (
+                  <a
+                    href={data.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-green-600 hover:text-green-800 bg-green-50 hover:bg-green-100 px-3 py-1 rounded border border-green-200 transition-colors shrink-0 whitespace-nowrap"
+                    title="외부 링크로 이동"
+                  >
+                    🔗 원문 보기
+                  </a>
+                ) : (data.fileId !== undefined && data.fileId !== 0) && (
                   <button
                     onClick={() => handleViewChunk(ref)}
                     className="text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1 rounded border border-blue-200 transition-colors shrink-0 whitespace-nowrap"
@@ -271,8 +288,8 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                 </div>
               )}
 
-              {/* URL (legacy만) */}
-              {data.url && (
+              {/* URL - 인터넷 검색 결과용 (legacy 및 신규) */}
+              {data.url && !data.isInternetSearch && (
                 <div className="mt-2 flex items-center space-x-3 text-xs text-gray-500">
                   <a
                     href={data.url}
@@ -282,6 +299,19 @@ const ReferencePanel: React.FC<ReferencePanelProps> = ({
                   >
                     원본 보기
                   </a>
+                </div>
+              )}
+
+              {/* 인터넷 검색 출처 표시 */}
+              {data.isInternetSearch && data.url && (
+                <div className="mt-2 text-xs text-gray-500 truncate" title={data.url}>
+                  🌐 {(() => {
+                    try {
+                      return new URL(data.url).hostname;
+                    } catch {
+                      return data.url;
+                    }
+                  })()}
                 </div>
               )}
             </div>
