@@ -104,6 +104,7 @@ class OutlineGenerationTool(BaseTool):
                 "deck": deck.model_dump(),
                 "slide_count": len(deck.slides),
                 "topic": deck.topic,
+                "outline_text": regenerated_text if 'regenerated_text' in locals() and regenerated_text else context_text
             }
 
         except Exception as e:
@@ -122,17 +123,26 @@ class OutlineGenerationTool(BaseTool):
             f"제공된 컨텍스트를 바탕으로 내용을 구성해야 합니다.\n\n"
             f"## 필수 형식 (Markdown)\n"
             f"- 메인 제목은 '# 제목' 또는 '## 제목'으로 시작\n"
-            f"- 각 슬라이드는 '### 슬라이드 제목'으로 시작\n"
+            f"- 각 슬라이드는 '### 제목 [Layout: ...]' 형식으로 작성 (제목에 '슬라이드 1' 같은 번호나 접두어는 절대 붙이지 마세요. 순수한 제목만 작성)\n"
             f"- 각 슬라이드 하위에 '- 내용' 형태로 불릿 포인트 작성\n"
             f"- '🔑 **키 메시지**: ...' 형식으로 핵심 메시지 포함\n\n"
+            f"## 사용 가능한 레이아웃 태그 (적극 활용)\n"
+            f"- [Layout: 2-Column]: 비교/대조 (좌우 2단)\n"
+            f"- [Layout: Process]: 단계/흐름 (화살표 프로세스)\n"
+            f"- [Layout: Grid]: 4분면/SWOT (2x2 그리드)\n"
+            f"- [Layout: Title-and-Content]: 일반 목록 (기본값)\n\n"
             f"## 컨텍스트\n"
             f"{context[:4000]}\n\n"
             f"위 형식을 엄격히 준수하여 아웃라인을 생성해주세요."
         )
         
         try:
-            response = await ai_service.chat(prompt)
-            return response
+            # Use chat_completion with temperature=0.0 for reproducibility
+            response_data = await ai_service.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0
+            )
+            return response_data.get("response")
         except Exception as e:
             logger.error(f"LLM 아웃라인 생성 실패: {e}")
             return None
@@ -212,11 +222,12 @@ class OutlineGenerationTool(BaseTool):
         h2_regex = re.compile(r'^##\s+(.+)$')
         h3_regex = re.compile(r'^###\s+(.+)$')
         slide_regex = re.compile(r'^\[슬라이드\s*\d+\.?\s*(.*)\]')  # [슬라이드 N. 제목] 패턴 추가
-        km_regex = re.compile(r'^🔑\s*\*\*(?:키\s*메시지|핵심\s*주제|다음\s*단계|주요\s*결론)\*\*:?\s*(.*)$')
-        detail_regex = re.compile(r'^📝\s*\*\*(?:상세\s*설명|발표\s*배경|실행\s*계획|핵심\s*포인트)\*\*:?\s*(.*)$')
+        km_regex = re.compile(r'^🔑\s*(?:\*\*)?([^\*:]+)(?:\*\*)?:?\s*(.*)$')
+        detail_regex = re.compile(r'^📝\s*(?:\*\*)?([^\*:]+)(?:\*\*)?:?\s*(.*)$')
         overview_regex = re.compile(r'^###\s*📋\s*발표\s*개요')
         toc_regex = re.compile(r'^###\s*📑\s*발표\s*목차')
         summary_regex = re.compile(r'^###\s*감사합니다\s*$')
+        layout_regex = re.compile(r'\[Layout:\s*([\w-]+)\]', re.IGNORECASE)
 
         # 1. Extract main title (H2)
         while i < total:
@@ -247,6 +258,14 @@ class OutlineGenerationTool(BaseTool):
                             slide_title = next_line
                             i += 1  # 다음 줄 소비
 
+                # Extract Layout tag
+                layout_type = "title-and-content"
+                layout_match = layout_regex.search(slide_title)
+                if layout_match:
+                    layout_type = layout_match.group(1).lower()
+                    slide_title = layout_regex.sub("", slide_title).strip()
+                    logger.info(f"🎨 레이아웃 감지: {layout_type}")
+
                 # Skip special slides
                 if overview_regex.match(line):
                     logger.info("🏷️ 발표 개요 슬라이드 - 건너뜀")
@@ -263,7 +282,10 @@ class OutlineGenerationTool(BaseTool):
                 # Normalize numbered section titles
                 normalized_title = re.sub(r'^\d+\.\s*', '', slide_title).strip()
                 # Remove [슬라이드 N] prefix if present in the title itself
-                normalized_title = re.sub(r'^\[슬라이드\s*\d+\.?\]\s*', '', normalized_title).strip()
+                normalized_title = re.sub(r'^\[?슬라이드\s*\d+\.?\]?\s*[:.]?\s*', '', normalized_title).strip()
+                normalized_title = re.sub(r'^Slide\s*\d+\s*[:.]?\s*', '', normalized_title, flags=re.IGNORECASE).strip()
+                # Remove redundant numbers like "1: " or "1. " again just in case
+                normalized_title = re.sub(r'^\d+\s*[:.]\s*', '', normalized_title).strip()
                 
                 if normalized_title != slide_title:
                     logger.info(f"🔢 제목 정규화: '{slide_title}' → '{normalized_title}'")
@@ -288,14 +310,24 @@ class OutlineGenerationTool(BaseTool):
                     # Extract key message
                     km_match = km_regex.match(current)
                     if km_match:
-                        key_message = km_match.group(1).strip()
-                        logger.info(f"🔑 키 메시지: '{key_message[:50]}...'")
+                        # Group 1 is label, Group 2 is content
+                        content = km_match.group(2).strip()
+                        if content:
+                            key_message = content
+                            logger.info(f"🔑 키 메시지: '{key_message[:50]}...'")
+                        else:
+                            # If content is empty, maybe the label itself is the key message?
+                            # Or it's just a header for bullets.
+                            # Let's assume it's a header and try to use next lines as bullets.
+                            pass
 
                     # Extract detail section
                     elif detail_regex.match(current):
                         detail_match = detail_regex.match(current)
-                        if detail_match and detail_match.group(1).strip():
-                            detail_bullets.append(detail_match.group(1).strip())
+                        # Group 1 is label, Group 2 is content
+                        content = detail_match.group(2).strip()
+                        if content:
+                            detail_bullets.append(content)
 
                         k = j + 1
                         while k < total:
@@ -326,6 +358,11 @@ class OutlineGenerationTool(BaseTool):
                     elif len(current) > 10 and any(kw in current for kw in ["기능", "특징", "장점", "요구사항", "분석", "도입", "중심"]):
                         detail_bullets.append(current[:300])
 
+                    # Catch-all for "Title: Description" style lines that look like bullets
+                    elif ':' in current and not current.endswith(':') and len(current) < 200:
+                        # Simple heuristic: if it has a colon and isn't a header, treat as bullet
+                        detail_bullets.append(current[:300])
+
                     j += 1
 
                 # Fallback: use content_lines if no bullets found
@@ -346,9 +383,10 @@ class OutlineGenerationTool(BaseTool):
                         'title': final_title,
                         'key_message': key_message or f"{final_title}의 핵심 내용입니다.",
                         'bullets': detail_bullets[:8] if detail_bullets else ["주요 내용을 여기에 작성합니다."],
-                        'slide_type': 'summary' if summary_regex.match(line) else 'content'
+                        'slide_type': 'summary' if summary_regex.match(line) else 'content',
+                        'layout': layout_type
                     })
-                    logger.info(f"📄 슬라이드 추가: '{final_title}' (bullets: {len(detail_bullets)}개)")
+                    logger.info(f"📄 슬라이드 추가: '{final_title}' (layout: {layout_type})")
 
                     if len(sections) >= max_slides:
                         break
@@ -448,7 +486,7 @@ class OutlineGenerationTool(BaseTool):
                     title=section['title'],
                     key_message=section.get('key_message', ''),
                     bullets=section.get('bullets', []),
-                    layout='title-and-content'
+                    layout=section.get('layout', 'title-and-content')
                 ))
 
         # 4. Closing slide (if no summary exists)

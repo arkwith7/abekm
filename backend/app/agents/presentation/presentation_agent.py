@@ -193,6 +193,7 @@ class PresentationReActAgent:
         iteration = 0
         final_result: Optional[Dict[str, Any]] = None
         deck_spec: Optional[Dict[str, Any]] = None
+        regenerated_outline_text: Optional[str] = None
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -206,6 +207,7 @@ class PresentationReActAgent:
                     async for chunk in ai_service.chat_stream(
                         messages=messages,
                         provider="bedrock",
+                        temperature=0.0,
                     ):
                         if isinstance(chunk, str):
                             response_text += chunk
@@ -285,6 +287,7 @@ class PresentationReActAgent:
                         "iterations": iteration,
                         "execution_time": execution_time,
                         "tools_used": self._tools_used,
+                        "outline_text": regenerated_outline_text,
                     }
                     break
 
@@ -305,6 +308,8 @@ class PresentationReActAgent:
                         and observation.get("success")
                     ):
                         deck_spec = observation.get("deck")
+                        if observation.get("outline_text"):
+                            regenerated_outline_text = observation.get("outline_text")
 
                     if action_name not in self._tools_used:
                         self._tools_used.append(action_name)
@@ -380,6 +385,7 @@ class PresentationReActAgent:
                     "iterations": iteration,
                     "execution_time": execution_time,
                     "tools_used": self._tools_used,
+                    "outline_text": regenerated_outline_text,
                 }
             else:
                 final_result = {
@@ -462,6 +468,7 @@ class PresentationAgent:
             "steps": result.get("steps", []),
             "tools_used": result.get("tools_used", []),
             "final_answer": result.get("final_answer"),
+            "outline_text": result.get("outline_text"),
         }
 
         if not formatted["success"]:
