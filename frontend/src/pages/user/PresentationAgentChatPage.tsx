@@ -117,8 +117,8 @@ const PresentationAgentChatPage: React.FC = () => {
     }, [selectedDocuments.length]);
 
     // 메시지 전송 핸들러
-    const handleSendMessage = async (content: string, files?: File[], tool?: string) => {
-        await sendMessage(content, selectedDocuments);
+    const handleSendMessage = async (content: string, files?: File[]) => {
+        await sendMessage(content, selectedDocuments, files, 'ppt');
     };
 
     // 문서 열기 핸들러

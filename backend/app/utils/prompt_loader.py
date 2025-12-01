@@ -40,19 +40,21 @@ class PromptLoader:
         if cache_key in cls._cache:
             return cls._cache[cache_key]
         
-        # Load from file
-        prompt_path = PROMPTS_DIR / category / f"{prompt_name}.txt"
+        # Try .prompt extension first, then .txt (backward compatibility)
+        prompt_path = PROMPTS_DIR / category / f"{prompt_name}.prompt"
+        if not prompt_path.exists():
+            prompt_path = PROMPTS_DIR / category / f"{prompt_name}.txt"
         
         if not prompt_path.exists():
             raise FileNotFoundError(
                 f"Prompt file not found: {prompt_path}\n"
-                f"Expected location: backend/prompts/{category}/{prompt_name}.txt"
+                f"Expected location: backend/prompts/{category}/{prompt_name}.prompt or .txt"
             )
         
         try:
             prompt_text = prompt_path.read_text(encoding="utf-8").strip()
             cls._cache[cache_key] = prompt_text
-            logger.debug(f"Loaded prompt: {cache_key}")
+            logger.debug(f"Loaded prompt: {cache_key} from {prompt_path.name}")
             return prompt_text
         except Exception as e:
             logger.error(f"Failed to load prompt {cache_key}: {e}")

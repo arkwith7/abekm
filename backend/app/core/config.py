@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import List, Optional
 import os
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -158,6 +159,15 @@ class Settings(BaseSettings):
     azure_document_intelligence_api_key: Optional[str] = None
     azure_document_intelligence_api_version: str = "2024-11-30"  # 최신 API 버전으로 업데이트 (FIGURES feature 지원)
     azure_document_intelligence_default_model: str = "prebuilt-read"
+
+    @property
+    def resolved_upload_dir(self) -> Path:
+        """Ensure upload directory is always an absolute path."""
+        base = Path(self.file_upload_path or self.upload_dir)
+        if not base.is_absolute():
+            project_root = Path(__file__).resolve().parents[2]
+            base = (project_root / base).resolve()
+        return base
     azure_document_intelligence_layout_model: str = "prebuilt-layout"
     azure_document_intelligence_document_model: str = "prebuilt-document"
     azure_document_intelligence_max_pages: int = 150

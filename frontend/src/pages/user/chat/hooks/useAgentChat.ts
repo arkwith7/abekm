@@ -420,9 +420,11 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
         const patentResults = metadata.patent_results || null;
         updateStreamingMessage(msg => ({
           ...msg,
+          metadata,
           intent: metadata.intent as any,
           strategy_used: metadata.strategy_used,
           detailed_chunks: metadata.detailed_chunks || [],
+          presentation_intent: metadata.intent === 'ppt_generation' ? true : msg.presentation_intent,
           attached_files: attachedFiles,  // 🆕 첨부 파일 메타데이터
           patent_results: patentResults,  // 🆕 특허 분석 결과
           references: metadata.detailed_chunks?.map((chunk: any) => ({
@@ -505,6 +507,22 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     setUploadedAssets([]);
 
     console.log('✅ [useAgentChat] 새 세션:', freshSessionId);
+  }, []);
+
+  /**
+   * 🆕 어시스턴트 메시지 추가 (PPT 다운로드 링크 등)
+   */
+  const addAssistantMessage = useCallback((content: string, metadata?: Record<string, any>) => {
+    const newMessage: AgentMessage = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      role: 'assistant',
+      content,
+      timestamp: new Date().toISOString(),
+      ...metadata
+    };
+
+    setMessages(prev => [...prev, newMessage]);
+    console.log('💬 [useAgentChat] 어시스턴트 메시지 추가:', content.substring(0, 50));
   }, []);
 
   /**
@@ -746,6 +764,7 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     // 액션
     sendMessage: sendAgentMessage,
     clearMessages,
+    addAssistantMessage,  // 🆕 어시스턴트 메시지 추가
     updateSettings,
     setContainerFilter,
     getMessage,

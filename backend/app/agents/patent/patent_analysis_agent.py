@@ -36,6 +36,11 @@ from app.tools.retrieval.patent_search_tool import (
     PatentJurisdiction,
     PatentStatus
 )
+from app.tools.retrieval.patent_functional_tools import (
+    PatentDiscoveryTool,
+    PatentDetailTool,
+    PatentLegalTool
+)
 from app.tools.retrieval.patent_analysis_tool import (
     PatentAnalysisTool,
     PatentAnalysisType,
@@ -184,12 +189,110 @@ class PatentAnalysisAgentTool(BaseTool):
     # 내부 도구 (PrivateAttr로 pydantic 호환)
     _search_tool: PatentSearchTool = PrivateAttr()
     _analysis_tool: PatentAnalysisTool = PrivateAttr()
+    _discovery_tool: PatentDiscoveryTool = PrivateAttr()
+    _detail_tool: PatentDetailTool = PrivateAttr()
+    _legal_tool: PatentLegalTool = PrivateAttr()
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._search_tool = PatentSearchTool()
         self._analysis_tool = PatentAnalysisTool()
+        self._discovery_tool = PatentDiscoveryTool()
+        self._detail_tool = PatentDetailTool()
+        self._legal_tool = PatentLegalTool()
     
+    def _map_discovery_to_patent_data(self, item: Dict[str, Any]) -> PatentData:
+        """Discovery Tool 결과를 PatentData로 변환"""
+        # 상태 매핑
+        status_str = item.get("status", "")
+        status = PatentStatus.APPLICATION
+        if "등록" in status_str:
+            status = PatentStatus.GRANTED
+        elif "공개" in status_str:
+            status = PatentStatus.PUBLISHED
+        elif "취하" in status_str:
+            status = PatentStatus.WITHDRAWN
+        elif "소멸" in status_str or "만료" in status_str:
+            status = PatentStatus.EXPIRED
+            
+        return PatentData(
+            patent_number=item.get("application_number", ""),
+            title=item.get("title", ""),
+            abstract=item.get("abstract", ""),
+            applicant=item.get("applicant", ""),
+            inventors=[], # Discovery 결과에는 발명자가 없을 수 있음
+            ipc_codes=item.get("ipc_all", []) or ([item.get("ipc_code")] if item.get("ipc_code") else []),
+            application_date=item.get("application_date"),
+            publication_date=item.get("open_date"),
+            grant_date=item.get("register_date"),
+            status=status,
+            jurisdiction=PatentJurisdiction.KR,
+            url=f"https://kpat.kipris.or.kr/kpat/biblioa.do?applno={item.get('application_number', '')}"
+        )
+
+    async def _analyze_query_with_llm(self, query: str) -> Dict[str, Any]:
+        """LLM을 사용하여 쿼리 의도 및 파라미터 정밀 분석"""
+        try:
+            system_prompt = """당신은 특허 분석 요청을 구조화된 데이터로 변환하는 전문가입니다.
+사용자의 자연어 질의를 분석하여 다음 JSON 형식으로 추출해주세요.
+
+{
+    "is_valid": true/false,
+    "reason": "유효하지 않은 경우 이유",
+    "analysis_type": "search" | "comparison" | "trend" | "portfolio" | "gap",
+    "applicant": "주 출원인(회사명) 또는 null",
+    "competitor": "비교 대상 경쟁사 또는 null",
+    "keywords": "기술 키워드 (회사명, 불용어 제외) 또는 null",
+    "date_from": "YYYY-MM-DD 또는 null",
+    "date_to": "YYYY-MM-DD 또는 null",
+    "jurisdiction": "KR" | "US" | "ALL"
+}
+
+분석 가이드:
+1. **출원인(applicant)**: '삼성전자', 'LG에너지솔루션' 등 회사명을 정확히 추출하세요. (주), 주식회사 등은 제외하고 핵심 명칭만 추출.
+2. **분석 유형(analysis_type)**:
+   - 두 개 이상의 회사가 언급되고 비교/대조/차이 등의 단어가 있으면 "comparison"
+   - '트렌드', '동향', '추이', '변화' 등이 있으면 "trend"
+   - '포트폴리오', '현황', '보유 특허' 등이 있으면 "portfolio"
+   - '공백', '빈틈', '기회' 등이 있으면 "gap"
+   - 그 외에는 "search"
+3. **키워드(keywords)**: '특허', '검색', '분석', '해줘' 등 불용어를 제외한 기술적 핵심 단어만 남기세요.
+4. **유효성(is_valid)**: 특허 분석과 무관한 질의거나, 분석에 필요한 최소한의 정보(키워드 또는 출원인)가 없으면 false로 설정하세요.
+"""
+            
+            response = await ai_service.chat_completion(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": query}
+                ],
+                temperature=0.0
+            )
+            
+            import json
+            content = response.get("response", "{}")
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0]
+                
+            result = json.loads(content)
+            logger.info(f"🧠 [PatentAnalysisAgent] LLM 쿼리 분석 결과: {result}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ [PatentAnalysisAgent] LLM 쿼리 분석 실패: {e}")
+            # 실패 시 기본값 반환
+            return {
+                "is_valid": True,
+                "analysis_type": "search",
+                "applicant": self._extract_applicant_from_query(query),
+                "keywords": self._clean_query(query, None),
+                "competitor": None,
+                "date_from": None,
+                "date_to": None,
+                "jurisdiction": "KR"
+            }
+
     async def _arun(
         self,
         query: str,
@@ -232,10 +335,56 @@ class PatentAnalysisAgentTool(BaseTool):
         )
         
         try:
+            # 1. LLM 기반 쿼리 정밀 분석 (입력 정보 강화)
+            analyzed_query = await self._analyze_query_with_llm(query)
+            
+            if not analyzed_query.get("is_valid", True):
+                return {
+                    "success": False,
+                    "analysis_type": analysis_type,
+                    "summary": f"분석할 수 없는 질의입니다: {analyzed_query.get('reason', '정보 부족')}",
+                    "patents": [],
+                    "total_patents": 0,
+                    "analysis_result": None,
+                    "visualizations": [],
+                    "insights": [],
+                    "recommendations": ["더 구체적인 회사명이나 기술 키워드를 입력해주세요."],
+                    "trace_id": trace_id,
+                    "elapsed_ms": 0,
+                    "errors": [analyzed_query.get("reason", "Invalid query")]
+                }
+
+            # 2. 파라미터 병합 (LLM 분석 결과 우선 적용)
+            # analysis_type이 기본값('search')인 경우 LLM 분석 결과 사용
+            if analysis_type == "search" and analyzed_query.get("analysis_type"):
+                analysis_type = analyzed_query["analysis_type"]
+            
+            # 회사명/경쟁사 정보 보강
+            if not our_company and analyzed_query.get("applicant"):
+                our_company = analyzed_query["applicant"]
+            if not competitor and analyzed_query.get("competitor"):
+                competitor = analyzed_query["competitor"]
+                
+            # 날짜 정보 보강
+            if not date_from and analyzed_query.get("date_from"):
+                date_from = analyzed_query["date_from"]
+            if not date_to and analyzed_query.get("date_to"):
+                date_to = analyzed_query["date_to"]
+                
+            # 관할권 정보 보강
+            if jurisdiction == "KR" and analyzed_query.get("jurisdiction"):
+                jurisdiction = analyzed_query["jurisdiction"]
+
+            # 검색용 키워드 (LLM이 추출한 키워드 사용)
+            search_keywords = analyzed_query.get("keywords") or query
+            
+            logger.info(f"🔧 [PatentAnalysisAgent] 파라미터 확정: type={analysis_type}, applicant={our_company}, keywords={search_keywords}")
+
             # 분석 유형에 따라 처리
             if analysis_type == "search":
                 result = await self._execute_search(
-                    query=query,
+                    query=search_keywords,
+                    applicant=our_company, # 추출된 출원인 전달
                     jurisdiction=jurisdiction,
                     date_from=date_from,
                     date_to=date_to,
@@ -245,7 +394,7 @@ class PatentAnalysisAgentTool(BaseTool):
                 )
             elif analysis_type == "comparison":
                 result = await self._execute_comparison(
-                    query=query,
+                    query=search_keywords,
                     our_company=our_company,
                     competitor=competitor,
                     jurisdiction=jurisdiction,
@@ -256,7 +405,7 @@ class PatentAnalysisAgentTool(BaseTool):
                 )
             elif analysis_type == "trend":
                 result = await self._execute_trend_analysis(
-                    query=query,
+                    query=search_keywords,
                     jurisdiction=jurisdiction,
                     time_range_years=time_range_years,
                     max_results=max_results,
@@ -264,7 +413,7 @@ class PatentAnalysisAgentTool(BaseTool):
                 )
             elif analysis_type == "portfolio":
                 result = await self._execute_portfolio_analysis(
-                    query=query,
+                    query=search_keywords,
                     company=our_company or competitor,
                     jurisdiction=jurisdiction,
                     max_results=max_results,
@@ -272,7 +421,7 @@ class PatentAnalysisAgentTool(BaseTool):
                 )
             elif analysis_type == "gap":
                 result = await self._execute_gap_analysis(
-                    query=query,
+                    query=search_keywords,
                     our_company=our_company,
                     competitor=competitor,
                     jurisdiction=jurisdiction,
@@ -282,7 +431,8 @@ class PatentAnalysisAgentTool(BaseTool):
             else:
                 # 기본: 검색
                 result = await self._execute_search(
-                    query=query,
+                    query=search_keywords,
+                    applicant=our_company,
                     jurisdiction=jurisdiction,
                     max_results=max_results,
                     include_visualization=include_visualization
@@ -331,6 +481,7 @@ class PatentAnalysisAgentTool(BaseTool):
     async def _execute_search(
         self,
         query: str,
+        applicant: Optional[str] = None,
         jurisdiction: str = "KR",
         date_from: Optional[str] = None,
         date_to: Optional[str] = None,
@@ -341,34 +492,98 @@ class PatentAnalysisAgentTool(BaseTool):
         """특허 검색 실행"""
         import re
         
-        # 쿼리에서 출원인 추출 시도
-        applicant = self._extract_applicant_from_query(query)
+        # 쿼리에서 출원인 추출 시도 (전달받지 못한 경우 폴백)
+        if not applicant:
+            applicant = self._extract_applicant_from_query(query)
+        
+        # 쿼리 정제
+        # LLM이 이미 키워드를 추출했더라도, 추가적인 정제(조사 제거 등)를 위해 실행
         clean_query = self._clean_query(query, applicant)
         
         # 🔧 디버그: clean_query 값 확인
         logger.info(f"🔧 [PatentAnalysisAgent] 쿼리 정제: '{query}' → clean='{clean_query}', applicant='{applicant}'")
         
-        # 🆕 쿼리에서 연도 정보 추출
-        year_match = re.search(r'(\d{4})년', query)
-        if year_match and not date_from:
-            year = year_match.group(1)
-            date_from = f"{year}-01-01"
-            date_to = f"{year}-12-31"
-            logger.info(f"📅 연도 필터 적용: {date_from} ~ {date_to}")
+        # 🆕 쿼리에서 연도 정보 추출 (전달받지 못한 경우)
+        if not date_from:
+            year_match = re.search(r'(\d{4})년', query)
+            if year_match:
+                year = year_match.group(1)
+                date_from = f"{year}-01-01"
+                date_to = f"{year}-12-31"
+                logger.info(f"📅 연도 필터 적용: {date_from} ~ {date_to}")
         
-        # 특허 검색
-        search_result: PatentSearchResult = await self._search_tool._arun(
-            query=clean_query,
-            applicant=applicant,
-            jurisdiction=jurisdiction,
-            date_from=date_from,
-            date_to=date_to,
-            ipc_codes=ipc_codes,
-            max_results=max_results,
-            include_global=(jurisdiction != "KR")
-        )
+        patents: List[PatentData] = []
+        errors: List[str] = []
+        total_count = 0
         
-        patents = search_result.data
+        search_params = {
+            "query": clean_query,
+            "applicant": applicant,
+            "jurisdiction": jurisdiction,
+            "date_from": date_from,
+            "date_to": date_to
+        }
+        
+        # 1. KR 검색 (Discovery Tool 사용)
+        if jurisdiction in ["KR", "ALL"]:
+            try:
+                discovery_results = await self._discovery_tool._arun(
+                    query=clean_query,
+                    applicant=applicant,
+                    date_from=date_from,
+                    date_to=date_to,
+                    ipc_code=ipc_codes[0] if ipc_codes else None,
+                    max_results=max_results
+                )
+                
+                # Handle new dict return format with total_count
+                kr_patents_list = []
+                kr_total = 0
+                
+                if isinstance(discovery_results, dict) and "patents" in discovery_results:
+                    kr_patents_list = discovery_results["patents"]
+                    kr_total = discovery_results.get("total_count", 0)
+                elif isinstance(discovery_results, list):
+                    kr_patents_list = discovery_results
+                    kr_total = len(discovery_results)
+                
+                for item in kr_patents_list:
+                    patents.append(self._map_discovery_to_patent_data(item))
+                
+                # Update total count (use max of retrieved or reported total)
+                total_count += max(kr_total, len(kr_patents_list))
+                    
+                logger.info(f"✅ [Discovery] KR 특허 {len(kr_patents_list)}건 검색 완료 (총 {kr_total}건)")
+            except Exception as e:
+                logger.error(f"❌ [Discovery] KR 검색 실패: {e}")
+                errors.append(f"KR 검색 실패: {str(e)}")
+        
+        # 2. Global 검색 (Legacy Search Tool 사용)
+        if jurisdiction != "KR":
+            try:
+                # KR이 아니거나 ALL인 경우 Global 검색
+                # ALL인 경우 KR은 위에서 했으므로 Global만 추가
+                target_jurisdiction = jurisdiction if jurisdiction != "ALL" else "US" # ALL일 때 Global 대표로 US 검색 (임시)
+                
+                global_result = await self._search_tool._arun(
+                    query=clean_query,
+                    applicant=applicant,
+                    jurisdiction=target_jurisdiction,
+                    date_from=date_from,
+                    date_to=date_to,
+                    ipc_codes=ipc_codes,
+                    max_results=max_results,
+                    include_global=True
+                )
+                
+                if global_result.data:
+                    patents.extend(global_result.data)
+                    # Add global total count
+                    total_count += global_result.total_found
+                    logger.info(f"✅ [Global] {len(global_result.data)}건 검색 완료")
+            except Exception as e:
+                logger.error(f"❌ [Global] 검색 실패: {e}")
+                errors.append(f"Global 검색 실패: {str(e)}")
         
         # 🆕 검색 결과가 없거나 출원인 매칭 실패 시 인터넷 검색 폴백
         if not patents and applicant:
@@ -406,16 +621,16 @@ class PatentAnalysisAgentTool(BaseTool):
             "analysis_type": "search",
             "summary": summary,
             "patents": [p.model_dump() for p in patents],
-            "total_patents": search_result.total_found,
+            "total_patents": total_count if total_count > len(patents) else len(patents),
             "analysis_result": {
-                "search_params": search_result.search_params,
-                "source": search_result.source,
+                "search_params": search_params,
+                "source": "kipris_discovery" if jurisdiction == "KR" else "hybrid",
                 "year_filter": date_from[:4] if date_from else None
             },
             "visualizations": [v.model_dump() for v in visualizations],
             "insights": insights,
             "recommendations": [],
-            "errors": search_result.errors
+            "errors": errors
         }
     
     async def _fallback_to_internet_search(
@@ -917,10 +1132,15 @@ class PatentAnalysisAgentTool(BaseTool):
         noise_words = [
             '출원', '등록', '공개', '분석', '검색', '관련', '대한', '에대한',
             '특허', '특허분석', '특허검색', '현황', '보고서', '자료',
-            '주세요', '해줘', '주세', '해주'
+            '주세요', '해줘', '주세', '해주',
+            '건수', '개수', '몇개', '얼마나', '수량', '통계', '알수', '있나요', '있을까요', '건수를',
+            '출원건수', '등록건수', '특허수', '특허건수'
         ]
         for word in noise_words:
             clean = clean.replace(word, ' ')
+            
+        # 특수문자 제거 (쉼표 등)
+        clean = re.sub(r'[,;]', ' ', clean)
         
         # 연속 공백 정리
         clean = re.sub(r'\s+', ' ', clean).strip()

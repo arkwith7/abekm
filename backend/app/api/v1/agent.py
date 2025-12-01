@@ -25,6 +25,31 @@ from pathlib import Path
 router = APIRouter(tags=["agent"])
 
 
+def _should_force_ppt_generation(message: str, tool: Optional[str]) -> bool:
+    """사용자 질의나 도구 선택을 기반으로 PPT 생성을 강제할지 여부를 판단."""
+    if tool == 'ppt':
+        return True
+
+    if not message:
+        return False
+
+    lowered = message.lower()
+    ppt_keywords = [
+        "ppt",
+        "프레젠테이션",
+        "프리젠테이션",
+        "발표자료",
+        "발표 자료",
+        "슬라이드",
+        "presentation"
+    ]
+    # 간단한 휴리스틱: 키워드가 포함되어 있고 "만들", "작성", "생성" 등의 동사가 함께 등장하면 PPT 요청으로 간주
+    action_keywords = ["만들", "작성", "생성", "제작", "작성해", "만들어", "create", "generate"]
+    contains_ppt = any(keyword in lowered for keyword in ppt_keywords)
+    contains_action = any(action in lowered for action in action_keywords)
+    return contains_ppt and contains_action
+
+
 # Request/Response 모델
 class AgentChatRequest(BaseModel):
     """Agent 기반 채팅 요청"""
@@ -592,14 +617,11 @@ async def agent_chat_stream(
                         attached_document_context = "\n\n".join(extracted_texts)
                         yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'completed', 'message': f'첨부 문서 {len(extracted_texts)}개 내용을 추출했습니다.'}, ensure_ascii=False)}\n\n"
 
-            # 🆕 특허 관련 의도 선감지 (리라이터/도구 선택에 활용)
-            patent_keywords = ['특허', '출원', '등록특허', '공개특허', 'patent', 'kipris', '특허분석']
-            normalized_message = request.message.lower()
-            is_patent_query = any(kw in normalized_message for kw in patent_keywords)
+            # 🆕 특허 에이전트는 UI에서 명시적으로 선택되었을 때만 실행
             normalized_tool = (request.tool or "").lower()
             if request.tool and request.tool != normalized_tool:
                 request.tool = normalized_tool
-            skip_rewrite = is_patent_query or (request.tool == 'patent')
+            skip_rewrite = request.tool == 'patent'
 
             # 🆕 Query Rewrite 적용 (특허 의도는 원문 유지)
             rewritten_query = request.message
@@ -608,66 +630,112 @@ async def agent_chat_stream(
                 if rewritten_query != request.message:
                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'started', 'message': f'문맥을 고려하여 질문을 구체화했습니다: {rewritten_query}'}, ensure_ascii=False)}\n\n"
             elif skip_rewrite:
-                logger.info("🛑 [AgentChatStream] 특허/강제 도구 질의는 리라이트를 건너뜁니다")
+                logger.info("🛑 [AgentChatStream] 특허 도구 질의는 리라이트를 건너뜁니다")
 
             intent = await paper_search_agent.classify_intent(rewritten_query)
             keywords = await paper_search_agent._extract_keywords(rewritten_query)
+
+            # 🆕 PPT 강제 모드 (도구 선택 또는 명시적 질의)
+            if _should_force_ppt_generation(request.message, request.tool):
+                if intent != AgentIntent.PPT_GENERATION:
+                    logger.info("🧭 [AgentChatStream] 사용자 질의에서 PPT 생성 의도를 강제로 감지했습니다")
+                intent = AgentIntent.PPT_GENERATION
             
             yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'completed', 'result': {'intent': intent.value, 'keywords': keywords}, 'message': f'의도: {intent.value}, 키워드: {keywords}'}, ensure_ascii=False)}\n\n"
             
-            # 🆕 PPT 생성 의도 감지 시 PresentationAgent로 전환
+            # 🆕 PPT 생성 의도 감지 시 하이브리드 모드 (구조화 답변 + 즉시 PPT 생성)
             if intent == AgentIntent.PPT_GENERATION:
-                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': ['presentation_agent']}, 'message': 'PPT 생성 전문가에게 작업을 위임합니다.'}, ensure_ascii=False)}\n\n"
-                
-                # PresentationAgent 실행
-                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'presentation', 'status': 'started', 'message': 'PPT 구조를 기획하고 있습니다...'}, ensure_ascii=False)}\n\n"
+                yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': ['hybrid_ppt_generation']}, 'message': 'PPT를 바로 생성하고 있습니다...'}, ensure_ascii=False)}\n\n"
                 
                 try:
-                    # PresentationAgent 호출
-                    from app.agents.presentation_agent import presentation_agent
-                    from langchain_core.messages import HumanMessage
+                    # Step 1: 구조화된 답변 생성 (백그라운드 저장용)
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'ppt_content', 'status': 'started', 'message': 'PPT 콘텐츠를 구조화하고 있습니다...'}, ensure_ascii=False)}\n\n"
                     
-                    # 검색 결과가 필요한 경우 (컨텍스트가 있는 경우)
-                    input_state = {
-                        "messages": [HumanMessage(content=request.message)],
-                        "context": attached_document_context # 첨부 파일 내용을 컨텍스트로 전달
-                    }
+                    # RAG 검색 실행
+                    strategy = ['keyword_search', 'fulltext_search', 'deduplicate', 'rerank', 'context_builder']
+                    retrieval_result = await paper_search_agent.execute_strategy(
+                        strategy=strategy,
+                        query=rewritten_query,
+                        keywords=keywords,
+                        constraints=constraints,
+                        db_session=db,
+                        context=context,
+                        attached_document_context=attached_document_context
+                    )
+                    context_text = retrieval_result.get('context_text', '')
                     
-                    result = await presentation_agent.ainvoke(input_state)
+                    # 구조화된 답변 생성
+                    structured_answer = await paper_search_agent.generate_answer(
+                        query=rewritten_query,
+                        context=context_text,
+                        intent=intent,
+                        history=chat_history_messages
+                    )
                     
-                    ppt_url = result.get("ppt_file_url")
-                    final_response = result.get("final_response")
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'ppt_content', 'status': 'completed', 'message': f'콘텐츠 구조화 완료 ({len(structured_answer)}자)'}, ensure_ascii=False)}\n\n"
                     
-                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'presentation', 'status': 'completed', 'message': 'PPT 생성이 완료되었습니다.'}, ensure_ascii=False)}\n\n"
+                    # Step 2: 즉시 PPT 생성 (ReAct Agent)
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'ppt_generation', 'status': 'started', 'message': 'PPT 파일을 생성하고 있습니다...'}, ensure_ascii=False)}\n\n"
+                    
+                    from app.agents.presentation.presentation_agent import quick_ppt_react_agent
+                    
+                    ppt_result = await quick_ppt_react_agent.run(
+                        user_request="PPT 생성",
+                        context_text=structured_answer,
+                        topic=None,  # 자동 추론
+                        max_slides=8
+                    )
+                    
+                    success = ppt_result.get("success", False)
+                    file_name = ppt_result.get("file_name")
+                    file_path = ppt_result.get("file_path")
+                    
+                    if success and file_name:
+                        # 다운로드 URL 생성
+                        import urllib.parse
+                        file_url = f"/api/v1/agent/presentation/download/{urllib.parse.quote(file_name)}"
+                        
+                        yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'ppt_generation', 'status': 'completed', 'message': f'PPT 생성 완료 ({file_name})'}, ensure_ascii=False)}\n\n"
+                        
+                        # 간결한 성공 메시지
+                        final_response = f"✅ **PPT 생성 완료!**\n\n📎 [{file_name}]({file_url})"
+                        
+                        # 메타데이터에 구조화 답변 포함 (모달에서 사용)
+                        metadata = {
+                            "intent": intent.value,
+                            "strategy_used": ["hybrid_ppt_generation"],
+                            "detailed_chunks": [],
+                            "ppt_file_url": file_url,
+                            "ppt_file_name": file_name,
+                            "structured_content": structured_answer,  # 🆕 구조화 답변 저장
+                            "slide_count": ppt_result.get("slide_count", 0),
+                            "iterations": ppt_result.get("iterations", 0),
+                            "execution_time": ppt_result.get("execution_time", 0),
+                            "retrieval_metrics": retrieval_result.get("metrics", {})
+                        }
+                    else:
+                        error_msg = ppt_result.get("error", "알 수 없는 오류")
+                        final_response = f"❌ PPT 생성 실패: {error_msg}"
+                        metadata = {
+                            "intent": intent.value,
+                            "strategy_used": ["hybrid_ppt_generation"],
+                            "error": error_msg
+                        }
                     
                     # 답변 전송
                     yield f"event: content\ndata: {json.dumps({'delta': final_response}, ensure_ascii=False)}\n\n"
-                    
-                    # 메타데이터 전송
-                    metadata = {
-                        "intent": intent.value,
-                        "strategy_used": ["presentation_agent"],
-                        "detailed_chunks": [],
-                        "has_attachments": bool(attached_files),
-                        "ppt_url": ppt_url
-                    }
                     yield f"event: metadata\ndata: {json.dumps(metadata, ensure_ascii=False)}\n\n"
-                    
                     yield f"event: done\ndata: {json.dumps({'success': True, 'session_id': context.get('session_id')}, ensure_ascii=False)}\n\n"
                     return
+                    
                 except Exception as ppt_error:
-                    logger.error(f"PPT 생성 실패: {ppt_error}")
-                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'presentation', 'status': 'error', 'message': f'PPT 생성 실패: {str(ppt_error)}'}, ensure_ascii=False)}\n\n"
+                    logger.error(f"❌ [HybridPPT] 생성 실패: {ppt_error}", exc_info=True)
+                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'ppt_generation', 'status': 'error', 'message': f'PPT 생성 실패: {str(ppt_error)}'}, ensure_ascii=False)}\n\n"
                     yield f"event: error\ndata: {json.dumps({'error': str(ppt_error)}, ensure_ascii=False)}\n\n"
                     return
 
             # 🔍 Step 2: 전략 선택
             strategy = paper_search_agent.select_strategy(intent, constraints)
-            
-            if not request.tool and is_patent_query:
-                # 특허 관련 쿼리인데 도구가 선택되지 않았으면 자동으로 특허 에이전트 호출
-                logger.info(f"🔬 [AgentChatStream] 특허 쿼리 자동 감지: '{request.message[:50]}...'")
-                request.tool = 'patent'  # 특허 도구로 설정
             
             # 🆕 도구 강제 선택 적용
             if request.tool:

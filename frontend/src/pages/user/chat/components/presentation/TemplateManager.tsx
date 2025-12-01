@@ -33,7 +33,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
     const handleSetDefaultTemplate = async (templateId: string) => {
         try {
             const response = await fetch(
-                `/api/v1/chat/presentation/templates/${encodeURIComponent(templateId)}/set-default`,
+                `/api/v1/agent/presentation/templates/${encodeURIComponent(templateId)}/set-default`,
                 {
                     method: 'POST',
                     headers: {
@@ -81,7 +81,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
 
         try {
             const response = await fetch(
-                `/api/v1/chat/presentation/templates/${encodeURIComponent(template.id)}/layouts`,
+                `/api/v1/agent/presentation/templates/${encodeURIComponent(template.id)}/layouts`,
                 {
                     method: 'GET',
                     headers: {
@@ -106,7 +106,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
     // 템플릿 파일 다운로드/미리보기
     const handleDownloadTemplate = (template: Template) => {
         const token = localStorage.getItem('ABEKM_token');
-        const downloadUrl = `/api/v1/chat/presentation/templates/${encodeURIComponent(template.id)}/download?token=${token}`;
+        const downloadUrl = `/api/v1/agent/presentation/templates/${encodeURIComponent(template.id)}/download?token=${token}`;
 
         // 새 창에서 다운로드 (PowerPoint 파일이므로 자동으로 다운로드됨)
         window.open(downloadUrl, '_blank');
@@ -129,7 +129,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
             formData.append('file', file);
 
             const response = await fetch(
-                `/api/v1/chat/presentation/templates/upload`,
+                `/api/v1/agent/presentation/templates/upload`,
                 {
                     method: 'POST',
                     body: formData,
@@ -165,7 +165,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
 
         try {
             const response = await fetch(
-                `/api/v1/chat/presentation/templates/${encodeURIComponent(templateId)}`,
+                `/api/v1/agent/presentation/templates/${encodeURIComponent(templateId)}`,
                 {
                     method: 'DELETE',
                     headers: {
@@ -481,7 +481,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({
                                         <h4 className="text-sm font-medium text-gray-800 mb-3">템플릿 파일 미리보기</h4>
                                         <div className="border border-gray-200 rounded-lg bg-gray-50" style={{ height: '400px' }}>
                                             <iframe
-                                                src={`/api/v1/chat/presentation/templates/${encodeURIComponent(previewTemplate.id)}/file?token=${localStorage.getItem('ABEKM_token')}`}
+                                                src={`/api/v1/agent/presentation/templates/${encodeURIComponent(previewTemplate.id)}/file?token=${localStorage.getItem('ABEKM_token')}`}
                                                 className="w-full h-full rounded-lg"
                                                 title="템플릿 미리보기"
                                                 onLoad={() => console.log('템플릿 PDF 로드 완료')}

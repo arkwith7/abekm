@@ -32,7 +32,7 @@ export function usePresentation(sessionId: string) {
       // } : undefined;
 
       // 원클릭 전용 엔드포인트로 변경
-      const response = await fetch(`/api/v1/chat/presentation/build-quick`, {
+      const response = await fetch(`/api/v1/agent/presentation/build-quick`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -77,12 +77,22 @@ export function usePresentation(sessionId: string) {
                 opts?.onProgress?.({ stage: 'error', message: data.message });
               } else if ((data.type === 'structuring') || (data.type === 'outline_generating')) {
                 opts?.onProgress?.({ stage: 'outline_generating', message: '구조화 중' });
+              } else if (data.type === 'agent_thinking') {
+                // ReAct Agent 분석 중
+                opts?.onProgress?.({ stage: 'outline_generating', message: data.message || 'AI Agent가 분석 중입니다...' });
+              } else if (data.type === 'start') {
+                // 시작 이벤트 (agent_type 정보 포함 가능)
+                opts?.onProgress?.({ stage: 'outline_generating', message: data.agent_type === 'ReAct' ? 'ReAct Agent 시작...' : '생성 시작...' });
               } else if (data.type === 'complete') {
                 const fileUrl: string | undefined = data.file_url;
                 const fileName: string | undefined = data.file_name;
                 if (fileUrl) {
                   opts?.onProgress?.({ stage: 'complete' });
                   opts?.onComplete?.(fileUrl, fileName);
+                  // ReAct Agent 메타 정보 로깅
+                  if (data.agent_type === 'ReAct') {
+                    console.log(`✅ [ReAct] PPT 생성 완료 - iterations: ${data.iterations}, tools: ${data.tools_used?.join(', ')}`);
+                  }
                 }
               }
             } catch { }
@@ -100,7 +110,7 @@ export function usePresentation(sessionId: string) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/v1/chat/presentation/outline`, {
+      const res = await fetch(`/api/v1/agent/presentation/outline`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -155,7 +165,7 @@ export function usePresentation(sessionId: string) {
         }
       });
 
-      const response = await fetch(`/api/v1/chat/presentation/build-with-template`, {
+      const response = await fetch(`/api/v1/agent/presentation/build-with-template`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

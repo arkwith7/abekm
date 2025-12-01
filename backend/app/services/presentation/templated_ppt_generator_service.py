@@ -31,7 +31,7 @@ class TemplatedPPTGeneratorService:
     
     def __init__(self):
         self.prompts_dir = Path(__file__).parents[3] / "prompts"
-        self.upload_dir = Path(settings.file_upload_path or settings.upload_dir)
+        self.upload_dir = settings.resolved_upload_dir
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.template_manager = template_manager
         self.object_processor = EnhancedPPTObjectProcessor()

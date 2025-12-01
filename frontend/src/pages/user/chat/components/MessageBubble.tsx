@@ -729,7 +729,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
                                 }
                               }
                               // 업로드/다운로드 API 링크는 강제 다운로드 처리
-                              if (url.startsWith('/uploads/') || url.startsWith('/api/v1/chat/presentation/download/')) {
+                              if (url.startsWith('/uploads/') || url.startsWith('/api/v1/agent/presentation/download/')) {
                                 try {
                                   const text = (children as any)?.toString?.() || undefined;
                                   const fallbackTitle = text?.replace(/[[\]]/g, '') || undefined;
@@ -794,22 +794,12 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
                     </button>
                   )}
                   {/* 프레젠테이션 모드 버튼 제거 (새 탭 열기와 기능 중복) */}
-                  {/* PPT 생성 액션: 어시스턴트 메시지에서 발표자료 의도가 감지될 때 표시 (참고자료 유무와 관계없이) */}
-                  {!isUser && !isPresentationDownload && hasPresentationIntent && (
+                  {/* 🆕 하이브리드 모드: PPT 생성 액션 (PPT 다운로드 링크가 아닌 경우에만) */}
+                  {!isUser && !isPresentationDownload && hasPresentationIntent && message.metadata?.ppt_file_url && (
                     <PresentationActionBar
                       sourceMessageId={message.message_id || message.id}
                       sessionId={''}
-                      onBuildOneClick={(sourceMessageId, presentationType) => {
-                        // 원클릭은 기존 SSE 기반 훅과 충돌을 피하기 위해 앞으로 상위 컴포넌트에서 주입하도록 권장
-                        // 임시로 이벤트를 발생시켜 상위 컨테이너가 처리하게 할 수 있습니다.
-                        const evt = new CustomEvent('presentation:buildOneClick', {
-                          detail: {
-                            sourceMessageId: sourceMessageId,
-                            presentationType: presentationType
-                          }
-                        });
-                        window.dispatchEvent(evt);
-                      }}
+                      isPPTGenerated={message.metadata?.ppt_file_url ? true : false}
                       onOpenOutline={(sourceMessageId, presentationType) => {
                         const evt = new CustomEvent('presentation:openOutline', {
                           detail: {

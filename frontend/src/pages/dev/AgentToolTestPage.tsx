@@ -314,7 +314,7 @@ const AgentToolTestPage: React.FC = () => {
                                                     setIsDownloading(true);
                                                     const token = localStorage.getItem('ABEKM_token');
                                                     const rawName = testResult.tool_execution_result.tool_result.file_name || testResult.tool_execution_result.tool_result.file_path.split('/').pop();
-                                                    const url = `/api/v1/chat/presentation/download/${encodeURIComponent(rawName)}`;
+                                                    const url = `/api/v1/agent/presentation/download/${encodeURIComponent(rawName)}`;
                                                     const resp = await fetch(url, {
                                                         headers: { 'Authorization': `Bearer ${token}` }
                                                     });

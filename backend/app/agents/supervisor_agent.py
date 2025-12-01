@@ -5,7 +5,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from app.core.config import settings
 from app.agents import paper_search_agent
-from app.agents.presentation_agent import presentation_agent as presentation_subgraph
+from app.agents import presentation_agent_tool
 from app.core.database import get_async_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from contextlib import asynccontextmanager
@@ -138,24 +138,34 @@ async def presentation_node(state: AgentState):
     
     logger.info(f"Supervisor routing to PresentationAgent. Context len: {len(search_result)}")
     
-    # PresentationAgent SubGraph 실행
-    # 입력 상태 구성
-    # SearchAgent의 결과가 있다면 그것을 컨텍스트로 사용
+    # PresentationAgent Tool 실행 (New Tool-based Architecture)
+    context_text = search_result if search_result else "Create a presentation based on the conversation."
     
-    input_message_content = "Create a presentation."
-    if search_result:
-        input_message_content += f" Use the following context:\n\n{search_result[:3000]}..."
+    # 원래 사용자 요청에서 주제 추출 시도
+    original_query = messages[0].content if messages else ""
     
-    # 원래 사용자의 요청도 포함하면 좋음 (messages[0] 등)
+    try:
+        tool_result = await presentation_agent_tool._arun(
+            context_text=context_text,
+            topic=None,  # 자동 추론
+            documents=[],
+            options={},
+            template_style="business",
+            presentation_type="general",
+            quick_mode=False
+        )
+        
+        if tool_result.get("success"):
+            file_name = tool_result.get("file_name", "presentation.pptx")
+            file_path = tool_result.get("file_path", "")
+            final_response = f"✅ PPT 생성 완료!\n\n📄 파일명: {file_name}\n💾 경로: {file_path}"
+        else:
+            error_msg = tool_result.get("error", "알 수 없는 오류")
+            final_response = f"❌ PPT 생성 실패: {error_msg}"
     
-    input_state = {
-        "messages": [HumanMessage(content=input_message_content)],
-        "context": search_result
-    }
-    
-    result = await presentation_subgraph.ainvoke(input_state)
-    
-    final_response = result.get("final_response", "Presentation generation failed.")
+    except Exception as e:
+        logger.error(f"PresentationAgent Tool 실행 실패: {e}")
+        final_response = f"❌ Presentation generation failed: {str(e)}"
     
     return {
         "messages": [AIMessage(content=final_response, name="PresentationAgent")]

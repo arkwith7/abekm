@@ -1,44 +1,36 @@
-"""Presentation pipeline tool that wraps the enhanced PPT generator service."""
+"""Presentation pipeline tool that orchestrates the layered tool architecture."""
 from __future__ import annotations
 
 import asyncio
+import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
 
-try:  # pragma: no cover - optional dependency for LangChain compatibility
-    from langchain_core.tools import BaseTool  # type: ignore
-except ImportError:  # pragma: no cover
-    from langchain.tools import BaseTool  # type: ignore
+try:
+    from langchain_core.tools import BaseTool
+except ImportError:
+    from langchain.tools import BaseTool
 
-from app.services.presentation.enhanced_ppt_generator_service import (
-    enhanced_ppt_generator_service,
-)
 from app.services.presentation.ppt_models import DeckSpec
-from app.tools.contracts import ToolResult
+from app.tools.contracts import ToolResult, ToolMetrics
 from app.tools.presentation.pptxgenjs_tool import get_pptxgenjs_tool
+from app.tools.presentation.content_planning_tools import OutlineGeneratorTool
+from app.tools.presentation.assembly_tools import SlideAssemblerTool
 
 
 class PresentationPipelineTool(BaseTool):
-    """Wrapper around the enhanced PPT generator service for agent architecture.
-
-    This tool provides a unified entry point for presentation generation, supporting:
-    - Context-based PPT generation (from document summaries, text content)
-    - Template selection and customization
-    - Quick one-click PPT generation
-    - Product introduction presentations
-
-    The tool manages the orchestration of outline generation and PPTX building,
-    keeping the agent interface clean while delegating heavy lifting to the
-    presentation service.
-    """
+    """Orchestrator for presentation generation using layered tools."""
 
     name: str = "presentation_pipeline"
     description: str = (
         "Generate professional presentations from document content or context text. "
         "Supports multiple templates, automatic outline generation, and chart/diagram creation."
     )
+    
+    outline_generator: OutlineGeneratorTool = OutlineGeneratorTool()
+    slide_assembler: SlideAssemblerTool = SlideAssemblerTool()
 
     async def _arun(
         self,
@@ -53,29 +45,12 @@ class PresentationPipelineTool(BaseTool):
         presentation_type: str = "general",
         quick_mode: bool = False,
         user_template_id: Optional[str] = None,
-        generator: str = "legacy",  # NEW: legacy | pptxgenjs
+        generator: str = "legacy",
         **kwargs: Any,
     ) -> ToolResult:
-        """Execute the presentation generation pipeline.
-
-        Args:
-            topic: Presentation title/topic
-            context_text: Source content for generating slides
-            provider: LLM provider (azure_openai | bedrock)
-            template_style: Template theme (business | modern | minimal | playful)
-            include_charts: Enable automatic chart generation from data
-            max_slides: Maximum number of slides to generate
-            document_filename: Original document filename for title extraction
-            presentation_type: Type of presentation (general | product_introduction)
-            quick_mode: Skip LLM outline generation, use fixed structure
-            user_template_id: Custom user-uploaded template identifier
-            generator: PPTX generator backend (legacy | pptxgenjs)
-
-        Returns:
-            ToolResult with file path and metadata
-        """
+        """Execute the presentation generation pipeline."""
         logger.info(
-            "🎨 [PresentationPipeline] 실행: topic='%s', slides=%d, template=%s, quick=%s",
+            "🎨 [PresentationPipeline] Start: topic='%s', slides=%d, template=%s, quick=%s",
             topic[:50] if topic else "N/A",
             max_slides,
             template_style,
@@ -83,24 +58,17 @@ class PresentationPipelineTool(BaseTool):
         )
 
         try:
-            service = enhanced_ppt_generator_service
-
-            # Quick mode: fixed outline without LLM
+            # 1. Generate Outline (Content Planning Layer)
             if quick_mode:
-                logger.info("⚡ Quick mode: 고정 구조 생성")
-                deck_spec = service.generate_fixed_outline(
+                logger.info("⚡ Quick mode: Generating fixed outline")
+                deck_spec = self.outline_generator.generate_fixed_outline(
                     topic=topic,
                     context_text=context_text,
                     max_slides=max_slides,
                 )
-                pptx_path = service.build_quick_pptx(
-                    spec=deck_spec,
-                    file_basename=document_filename,
-                )
             else:
-                # Enhanced mode: LLM-driven outline generation
-                logger.info("🧠 Enhanced mode: LLM 기반 아웃라인 생성")
-                deck_spec = await service.generate_enhanced_outline(
+                logger.info("🧠 Enhanced mode: Generating LLM-based outline")
+                deck_spec = await self.outline_generator._arun(
                     topic=topic,
                     context_text=context_text,
                     provider=provider,
@@ -112,32 +80,36 @@ class PresentationPipelineTool(BaseTool):
                     user_template_id=user_template_id,
                 )
 
-                # Build PPTX - route to selected generator
-                if generator == "pptxgenjs":
-                    logger.info("🚀 Using PptxGenJS (Node.js) generator")
-                    pptx_path = await self._build_pptxgenjs(
-                        deck_spec=deck_spec,
-                        file_basename=document_filename,
-                    )
-                else:
-                    logger.info("📄 Using legacy python-pptx generator")
-                    pptx_path = service._build_legacy_pptx(
-                        spec=deck_spec,
-                        file_basename=document_filename,
-                        template_style=template_style,
-                        include_charts=include_charts,
-                    )
+            # 2. Build Presentation (Assembly Layer)
+            if generator == "pptxgenjs":
+                logger.info("�� Using PptxGenJS (Node.js) generator")
+                pptx_path = await self._build_pptxgenjs(
+                    deck_spec=deck_spec,
+                    file_basename=document_filename,
+                )
+            else:
+                logger.info("📄 Using legacy python-pptx generator (via SlideAssembler)")
+                # For quick mode, we force standard build without charts if desired, 
+                # but SlideAssembler handles it based on flags.
+                # If quick_mode was requested, we might want to disable charts in build too?
+                # The original code did include_charts=False for quick build.
+                build_charts = False if quick_mode else include_charts
+                
+                pptx_path = self.slide_assembler._run(
+                    spec=deck_spec,
+                    file_basename=document_filename,
+                    template_style=template_style,
+                    include_charts=build_charts,
+                    user_template_id=user_template_id if not quick_mode else None
+                )
 
-            # Validate output
+            # 3. Validate Output
             output_file = Path(pptx_path)
             if not output_file.exists():
-                raise FileNotFoundError(f"생성된 PPTX 파일을 찾을 수 없습니다: {pptx_path}")
+                raise FileNotFoundError(f"Generated PPTX file not found: {pptx_path}")
 
             file_size = output_file.stat().st_size
-            logger.info("✅ [PresentationPipeline] 성공: %s (%.2f KB)", output_file.name, file_size / 1024)
-
-            from app.tools.contracts import ToolMetrics
-            import uuid
+            logger.info("✅ [PresentationPipeline] Success: %s (%.2f KB)", output_file.name, file_size / 1024)
 
             trace_id = str(uuid.uuid4())
 
@@ -161,62 +133,39 @@ class PresentationPipelineTool(BaseTool):
             )
 
         except Exception as exc:
-            logger.error("❌ [PresentationPipeline] 실패: %s", exc, exc_info=True)
-            import uuid
-            from app.tools.contracts import ToolMetrics
-
+            logger.error("❌ [PresentationPipeline] Failed: %s", exc, exc_info=True)
             return ToolResult(
                 success=False,
                 data={},
                 metrics=ToolMetrics(latency_ms=0.0, provider="internal"),
-                errors=[f"PPT 생성 실패: {str(exc)}"],
+                errors=[f"PPT Generation Failed: {str(exc)}"],
                 trace_id=str(uuid.uuid4()),
                 tool_name=self.name,
             )
 
     def _run(self, *args: Any, **kwargs: Any) -> ToolResult:
-        """Synchronous execution wrapper required by BaseTool."""
+        """Synchronous execution wrapper."""
         try:
             return asyncio.run(self._arun(**kwargs))
         except RuntimeError as exc:
             raise RuntimeError(
-                "PresentationPipelineTool synchronous execution requires an event loop. "
-                "Call `_arun` from an async context."
+                "PresentationPipelineTool synchronous execution requires an event loop."
             ) from exc
 
-
-    async def _build_pptxgenjs(
-        self,
-        deck_spec: DeckSpec,
-        file_basename: Optional[str] = None,
-    ) -> str:
-        """Build PPTX using Node.js PptxGenJS service.
-        
-        Args:
-            deck_spec: DeckSpec with slides/content
-            file_basename: Optional filename (without extension)
-            
-        Returns:
-            Path to generated PPTX file
-        """
+    async def _build_pptxgenjs(self, deck_spec: DeckSpec, file_basename: Optional[str] = None) -> str:
+        """Build PPTX using Node.js PptxGenJS service."""
         import tempfile
-        import os
         from app.core.config import settings
+        
         pptxgenjs_tool = get_pptxgenjs_tool()
-        
-        # Convert DeckSpec to dictionary
         deck_dict = deck_spec.model_dump() if hasattr(deck_spec, 'model_dump') else deck_spec.dict()
-        
-        # Call Node.js service
         pptx_content = await pptxgenjs_tool.generate_pptx(deck_dict)
         
-        # Save to output directory
         output_dir = Path(getattr(settings, 'presentation_output_dir', tempfile.gettempdir()))
         output_dir.mkdir(parents=True, exist_ok=True)
         
         filename = f"{file_basename or 'presentation'}.pptx"
         output_path = output_dir / filename
-        
         output_path.write_bytes(pptx_content)
         
         logger.info(f"✅ PptxGenJS file saved: {output_path}")

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Header, Request
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 from typing import List, Optional, Any, Dict
@@ -9,6 +9,10 @@ from pathlib import Path
 from datetime import datetime
 
 from app.core.dependencies import get_current_user
+from app.core.security import AuthUtils
+from app.services.auth.async_user_service import AsyncUserService
+from app.core.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import User
 from app.models.chat import RedisChatManager, get_redis_client
 from app.core.config import settings
@@ -22,6 +26,8 @@ from app.services.office_generator_client import office_generator_client
 from app.models.presentation import PresentationRequest, PresentationResponse, PresentationMetadata, StructuredOutline
 from app.agents.presentation.content_structurer import structure_markdown_to_outline
 from app.agents.presentation.html_generator import generate_presentation_html
+from app.agents.presentation.orchestrator import presentation_agent
+from app.agents.presentation.presentation_agent import quick_ppt_react_agent  # 🆕 ReAct Agent
 import logging
 
 
@@ -86,6 +92,89 @@ def _compose_context_from_messages(source_msg, all_msgs: List[Any]) -> tuple[str
     logger.info(f"🔍 최종 topic: '{topic}'")
     
     return topic, context_text, referenced_docs
+
+
+def _ensure_markdown_structure(text: str, topic: str) -> str:
+    """
+    AI 답변을 마크다운 구조로 변환하여 outline_generation_tool 파싱 성공률 향상.
+    
+    Args:
+        text: AI 답변 텍스트
+        topic: 주제
+        
+    Returns:
+        구조화된 마크다운 텍스트 (## 제목, ### 섹션 구조)
+    """
+    import re
+    
+    # 이미 ## 헤더가 있으면 그대로 반환
+    if re.search(r'^##\s+', text, re.MULTILINE):
+        return text
+    
+    # 빈 텍스트 처리
+    if not text or len(text.strip()) < 50:
+        return text
+    
+    # 기본 구조 생성
+    lines = text.split('\n')
+    structured_lines = [f"## {topic}", ""]
+    
+    current_section = None
+    section_content = []
+    
+    for line in lines:
+        line_stripped = line.strip()
+        
+        # 빈 줄
+        if not line_stripped:
+            if section_content:
+                section_content.append("")
+            continue
+        
+        # 숫자 목록 (1., 2., 3. 등) → ### 섹션으로 변환
+        numbered_match = re.match(r'^(\d+)\.\s+(.+)$', line_stripped)
+        if numbered_match:
+            # 이전 섹션 저장
+            if current_section and section_content:
+                structured_lines.append(f"### {current_section}")
+                structured_lines.extend(section_content)
+                structured_lines.append("")
+                section_content = []
+            
+            # 새 섹션 시작
+            current_section = numbered_match.group(2)
+            continue
+        
+        # Bullet point (-, *, •)
+        if re.match(r'^[-*•]\s+', line_stripped):
+            section_content.append(line_stripped)
+            continue
+        
+        # 일반 텍스트
+        if current_section:
+            # 현재 섹션의 내용으로 추가
+            section_content.append(f"- {line_stripped}")
+        else:
+            # 첫 섹션 없이 나온 내용 → "개요" 섹션으로
+            if not any(s.startswith("### 개요") for s in structured_lines):
+                structured_lines.append("### 개요")
+            structured_lines.append(f"- {line_stripped}")
+    
+    # 마지막 섹션 저장
+    if current_section and section_content:
+        structured_lines.append(f"### {current_section}")
+        structured_lines.extend(section_content)
+    
+    result = '\n'.join(structured_lines)
+    
+    # 최소 3개 이상의 ### 섹션이 없으면 원본 반환 (구조화 실패)
+    section_count = len(re.findall(r'^###\s+', result, re.MULTILINE))
+    if section_count < 2:
+        logger.warning(f"⚠️ 구조화 실패 (섹션 {section_count}개만 생성) - 원본 사용")
+        return text
+    
+    logger.info(f"✅ 구조화 성공: {section_count}개 섹션 생성")
+    return result
 
 
 def _extract_document_filename(referenced_docs: Optional[List[Dict[str, Any]]]) -> Optional[str]:
@@ -411,15 +500,24 @@ async def download_pptx(
     current_user: User = Depends(get_current_user)
 ):
     """Download PPTX file"""
-    try:
-        pptx_path = file_manager.resolve_file(filename, "pptx")
-    except FileNotFoundError:
+    # 일부 생성 파이프라인은 기존 uploads 디렉터리를 사용하므로 다중 경로 탐색
+    safe_filename = Path(filename).name
+    search_roots = [file_manager.pptx_dir, settings.resolved_upload_dir]
+    pptx_path = None
+
+    for root in search_roots:
+        candidate = root / safe_filename
+        if candidate.is_file():
+            pptx_path = candidate
+            break
+
+    if not pptx_path:
         raise HTTPException(status_code=404, detail="PPTX file not found")
     
     return FileResponse(
         path=pptx_path,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        filename=filename
+        filename=safe_filename
     )
 
 
@@ -476,7 +574,7 @@ class PresentationBuildRequest(BaseModel):
 
 
 # ===== Templates =====
-@router.get("/chat/presentation/templates", summary="PPT 템플릿 목록")
+@router.get("/agent/presentation/templates", summary="PPT 템플릿 목록")
 async def list_presentation_templates():
     all_templates = template_manager.list_templates()
     enhanced_templates = []
@@ -503,7 +601,7 @@ async def list_presentation_templates():
         "default_template_id": default_template_id
     }
 
-@router.get("/chat/presentation/templates/_debug/state", summary="[DEBUG] 템플릿 레지스트리 상태")
+@router.get("/agent/presentation/templates/_debug/state", summary="[DEBUG] 템플릿 레지스트리 상태")
 async def debug_presentation_templates_state():
     try:
         items = []
@@ -517,7 +615,7 @@ async def debug_presentation_templates_state():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/chat/presentation/templates/{template_id}", summary="PPT 템플릿 상세")
+@router.get("/agent/presentation/templates/{template_id}", summary="PPT 템플릿 상세")
 async def get_presentation_template_details(template_id: str):
     details = template_manager.get_template_details(template_id)
     if not details:
@@ -525,7 +623,7 @@ async def get_presentation_template_details(template_id: str):
     return {"success": True, "template": details}
 
 
-@router.get("/chat/presentation/templates/{template_id}/thumbnail", summary="PPT 템플릿 썸네일")
+@router.get("/agent/presentation/templates/{template_id}/thumbnail", summary="PPT 템플릿 썸네일")
 async def get_presentation_template_thumbnail(template_id: str):
     path = template_manager.get_thumbnail_path(template_id)
     if not path:
@@ -536,7 +634,7 @@ async def get_presentation_template_thumbnail(template_id: str):
     return FileResponse(path, media_type='image/png', filename=filename)
 
 
-@router.get("/chat/presentation/templates/{template_id}/layouts", summary="PPT 템플릿 레이아웃 목록")
+@router.get("/agent/presentation/templates/{template_id}/layouts", summary="PPT 템플릿 레이아웃 목록")
 async def get_presentation_template_layouts(template_id: str):
     try:
         decoded_template_id = urllib.parse.unquote(template_id)
@@ -554,7 +652,7 @@ async def get_presentation_template_layouts(template_id: str):
         raise HTTPException(status_code=500, detail="레이아웃 정보 조회 중 오류가 발생했습니다")
 
 
-@router.get("/chat/presentation/templates/{template_id}/thumbnails", summary="템플릿 썸네일 목록")
+@router.get("/agent/presentation/templates/{template_id}/thumbnails", summary="템플릿 썸네일 목록")
 async def get_template_thumbnails(template_id: str):
     try:
         logger.info(f"템플릿 썸네일 목록 요청: {template_id}")
@@ -575,7 +673,7 @@ async def get_template_thumbnails(template_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/chat/presentation/templates/{template_id}/thumbnails/{slide_index}", summary="슬라이드 썸네일 이미지")
+@router.get("/agent/presentation/templates/{template_id}/thumbnails/{slide_index}", summary="슬라이드 썸네일 이미지")
 async def get_slide_thumbnail(template_id: str, slide_index: int):
     try:
         from app.services.presentation.thumbnail_generator import thumbnail_generator
@@ -593,7 +691,7 @@ async def get_slide_thumbnail(template_id: str, slide_index: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/chat/presentation/templates/upload", summary="PPT 템플릿 업로드")
+@router.post("/agent/presentation/templates/upload", summary="PPT 템플릿 업로드")
 async def upload_presentation_template(
     file: UploadFile = File(...),
     style: str = Form('business'),
@@ -602,7 +700,7 @@ async def upload_presentation_template(
 ):
     if not file.filename or not file.filename.lower().endswith('.pptx'):
         raise HTTPException(status_code=400, detail="pptx 파일만 지원합니다")
-    upload_dir = Path(settings.file_upload_path or settings.upload_dir) / 'templates'
+    upload_dir = settings.resolved_upload_dir / 'templates'
     upload_dir.mkdir(parents=True, exist_ok=True)
     safe_name = file.filename.replace('..','_').replace('/','_')
     dest = upload_dir / safe_name
@@ -612,7 +710,7 @@ async def upload_presentation_template(
     return {"success": True, "template": entry}
 
 
-@router.delete("/chat/presentation/templates/{template_id}", summary="PPT 템플릿 삭제")
+@router.delete("/agent/presentation/templates/{template_id}", summary="PPT 템플릿 삭제")
 async def delete_presentation_template(template_id: str):
     try:
         decoded_template_id = urllib.parse.unquote(template_id)
@@ -627,7 +725,7 @@ async def delete_presentation_template(template_id: str):
         raise HTTPException(status_code=500, detail="템플릿 삭제 중 오류가 발생했습니다")
 
 
-@router.post("/chat/presentation/templates/{template_id}/set-default", summary="PPT 템플릿을 기본 템플릿으로 설정")
+@router.post("/agent/presentation/templates/{template_id}/set-default", summary="PPT 템플릿을 기본 템플릿으로 설정")
 async def set_default_presentation_template(
     template_id: str,
     current_user: User = Depends(get_current_user)
@@ -645,7 +743,7 @@ async def set_default_presentation_template(
         raise HTTPException(status_code=500, detail="기본 템플릿 설정 중 오류가 발생했습니다")
 
 
-@router.get("/chat/presentation/templates/{template_id}/download", summary="PPT 템플릿 원본 파일 다운로드")
+@router.get("/agent/presentation/templates/{template_id}/download", summary="PPT 템플릿 원본 파일 다운로드")
 async def download_presentation_template(
     template_id: str,
     token: Optional[str] = Query(None, description="인증 토큰 (iframe용)"),
@@ -676,7 +774,7 @@ async def download_presentation_template(
         raise HTTPException(status_code=500, detail="템플릿 파일 다운로드 중 오류가 발생했습니다")
 
 
-@router.get("/chat/presentation/templates/{template_id}/file", summary="PPT 템플릿 파일 조회 (PDF 변환)")
+@router.get("/agent/presentation/templates/{template_id}/file", summary="PPT 템플릿 파일 조회 (PDF 변환)")
 async def get_presentation_template_file(
     template_id: str,
     token: Optional[str] = Query(None, description="인증 토큰 (iframe용)"),
@@ -717,7 +815,7 @@ async def get_presentation_template_file(
         raise HTTPException(status_code=500, detail="템플릿 파일 변환 중 오류가 발생했습니다")
 
 
-@router.get("/chat/presentation/templates/{template_id}/simple-metadata", summary="PPT 템플릿 단순화된 메타데이터 (UI 친화적)")
+@router.get("/agent/presentation/templates/{template_id}/simple-metadata", summary="PPT 템플릿 단순화된 메타데이터 (UI 친화적)")
 async def get_template_simple_metadata(
     template_id: str,
     current_user: User = Depends(get_current_user)
@@ -844,7 +942,7 @@ async def get_template_simple_metadata(
         raise HTTPException(status_code=500, detail=f"템플릿 메타데이터 조회 중 오류: {str(e)}")
 
 
-@router.get("/chat/presentation/templates/{template_id}/metadata")
+@router.get("/agent/presentation/templates/{template_id}/metadata")
 async def get_template_metadata(
     template_id: str,
     current_user: User = Depends(get_current_user)
@@ -858,7 +956,7 @@ async def get_template_metadata(
 
 
 # ===== Outline =====
-@router.post("/chat/presentation/outline", response_model=PresentationOutlineResponse)
+@router.post("/agent/presentation/outline", response_model=PresentationOutlineResponse)
 async def create_presentation_outline(
     req: PresentationOutlineRequest,
     current_user: User = Depends(get_current_user),
@@ -916,7 +1014,7 @@ async def create_presentation_outline(
 
 
 # ===== Build from message (SSE) =====
-@router.post("/chat/presentation/build-from-message")
+@router.post("/agent/presentation/build-from-message")
 async def build_presentation_from_message_sse(
     req: PresentationBuildFromMessageRequest,
     current_user: User = Depends(get_current_user),
@@ -998,7 +1096,7 @@ async def build_presentation_from_message_sse(
                 slide_management=slide_management_info
             )
             file_name_only = os.path.basename(file_path)
-            file_url = f"/api/v1/chat/presentation/download/{urllib.parse.quote(file_name_only)}"
+            file_url = f"/api/v1/agent/presentation/download/{urllib.parse.quote(file_name_only)}"
             yield f"data: {json.dumps({'type': 'complete', 'file_url': file_url, 'file_name': file_name_only})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
@@ -1022,83 +1120,155 @@ class QuickPresentationBuildRequest(BaseModel):
     max_slides: int = 8
 
 
-@router.post("/chat/presentation/build-quick")
+@router.post(
+    "/agent/presentation/build-quick",
+    summary="🧠 ReAct Agent 기반 Quick PPT 생성",
+    description="""
+    **ReAct (Reasoning + Acting) Agent** 패턴을 사용한 PPT 생성.
+    
+    LLM이 직접 도구를 선택하고 Thought → Action → Observation 루프를 통해 
+    동적으로 PPT를 생성합니다.
+    
+    **특징:**
+    - LLM이 상황에 따라 도구 선택 (outline_generation, visualization, pptx_builder, quality_validator)
+    - 중간 결과를 바탕으로 다음 행동 결정
+    - 품질 검증 및 자동 개선 시도
+    """
+)
 async def build_presentation_quick(
     req: QuickPresentationBuildRequest,
     current_user: User = Depends(get_current_user),
     chat_manager: RedisChatManager = Depends(get_redis_chat_manager)
 ):
-    # 유효성: 템플릿/매핑 등 금지 - 본 요청 스키마에 포함되지 않음
+    """ReAct Agent 기반 Quick PPT 생성 (기존 파이프라인 대체)"""
     async def stream():
         try:
-            yield f"data: {json.dumps({'type': 'start'})}\n\n"
-            # 메시지 소스
+            yield f"data: {json.dumps({'type': 'start', 'agent_type': 'ReAct'})}\n\n"
+            
+            # 메시지 소스 추출 (기존 로직 유지)
             topic = "발표자료"
             context_text = ""
             referenced_documents = None
-            document_filename: Optional[str] = None
             
             if req.source_message_id:
-                logger.info(f"🔍 메시지 ID로 검색 시작: {req.source_message_id}")
+                logger.info(f"🔍 [ReAct] 메시지 ID로 검색: {req.source_message_id}")
                 source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id)
                 
                 if not source_msg:
-                    logger.warning(f"⚠️ 메시지 ID를 찾지 못함: {req.source_message_id} - 최근 메시지에서 폴백 시도")
-                    # 폴백: 최근 어시스턴트 메시지 사용
-                    try:
-                        recent_msgs = await chat_manager.get_recent_messages(req.session_id, limit=10)
-                        assistant_msgs = [m for m in recent_msgs if getattr(m, 'message_type', None) and getattr(m, 'message_type').value == 'assistant']
-                        if assistant_msgs:
-                            source_msg = assistant_msgs[-1]  # 가장 최근 어시스턴트 메시지
-                            logger.info(f"✅ 폴백으로 최근 어시스턴트 메시지 사용: {len(getattr(source_msg, 'content', '') or '')}자")
-                        else:
-                            yield f"data: {json.dumps({'type': 'error', 'message': '어시스턴트 메시지를 찾을 수 없습니다'})}\n\n"; yield "data: [DONE]\n\n"; return
-                    except Exception as e:
-                        logger.error(f"❌ 폴백 메시지 조회 실패: {e}")
-                        yield f"data: {json.dumps({'type': 'error', 'message': '메시지를 찾을 수 없습니다'})}\n\n"; yield "data: [DONE]\n\n"; return
-                
-                tpc, ctx, ref_docs = _compose_context_from_messages(source_msg, msgs or [])
-                topic, context_text, referenced_documents = (tpc or topic), (ctx or context_text), ref_docs
-                document_filename = _extract_document_filename(referenced_documents)
-                logger.info(f"🔍 소스 메시지에서 추출 - topic: '{topic[:50]}', context 길이: {len(context_text)}")
-                if referenced_documents:
-                    logger.info(f"📚 참고자료 추출 완료: {len(referenced_documents)}개")
+                    if req.message:
+                        logger.info(f"✅ [ReAct] 폴백으로 요청 본문의 message 사용: {len(req.message)}자")
+                        topic = req.message[:80]
+                        context_text = req.message
+                    else:
+                        try:
+                            recent_msgs = await chat_manager.get_recent_messages(req.session_id, limit=10)
+                            assistant_msgs = [m for m in recent_msgs if getattr(m, 'message_type', None) and getattr(m, 'message_type').value == 'assistant']
+                            if assistant_msgs:
+                                source_msg = assistant_msgs[-1]
+                                tpc, ctx, ref_docs = _compose_context_from_messages(source_msg, msgs or [])
+                                topic, context_text, referenced_documents = (tpc or topic), (ctx or context_text), ref_docs
+                            else:
+                                yield f"data: {json.dumps({'type': 'error', 'message': '어시스턴트 메시지를 찾을 수 없습니다'})}\n\n"
+                                yield "data: [DONE]\n\n"
+                                return
+                        except Exception as e:
+                            logger.error(f"❌ [ReAct] 폴백 메시지 조회 실패: {e}")
+                            yield f"data: {json.dumps({'type': 'error', 'message': '메시지를 찾을 수 없습니다'})}\n\n"
+                            yield "data: [DONE]\n\n"
+                            return
+                else:
+                    tpc, ctx, ref_docs = _compose_context_from_messages(source_msg, msgs or [])
+                    topic, context_text, referenced_documents = (tpc or topic), (ctx or context_text), ref_docs
             elif req.message:
                 topic = req.message[:80]
                 context_text = req.message
-                logger.info(f"🔍 직접 메시지 사용 - topic: '{topic}', context 길이: {len(context_text)}")
             else:
-                yield f"data: {json.dumps({'type': 'error', 'message': 'message or source_message_id required'})}\n\n"; yield "data: [DONE]\n\n"; return
+                yield f"data: {json.dumps({'type': 'error', 'message': 'message or source_message_id required'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
             
             # 컨텍스트 유효성 검증
             if not context_text or len(context_text.strip()) < 50:
-                logger.warning(f"⚠️ 컨텍스트가 너무 짧음: {len(context_text)}자")
-                yield f"data: {json.dumps({'type': 'error', 'message': 'AI 답변 내용이 충분하지 않습니다. 더 자세한 답변을 받은 후 다시 시도해주세요.'})}\n\n"; yield "data: [DONE]\n\n"; return
+                yield f"data: {json.dumps({'type': 'error', 'message': 'AI 답변 내용이 충분하지 않습니다.'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
             
-            logger.info(f"🚀 Quick PPT 생성 시작 - topic: '{topic}', context: {len(context_text)}자")
-            yield f"data: {json.dumps({'type': 'structuring'})}\n\n"
-            deck = quick_ppt_service.generate_fixed_outline(topic=topic, context_text=context_text, max_slides=req.max_slides)
-            yield f"data: {json.dumps({'type': 'building'})}\n\n"
-            file_path = quick_ppt_service.build_quick_pptx(deck)
-            file_name_only = os.path.basename(file_path)
-            file_url = f"/api/v1/chat/presentation/download/{urllib.parse.quote(file_name_only)}"
+            logger.info(f"🧠 [ReAct] Agent 실행 시작 - topic: '{topic[:50]}', context: {len(context_text)}자")
             
-            # 응답에 참고자료 정보 포함
-            response_data: Dict[str, Any] = {
-                'type': 'complete',
-                'file_url': file_url,
-                'file_name': file_name_only,
-            }
+            # 📝 콘텐츠 구조화 전처리 (마크다운 헤더 구조 보장)
+            structured_context = _ensure_markdown_structure(context_text, topic)
+            logger.info(f"📐 [ReAct] 구조화 완료: {len(structured_context)}자 (원본: {len(context_text)}자)")
             
-            if referenced_documents:
-                response_data['referenced_documents'] = referenced_documents
-                logger.info(f"📚 응답에 참고자료 포함: {len(referenced_documents)}개")
+            yield f"data: {json.dumps({'type': 'agent_thinking', 'message': 'ReAct Agent가 분석 중입니다...'})}\n\n"
             
-            yield f"data: {json.dumps(response_data)}\n\n"
+            # 🧠 ReAct Agent 실행
+            try:
+                result = await quick_ppt_react_agent.run(
+                    user_request="PPT 생성",
+                    context_text=structured_context,
+                    topic=topic,
+                    max_slides=req.max_slides
+                )
+                
+                # 결과 확인
+                if result.get("success"):
+                    file_name = result.get("file_name")
+                    if file_name:
+                        file_url = f"/api/v1/agent/presentation/download/{urllib.parse.quote(file_name)}"
+                        logger.info(f"📦 [ReAct] PPT 생성 완료 - 파일: {file_name}")
+                        
+                        response_data: Dict[str, Any] = {
+                            'type': 'complete',
+                            'file_url': file_url,
+                            'file_name': file_name,
+                            'agent_type': 'ReAct',
+                            'iterations': result.get("iterations", 0),
+                            'tools_used': result.get("tools_used", []),
+                        }
+                        
+                        if result.get("final_answer"):
+                            response_data['agent_summary'] = result["final_answer"]
+                        
+                        if referenced_documents:
+                            response_data['referenced_documents'] = referenced_documents
+                        
+                        yield f"data: {json.dumps(response_data)}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Agent가 파일 생성에 실패했습니다'})}\n\n"
+                else:
+                    error_msg = result.get("error", "Agent 실행 중 오류 발생")
+                    yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                    
+            except Exception as agent_error:
+                logger.error(f"❌ [ReAct] Agent 실행 오류: {agent_error}")
+                import traceback
+                traceback.print_exc()
+                yield f"data: {json.dumps({'type': 'error', 'message': f'Agent 오류: {str(agent_error)}'})}\n\n"
+            
             yield "data: [DONE]\n\n"
+            
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"; yield "data: [DONE]\n\n"
+            logger.error(f"❌ [ReAct] 스트림 오류: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+    
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+# ===== /build-quick-react는 /build-quick으로 통합됨 =====
+# 하위 호환성을 위해 리디렉트 엔드포인트 유지
+@router.post(
+    "/agent/presentation/build-quick-react",
+    summary="🔄 [REDIRECT] → /agent/presentation/build-quick",
+    description="이 엔드포인트는 /agent/presentation/build-quick으로 통합되었습니다."
+)
+async def build_presentation_quick_react_redirect(
+    req: QuickPresentationBuildRequest,
+    current_user: User = Depends(get_current_user),
+    chat_manager: RedisChatManager = Depends(get_redis_chat_manager)
+):
+    """build-quick으로 리디렉트"""
+    return await build_presentation_quick(req, current_user, chat_manager)
 
 
 class TemplatedPresentationBuildRequest(BaseModel):
@@ -1111,7 +1281,18 @@ class TemplatedPresentationBuildRequest(BaseModel):
     content_segments: Optional[List[Dict[str, Any]]] = None
 
 
-@router.post("/chat/presentation/build-with-template")
+@router.post(
+    "/agent/presentation/build-with-template",
+    deprecated=True,
+    summary="⚠️ [DEPRECATED] Template-based PPT Generation",
+    description="""
+    **DEPRECATED**: This endpoint is deprecated and will be removed in a future release.
+    
+    **Migration**: Use `POST /api/v1/presentation/agent/generate` with `mode="enhanced"` and `template_path` instead.
+    
+    See PRESENTATION_API_MIGRATION_GUIDE.md for details.
+    """
+)
 async def build_presentation_with_template(
     req: TemplatedPresentationBuildRequest,
     current_user: User = Depends(get_current_user),
@@ -1138,11 +1319,32 @@ async def build_presentation_with_template(
                 from app.services.presentation.ppt_models import SlideSpec, DeckSpec
                 slides = []
                 for slide_data in req.outline.get('slides', []):
+                    # DiagramData 변환 로직 추가
+                    diagram_data = None
+                    if slide_data.get('diagram'):
+                        from app.services.presentation.ppt_models import DiagramData, ChartData
+                        d_raw = slide_data.get('diagram')
+                        chart_data = None
+                        if d_raw.get('chart'):
+                            c_raw = d_raw.get('chart')
+                            chart_data = ChartData(
+                                type=c_raw.get('type', 'column'),
+                                title=c_raw.get('title', ''),
+                                categories=c_raw.get('categories', []),
+                                series=c_raw.get('series', [])
+                            )
+                        diagram_data = DiagramData(
+                            type=d_raw.get('type', 'none'),
+                            data=d_raw.get('data'),
+                            chart=chart_data
+                        )
+
                     slides.append(SlideSpec(
                         title=slide_data.get('title', '제목'),
                         key_message=slide_data.get('key_message', ''),
                         bullets=slide_data.get('bullets', []),
-                        layout=slide_data.get('layout', 'title-and-content')
+                        layout=slide_data.get('layout', 'title-and-content'),
+                        diagram=diagram_data
                     ))
                 deck = DeckSpec(topic=req.outline.get('topic', '발표자료'), slides=slides, max_slides=len(slides))
             
@@ -1162,7 +1364,7 @@ async def build_presentation_with_template(
                 slide_management=slide_management_info
             )
             file_name_only = os.path.basename(file_path)
-            file_url = f"/api/v1/chat/presentation/download/{urllib.parse.quote(file_name_only)}"
+            file_url = f"/api/v1/agent/presentation/download/{urllib.parse.quote(file_name_only)}"
             yield f"data: {json.dumps({'type': 'complete', 'file_url': file_url, 'file_name': file_name_only})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
@@ -1170,7 +1372,18 @@ async def build_presentation_with_template(
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
-@router.post("/chat/presentation/build")
+@router.post(
+    "/agent/presentation/build",
+    deprecated=True,
+    summary="⚠️ [DEPRECATED] Build from Outline",
+    description="""
+    **DEPRECATED**: This endpoint is deprecated and will be removed in a future release.
+    
+    **Migration**: Use `POST /api/v1/presentation/agent/generate` instead.
+    
+    See PRESENTATION_API_MIGRATION_GUIDE.md for details.
+    """
+)
 async def build_presentation_from_outline(
     req: PresentationBuildRequest,
     current_user: User = Depends(get_current_user),
@@ -1221,21 +1434,48 @@ async def build_presentation_from_outline(
             content_segments=req.content_segments,
             slide_management=[sm if isinstance(sm, dict) else sm.dict() for sm in (req.slide_management or [])]
         )
-        return {"success": True, "file_url": f"/api/v1/chat/presentation/download/{urllib.parse.quote(os.path.basename(file_path))}", "file_name": os.path.basename(file_path)}
+        return {"success": True, "file_url": f"/api/v1/agent/presentation/download/{urllib.parse.quote(os.path.basename(file_path))}", "file_name": os.path.basename(file_path)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ===== Generated file download =====
-@router.get("/chat/presentation/download/{filename}")
+@router.get("/agent/presentation/download/{filename}")
 async def download_presentation_file(
     filename: str,
-    current_user: User = Depends(get_current_user)
+    request: Request,
+    token: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db)
 ):
     import posixpath
     import urllib.parse
+    
+    # Manual Authentication Logic
+    user = None
     try:
-        logger.info(f"📥 PPT 다운로드 요청: 원본 파일명='{filename}'")
+        # 1. Try query param token
+        if token:
+            token_data = AuthUtils.verify_token(token)
+            user_service = AsyncUserService(db)
+            user = await user_service.get_user_by_emp_no(token_data.emp_no)
+        
+        # 2. Try Authorization header if no user yet
+        if not user:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                header_token = auth_header.split(" ")[1]
+                token_data = AuthUtils.verify_token(header_token)
+                user_service = AsyncUserService(db)
+                user = await user_service.get_user_by_emp_no(token_data.emp_no)
+    except Exception as e:
+        logger.warning(f"📥 다운로드 인증 실패: {e}")
+        # Don't raise immediately, let the check below handle it
+        
+    if not user:
+        raise HTTPException(status_code=401, detail="인증되지 않은 사용자입니다.")
+        
+    try:
+        logger.info(f"📥 PPT 다운로드 요청: 원본 파일명='{filename}', 사용자='{user.username}'")
         
         # URL 디코딩 처리
         try:
@@ -1246,29 +1486,34 @@ async def download_presentation_file(
             decoded_filename = filename
         
         safe_name = os.path.basename(posixpath.normpath(decoded_filename))
-        logger.info(f"📥 안전한 파일명: '{safe_name}'")
+        logger.info(f"📥 안전한 파일명: '{safe_name}' (원본: '{decoded_filename}')")
         
-        if safe_name != decoded_filename:
-            logger.error(f"📥 파일명 검증 실패: '{safe_name}' != '{decoded_filename}'")
+        # 경로 조작 시도 검증 (../ 등)
+        if ".." in decoded_filename or "/" in safe_name:
+            logger.error(f"📥 경로 조작 시도 감지: '{decoded_filename}'")
             raise HTTPException(status_code=400, detail="잘못된 파일명입니다.")
+        
         if not safe_name.lower().endswith(".pptx"):
             logger.error(f"📥 파일 형식 검증 실패: '{safe_name}'")
             raise HTTPException(status_code=400, detail="허용되지 않은 파일 형식입니다.")
         
         from app.core.config import settings
-        upload_dir = Path(settings.file_upload_path or settings.upload_dir)
-        final_path = os.path.join(upload_dir, safe_name)
+        upload_dir = settings.resolved_upload_dir
+        final_path = upload_dir / safe_name
         logger.info(f"📥 파일 경로: '{final_path}'")
         
         if not os.path.exists(final_path):
             logger.error(f"📥 파일을 찾을 수 없음: '{final_path}'")
+            logger.error(f"📥 업로드 디렉토리: '{upload_dir}'")
             # 디렉토리 내 파일 목록 확인
             try:
                 files_in_dir = os.listdir(upload_dir)
-                logger.info(f"📥 업로드 디렉토리 파일 목록: {files_in_dir}")
+                logger.error(f"📥 업로드 디렉토리 파일 목록 ({len(files_in_dir)}개):")
+                for f in files_in_dir[-10:]:  # 최근 10개만 표시
+                    logger.error(f"  - {f}")
             except Exception as list_err:
                 logger.error(f"📥 디렉토리 목록 조회 실패: {list_err}")
-            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+            raise HTTPException(status_code=404, detail=f"파일을 찾을 수 없습니다: {safe_name}")
         def generate():
             with open(final_path, "rb") as f:
                 while True:
@@ -1287,7 +1532,7 @@ async def download_presentation_file(
         raise HTTPException(status_code=500, detail="파일 다운로드 중 오류가 발생했습니다")
 
 
-@router.post("/chat/presentation/migrate-templates", summary="기존 템플릿 마이그레이션")
+@router.post("/agent/presentation/migrate-templates", summary="기존 템플릿 마이그레이션")
 async def migrate_existing_templates(current_user: User = Depends(get_current_user)):
     try:
         logger.info("템플릿 마이그레이션 요청 시작")
@@ -1298,7 +1543,7 @@ async def migrate_existing_templates(current_user: User = Depends(get_current_us
         raise HTTPException(status_code=500, detail=f"마이그레이션 실패: {str(e)}")
 
 
-@router.get("/chat/presentation/migration-status", summary="템플릿 마이그레이션 상태 확인")
+@router.get("/agent/presentation/migration-status", summary="템플릿 마이그레이션 상태 확인")
 async def check_migration_status():
     try:
         status = template_migration_service.check_migration_status()
@@ -1308,7 +1553,7 @@ async def check_migration_status():
         raise HTTPException(status_code=500, detail=f"상태 확인 실패: {str(e)}")
 
 
-@router.post("/chat/presentation/debug-template", summary="템플릿 디버깅")
+@router.post("/agent/presentation/debug-template", summary="템플릿 디버깅")
 async def debug_template(template_id: str):
     try:
         logger.info(f"템플릿 디버깅 요청: {template_id}")
@@ -1330,5 +1575,130 @@ async def debug_template(template_id: str):
     except Exception as e:
         logger.error(f"템플릿 디버깅 실패: {e}")
         raise HTTPException(status_code=500, detail=f"디버깅 실패: {str(e)}")
+
+
+# ===== Agent-Based Presentation Generation =====
+
+class AgentPresentationRequest(BaseModel):
+    """Agent-based presentation generation request."""
+    mode: str  # "quick" or "enhanced"
+    topic: str
+    context_text: str
+    max_slides: Optional[int] = 10
+    template_path: Optional[str] = None
+    visualization_hints: Optional[bool] = False
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "mode": "quick",
+                "topic": "AI in Healthcare",
+                "context_text": "Recent advances in AI have transformed medical diagnostics...",
+                "max_slides": 10,
+                "visualization_hints": True
+            }
+        }
+
+
+class AgentPresentationResponse(BaseModel):
+    """Agent-based presentation generation response."""
+    success: bool
+    file_path: Optional[str] = None
+    slide_count: Optional[int] = None
+    mode: str
+    strategy: Optional[str] = None
+    execution_time: Optional[float] = None
+    steps: Optional[List[Dict[str, Any]]] = None
+    error: Optional[str] = None
+
+
+@router.post(
+    "/agent/generate",
+    response_model=AgentPresentationResponse,
+    summary="🤖 Agent-Based PPT Generation",
+    description="""
+    Generate presentations using the PresentationAgent tool orchestration framework.
+    
+    **Modes:**
+    - `quick`: Fast automated generation (outline → viz → builder)
+    - `enhanced`: Advanced generation with optional templates
+    
+    **Strategies** (auto-selected by agent):
+    - `quick_generation`: Simple automated pipeline
+    - `enhanced_auto`: Enhanced without template
+    - `enhanced_template`: Enhanced with custom template
+    
+    **Options:**
+    - `max_slides`: Maximum number of slides (default: 10)
+    - `template_path`: Path to custom template (for enhanced mode)
+    - `visualization_hints`: Enable chart/diagram suggestions
+    """
+)
+async def generate_presentation_with_agent(
+    request: AgentPresentationRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Generate presentation using PresentationAgent.
+    
+    This endpoint provides a unified interface for both Quick and Enhanced
+    generation modes, with automatic strategy selection and tool orchestration.
+    """
+    try:
+        logger.info(
+            f"Agent presentation request: mode={request.mode}, topic={request.topic[:50]}, "
+            f"user={current_user.email}"
+        )
+        
+        # Prepare options
+        options = {
+            "max_slides": request.max_slides,
+            "visualization_hints": request.visualization_hints
+        }
+        
+        if request.template_path:
+            options["template_path"] = request.template_path
+        
+        # Execute via agent
+        result = await presentation_agent.execute(
+            mode=request.mode,
+            topic=request.topic,
+            context_text=request.context_text,
+            options=options
+        )
+        
+        if result["success"]:
+            logger.info(
+                f"Agent generated presentation: {result['file_path']}, "
+                f"slides={result.get('slide_count')}, strategy={result.get('strategy')}, "
+                f"time={result.get('execution_time'):.2f}s"
+            )
+            
+            return AgentPresentationResponse(
+                success=True,
+                file_path=result.get("file_path"),
+                slide_count=result.get("slide_count"),
+                mode=result.get("mode"),
+                strategy=result.get("strategy"),
+                execution_time=result.get("execution_time"),
+                steps=result.get("steps", [])
+            )
+        else:
+            error_msg = result.get("error", "Unknown error")
+            logger.error(f"Agent generation failed: {error_msg}")
+            
+            return AgentPresentationResponse(
+                success=False,
+                mode=request.mode,
+                error=error_msg,
+                steps=result.get("steps", [])
+            )
+    
+    except Exception as e:
+        logger.error(f"Agent endpoint error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Presentation generation failed: {str(e)}"
+        )
 
 

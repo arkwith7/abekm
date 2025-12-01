@@ -73,7 +73,7 @@ const FileViewer: React.FC<FileViewerProps> = ({
     // 템플릿 파일인지 확인 (container_path가 'templates'인 경우)
     if (document.container_path === 'templates') {
       // 템플릿 파일용 특별 엔드포인트 사용 (Query Parameter와 Header 모두 전달)
-      url = `${baseUrl}/api/v1/chat/presentation/templates/${encodeURIComponent(document.id)}/file${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+      url = `${baseUrl}/api/v1/agent/presentation/templates/${encodeURIComponent(document.id)}/file${token ? `?token=${encodeURIComponent(token)}` : ''}`;
     } else if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].includes(fileExt) || ['hwp', 'hwpx'].includes(fileExt)) {
       // Office 및 HWP/HWPX 파일은 office-to-pdf 엔드포인트 사용
       url = `${baseUrl}/api/files/office-to-pdf/${document.id}${token ? `?token=${encodeURIComponent(token)}` : ''}`;

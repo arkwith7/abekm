@@ -237,7 +237,7 @@ app.add_middleware(
 
 # 정적 업로드 파일 제공 (/uploads)
 try:
-    app.mount("/uploads", StaticFiles(directory=settings.file_upload_path), name="uploads")
+    app.mount("/uploads", StaticFiles(directory=str(settings.resolved_upload_dir)), name="uploads")
 except Exception:
     # 기본 uploads 폴더 시도
     app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")

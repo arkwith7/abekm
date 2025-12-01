@@ -48,6 +48,7 @@ const AgentChatPage: React.FC = () => {
         error,
         sendMessage,
         clearMessages,
+        addAssistantMessage, // 🆕 어시스턴트 메시지 추가
         setContainerFilter,
         loadSession,
         isSessionRestored,
@@ -62,7 +63,8 @@ const AgentChatPage: React.FC = () => {
     // PPT 생성 관련 상태
     const [outlineModalOpen, setOutlineModalOpen] = useState(false);
     const [targetMessageId, setTargetMessageId] = useState<string | null>(null);
-    const { buildFromMessage } = usePresentation(sessionId);
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+    const { buildFromMessage, buildWithOutline } = usePresentation(sessionId);
 
     // 파일 뷰어 상태
     const [selectedDocument, setSelectedDocument] = useState<ViewerDocument | null>(null);
@@ -84,35 +86,36 @@ const AgentChatPage: React.FC = () => {
         }
     }, [workContext.sourcePageType, updateWorkContext]);
 
-    // 🆕 PPT 생성 이벤트 리스너
+    // 🆕 PPT 생성 이벤트 리스너 (하이브리드 모드 지원)
     useEffect(() => {
         const handleOpenOutline = (e: CustomEvent) => {
             const { sourceMessageId } = e.detail;
-            console.log('📝 [AgentChat] PPT 생성 설정 요청:', sourceMessageId);
+            console.log('📝 [AgentChat] PPT 구조 확인 및 재생성 요청:', sourceMessageId);
             setTargetMessageId(sourceMessageId);
             setOutlineModalOpen(true);
         };
 
         const handleBuildOneClick = (e: CustomEvent) => {
-            const { sourceMessageId } = e.detail;
+            const { sourceMessageId, presentationType } = e.detail;
             console.log('📊 [AgentChat] PPT 바로 생성 요청:', sourceMessageId);
 
-            // 바로 생성 로직 (또는 모달 열기)
-            // 현재는 안전하게 모달을 열어서 확인하도록 함
-            setTargetMessageId(sourceMessageId);
-            setOutlineModalOpen(true);
+            // AI 답변 메시지 내용 찾기
+            const msg = messages.find(m => (m.message_id || m.id) === sourceMessageId);
+            const messageContent = msg?.content || '';
 
-            // 만약 바로 생성을 원한다면 아래 주석 해제
-            /*
-            if (window.confirm('PPT를 바로 생성하시겠습니까?')) {
-                buildFromMessage(sourceMessageId, {
-                    onComplete: (url) => {
-                        // 생성 완료 처리 (예: 다운로드 또는 뷰어 열기)
-                        window.open(url, '_blank');
-                    }
-                });
-            }
-            */
+            // SSE 빌드하고 완료 시 다운로드 링크를 채팅 메시지로 추가
+            buildFromMessage(sourceMessageId, {
+                onComplete: (fileUrl, fileName) => {
+                    console.log('✅ PPT 생성 완료:', fileUrl);
+                    const modeLabel = presentationType === 'product_introduction' ? '제품소개서' : 'PPT';
+                    const token = localStorage.getItem('ABEKM_token');
+                    const downloadUrl = token ? `${fileUrl}?token=${encodeURIComponent(token)}` : fileUrl;
+                    const link = `📎 [${fileName || `생성된 ${modeLabel} 다운로드`}](${downloadUrl})`;
+                    addAssistantMessage(link, { agent_type: 'presentation', message_subtype: 'presentation_download' });
+                },
+                presentationType: presentationType,
+                messageContent: messageContent
+            });
         };
 
         window.addEventListener('presentation:openOutline', handleOpenOutline as EventListener);
@@ -122,7 +125,7 @@ const AgentChatPage: React.FC = () => {
             window.removeEventListener('presentation:openOutline', handleOpenOutline as EventListener);
             window.removeEventListener('presentation:buildOneClick', handleBuildOneClick as EventListener);
         };
-    }, [buildFromMessage]);
+    }, [buildFromMessage, addAssistantMessage, messages]);
 
     // 🆕 URL 파라미터 기반 세션 복원
     useEffect(() => {
@@ -396,35 +399,42 @@ const AgentChatPage: React.FC = () => {
                 />
             )}
 
-            {/* PPT 아웃라인 모달 */}
-            {outlineModalOpen && targetMessageId && (
-                <PresentationOutlineModal
-                    open={outlineModalOpen}
-                    onClose={() => setOutlineModalOpen(false)}
-                    sourceContent={messages.find(m => m.id === targetMessageId || m.message_id === targetMessageId)?.content}
-                    onConfirm={(outline) => {
-                        console.log('✅ [AgentChat] PPT 생성 시작:', outline);
-                        // TODO: 아웃라인 기반 PPT 생성 API 호출
-                        // 현재는 usePresentation의 buildFromMessage가 아웃라인을 직접 받지 않고 sourceMessageId를 사용함
-                        // 따라서 여기서는 buildFromMessage를 호출하거나, 아웃라인을 수정해서 보내는 별도 API가 필요함
+            {/* 🆕 하이브리드 모드: PPT 구조 확인 및 재생성 모달 */}
+            {outlineModalOpen && targetMessageId && (() => {
+                const targetMsg = messages.find(m => m.id === targetMessageId || m.message_id === targetMessageId);
+                // 🆕 하이브리드 모드: metadata에서 구조화 답변 추출
+                const structuredContent = targetMsg?.metadata?.structured_content || targetMsg?.content;
 
-                        // 임시: buildFromMessage 호출 (수정된 아웃라인 반영은 백엔드 지원 필요)
-                        buildFromMessage(targetMessageId, {
-                            onComplete: (url) => {
-                                console.log('✅ PPT 생성 완료:', url);
-                                // 다운로드 트리거
-                                const link = document.createElement('a');
-                                link.href = url;
-                                link.download = 'presentation.pptx';
-                                document.body.appendChild(link);
-                                link.click();
-                                document.body.removeChild(link);
-                                setOutlineModalOpen(false);
-                            }
-                        });
-                    }}
-                />
-            )}
+                return (
+                    <PresentationOutlineModal
+                        open={outlineModalOpen}
+                        onClose={() => setOutlineModalOpen(false)}
+                        sourceContent={structuredContent}
+                        selectedTemplateId={selectedTemplateId}
+                        onTemplateChange={setSelectedTemplateId}
+                        onConfirm={(outline) => {
+                            console.log('✅ [AgentChat] PPT 재생성 시작:', outline);
+
+                            // 아웃라인 기반 PPT 재생성 API 호출
+                            buildWithOutline(targetMessageId, outline, selectedTemplateId, {
+                                onComplete: (fileUrl, fileName) => {
+                                    console.log('✅ PPT 재생성 완료:', fileUrl);
+                                    if (fileUrl) {
+                                        const token = localStorage.getItem('ABEKM_token');
+                                        const downloadUrl = token ? `${fileUrl}?token=${encodeURIComponent(token)}` : fileUrl;
+                                        const linkText = fileName || '재생성된 PPT 다운로드';
+                                        const markdownLink = `📎 [${linkText}](${downloadUrl})`;
+                                        addAssistantMessage(markdownLink, { agent_type: 'presentation', message_subtype: 'presentation_download' });
+                                    } else {
+                                        console.warn('⚠️ PPT 재생성 완료 알림에 파일 URL이 없습니다.');
+                                    }
+                                    setOutlineModalOpen(false);
+                                }
+                            });
+                        }}
+                    />
+                );
+            })()}
         </div>
     );
 };

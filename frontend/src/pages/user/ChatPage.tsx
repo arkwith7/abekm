@@ -359,7 +359,9 @@ const ChatPage: React.FC = () => {
         },
         onComplete: (fileUrl, fileName) => {
           const modeLabel = presentationType === 'product_introduction' ? '제품소개서' : 'PPT';
-          const link = `📎 [${fileName || `생성된 ${modeLabel} 다운로드`}](${fileUrl})`;
+          const token = localStorage.getItem('ABEKM_token');
+          const downloadUrl = token ? `${fileUrl}?token=${encodeURIComponent(token)}` : fileUrl;
+          const link = `📎 [${fileName || `생성된 ${modeLabel} 다운로드`}](${downloadUrl})`;
           addAssistantMessage(link, { agent_type: 'presentation', message_subtype: 'presentation_download' });
           setPptProgress(null);
         },
@@ -384,7 +386,7 @@ const ChatPage: React.FC = () => {
       // 📋 템플릿 목록 즉시 로드 (이전에 빈 목록으로 로드되었을 수 있으므로 빈 경우에도 재요청)
       if (!templatesLoaded || templates.length === 0) {
         try {
-          const resp = await fetch(`/api/v1/chat/presentation/templates`, {
+          const resp = await fetch(`/api/v1/agent/presentation/templates`, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` }
           });
 
@@ -563,7 +565,9 @@ const ChatPage: React.FC = () => {
               await buildWithOutline(pendingSourceMessageId, outlineWithTemplate, selectedTemplateId, {
                 onProgress: (p) => setPptProgress(p),
                 onComplete: (fileUrl, fileName) => {
-                  const link = `📎 [${fileName || '생성된 파일 다운로드'}](${fileUrl})`;
+                  const token = localStorage.getItem('ABEKM_token');
+                  const downloadUrl = token ? `${fileUrl}?token=${encodeURIComponent(token)}` : fileUrl;
+                  const link = `📎 [${fileName || '생성된 파일 다운로드'}](${downloadUrl})`;
                   addAssistantMessage(link, { agent_type: 'presentation', message_subtype: 'presentation_download' });
                   setPptProgress(null);
                 }

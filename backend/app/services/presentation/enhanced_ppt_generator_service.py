@@ -33,7 +33,7 @@ class EnhancedPPTGeneratorService:
     def __init__(self):
         # backend/prompts 지속 사용 (root/prompts 제거 예정)
         self.prompts_dir = Path(__file__).parents[3] / "prompts"
-        self.upload_dir = Path(settings.file_upload_path or settings.upload_dir)
+        self.upload_dir = settings.resolved_upload_dir
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.template_manager = template_manager  # 템플릿 관리자 추가
         self.object_processor = EnhancedPPTObjectProcessor()  # 🆕 확장된 오브젝트 처리기

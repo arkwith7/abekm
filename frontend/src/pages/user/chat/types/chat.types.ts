@@ -121,6 +121,14 @@ export interface ChatMessage {
     insights?: string[];
     source?: string;
   };
+
+  // 🆕 백엔드 메타데이터 (PPT 생성 관련)
+  metadata?: {
+    ppt_file_url?: string;
+    ppt_file_name?: string;
+    structured_content?: string;
+    [key: string]: any;
+  };
 }
 
 // 선택된 문서 정보 인터페이스 추가

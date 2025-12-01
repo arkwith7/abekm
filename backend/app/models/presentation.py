@@ -152,7 +152,7 @@ class PresentationResponse(BaseModel):
     )
     pptx_url: Optional[str] = Field(
         None,
-        description="PPTX download URL (e.g., /api/v1/chat/presentation/download/xxx.pptx)"
+        description="PPTX download URL (e.g., /api/v1/agent/presentation/download/xxx.pptx)"
     )
     preview_available: bool = Field(
         default=False,

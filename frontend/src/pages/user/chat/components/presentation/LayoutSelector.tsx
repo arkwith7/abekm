@@ -32,7 +32,7 @@ const LayoutSelector: React.FC<Props> = ({
 
             try {
                 const response = await fetch(
-                    `/api/v1/chat/presentation/templates/${encodeURIComponent(templateId)}/layouts`,
+                    `/api/v1/agent/presentation/templates/${encodeURIComponent(templateId)}/layouts`,
                     {
                         headers: {
                             'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`

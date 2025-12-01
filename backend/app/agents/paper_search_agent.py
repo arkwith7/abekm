@@ -4,7 +4,7 @@ Paper Search Agent - 논문/문서 검색 전문 에이전트
 """
 import uuid
 import asyncio
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, cast
 from datetime import datetime
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -190,167 +190,44 @@ class PaperSearchAgent:
                 
             logger.info(f"   - 전략: {strategy}")
             
-            # Step 3: 도구 실행 (병렬 처리 적용)
-            all_chunks: List[SearchChunk] = []
-            search_results_by_type = {}  # 검색 타입별 결과 추적
-            
-            # 검색 도구와 후처리 도구 분리
-            search_tools = ["vector_search", "keyword_search", "fulltext_search", "internet_search", "multimodal_search"]
-            parallel_tasks = []
-            parallel_tool_names = []
-            
-            # 전략에 포함된 검색 도구 수집
-            for tool_name in strategy:
-                if tool_name in search_tools:
-                    tool = self.tools.get(tool_name)
-                    if tool:
-                        parallel_tasks.append(self._execute_tool(
-                            tool_name=tool_name,
-                            query=rewritten_query,
-                            db_session=db_session,
-                            keywords=keywords,
-                            constraints=constraints,
-                            chunks=[],  # 검색 도구는 이전 청크 불필요
-                            context=context
-                        ))
-                        parallel_tool_names.append(tool_name)
-            
-            # 검색 도구 병렬 실행
-            if parallel_tasks:
-                logger.info(f"   🚀 검색 도구 병렬 실행: {parallel_tool_names}")
-                results = await asyncio.gather(*parallel_tasks, return_exceptions=True)
-                
-                for tool_name, result in zip(parallel_tool_names, results):
-                    if isinstance(result, Exception):
-                        logger.error(f"❌ 도구 실행 실패: {tool_name} - {result}")
-                        continue
-                        
-                    if result.success and hasattr(result, 'data'):
-                        new_chunks = result.data
-                        all_chunks.extend(new_chunks)
-                        search_results_by_type[tool_name] = len(new_chunks)
-                        logger.info(f"   ✅ {tool_name}: {len(new_chunks)}개 청크 추가")
-                    
-                    # 🆕 인터넷 검색 결과가 있으면 로깅
-                    if tool_name == "internet_search" and result.success:
-                        logger.info(f"   🌐 인터넷 검색 결과: {len(new_chunks)}건")
-
-            # 🆕 Fallback Search: 검색 결과가 없고 임계값이 높은 경우 완화하여 재시도
-            if not all_chunks and constraints.similarity_threshold > 0.25:
-                logger.info(f"⚠️ 검색 결과 0건. 임계값 완화하여 재검색 시도 ({constraints.similarity_threshold} → 0.2)")
-                
-                # 임계값 임시 수정
-                original_threshold = constraints.similarity_threshold
-                constraints.similarity_threshold = 0.2
-                
-                # Vector Search만 재시도 (가장 효과적)
-                if "vector_search" in strategy:
-                    try:
-                        retry_result = await self._execute_tool(
-                            tool_name="vector_search",
-                            query=rewritten_query,
-                            db_session=db_session,
-                            keywords=keywords,
-                            constraints=constraints,
-                            chunks=[],
-                            context=context
-                        )
-                        
-                        if retry_result.success and hasattr(retry_result, 'data'):
-                            new_chunks = retry_result.data
-                            if new_chunks:
-                                all_chunks.extend(new_chunks)
-                                search_results_by_type["vector_search_retry"] = len(new_chunks)
-                                logger.info(f"   ✅ 재검색 성공: {len(new_chunks)}개 청크 확보")
-                    except Exception as e:
-                        logger.error(f"❌ 재검색 실패: {e}")
-                
-                # 임계값 복구
-                constraints.similarity_threshold = original_threshold
-
-            # 후처리 도구 순차 실행 (deduplicate, rerank 등)
-            # context_builder는 Step 4에서 별도로 실행하므로 여기서 제외
-            processing_tools = [t for t in strategy if t not in search_tools and t != "context_builder"]
-            
-            for tool_name in processing_tools:
-                tool = self.tools.get(tool_name)
-                if not tool:
-                    logger.warning(f"⚠ 도구 없음: {tool_name}")
-                    continue
-                
-                try:
-                    tool_result = await self._execute_tool(
-                        tool_name=tool_name,
-                        query=rewritten_query,
-                        db_session=db_session,
-                        keywords=keywords,
-                        constraints=constraints,
-                        chunks=all_chunks,  # 누적된 청크 전달
-                        context=context
-                    )
-                    
-                    if tool_result.success and hasattr(tool_result, 'data'):
-                        before_count = len(all_chunks)
-                        all_chunks = tool_result.data
-                        logger.info(f"   ✅ {tool_name}: {before_count}개 → {len(all_chunks)}개")
-                        
-                except Exception as e:
-                    logger.error(f"❌ 도구 실행 실패: {tool_name} - {e}")
-                    continue
-            
-            # 🆕 하이브리드 검색 결과 로깅
-            if search_results_by_type:
-                logger.info(f"   📊 하이브리드 검색 완료: {search_results_by_type}")
-            
-            # 🆕 검색 결과 품질 검증 (Step 3.5)
-            if all_chunks:
-                all_chunks = await self._validate_search_quality(all_chunks, rewritten_query)
-            
-            # Step 4: 컨텍스트 구성
-            context_result = await self._execute_tool(
-                tool_name="context_builder",
+            retrieval_result = await self.execute_strategy(
+                strategy=strategy,
                 query=rewritten_query,
-                db_session=db_session,
                 keywords=keywords,
                 constraints=constraints,
-                chunks=all_chunks,
-                context=None
+                db_session=db_session,
+                context=context,
+                attached_document_context=attached_document_context
+            )
+
+            all_chunks = retrieval_result["chunks"]
+            used_chunks = retrieval_result["used_chunks"]
+            context_text = retrieval_result["context_text"]
+            retrieval_metrics = retrieval_result["metrics"]
+
+            # Step 5: 답변 생성
+            answer = await self.generate_answer(
+                rewritten_query,
+                context_text,
+                intent,
+                history
             )
             
-            if not context_result.success:
-                raise Exception("컨텍스트 구성 실패")
-            
-            # ContextResult는 ToolResult의 서브클래스이므로 속성에 직접 접근
-            context_text = context_result.data if isinstance(context_result.data, str) else ""
-            used_chunks = getattr(context_result, 'used_chunks', all_chunks[:5])
-            
-            # 🆕 첨부 문서 컨텍스트 추가
-            if attached_document_context:
-                context_text = f"""[첨부된 문서 내용]
-{attached_document_context}
-
-[검색된 관련 문서]
-{context_text}"""
-            
-            # Step 5: 답변 생성
-            answer = await self.generate_answer(rewritten_query, context_text, intent, history)
-            
             # Step 6: 결과 반환
-            latency_ms = (datetime.utcnow() - self._start_time).total_seconds() * 1000
+            total_latency_ms = (datetime.utcnow() - self._start_time).total_seconds() * 1000
+            metrics = {
+                **retrieval_metrics,
+                "total_latency_ms": total_latency_ms,
+                "tools_used": len(self._steps)
+            }
             
-            logger.info(f"✅ [PaperSearchAgent] 완료: {latency_ms:.1f}ms, {len(used_chunks)}개 참조")
+            logger.info(f"✅ [PaperSearchAgent] 완료: {total_latency_ms:.1f}ms, {len(used_chunks)}개 참조")
             
             return AgentResult(
                 answer=answer,
                 references=used_chunks,
                 steps=self._steps,
-                metrics={
-                    "total_latency_ms": latency_ms,
-                    "tools_used": len(self._steps),
-                    "chunks_found": len(all_chunks),
-                    "chunks_used": len(used_chunks),
-                    "total_tokens": getattr(context_result, 'total_tokens', 0)
-                },
+                metrics=metrics,
                 intent=intent,
                 strategy_used=strategy,
                 success=True,
@@ -569,6 +446,160 @@ Return ONLY the category name (e.g., FACTUAL_QA)."""
             # 기본 전략: 하이브리드 검색 + 리랭킹
             return ["vector_search", "keyword_search", "deduplicate", "rerank", "context_builder"]
     
+    async def execute_strategy(
+        self,
+        strategy: List[str],
+        query: str,
+        keywords: List[str],
+        constraints: AgentConstraints,
+        db_session: AsyncSession,
+        context: Optional[Dict[str, Any]] = None,
+        attached_document_context: str = ""
+    ) -> Dict[str, Any]:
+        """선택된 전략을 실행하고 컨텍스트 텍스트를 반환 (Plan-and-Execute Phase 2)"""
+        start_time = datetime.utcnow()
+        all_chunks: List[SearchChunk] = []
+        search_results_by_type: Dict[str, int] = {}
+        search_tools = ["vector_search", "keyword_search", "fulltext_search", "internet_search", "multimodal_search"]
+        parallel_tasks = []
+        parallel_tool_names = []
+
+        # 🌀 검색 도구 병렬 실행 준비
+        for tool_name in strategy:
+            if tool_name in search_tools:
+                tool = self.tools.get(tool_name)
+                if tool:
+                    parallel_tasks.append(self._execute_tool(
+                        tool_name=tool_name,
+                        query=query,
+                        db_session=db_session,
+                        keywords=keywords,
+                        constraints=constraints,
+                        chunks=[],
+                        context=context
+                    ))
+                    parallel_tool_names.append(tool_name)
+
+        if parallel_tasks:
+            logger.info(f"   🚀 검색 도구 병렬 실행: {parallel_tool_names}")
+            results = await asyncio.gather(*parallel_tasks, return_exceptions=True)
+
+            for tool_name, result in zip(parallel_tool_names, results):
+                if isinstance(result, Exception):
+                    logger.error(f"❌ 도구 실행 실패: {tool_name} - {result}")
+                    continue
+
+                tool_result = cast(ToolResult, result)
+
+                if tool_result.success and hasattr(tool_result, 'data'):
+                    new_chunks = tool_result.data
+                    all_chunks.extend(new_chunks)
+                    search_results_by_type[tool_name] = len(new_chunks)
+                    logger.info(f"   ✅ {tool_name}: {len(new_chunks)}개 청크 추가")
+
+                if tool_name == "internet_search" and tool_result.success:
+                    logger.info(f"   🌐 인터넷 검색 결과: {len(new_chunks)}건")
+
+        # 검색 결과가 부족하면 완화 전략 실행
+        if not all_chunks and constraints.similarity_threshold > 0.25 and "vector_search" in strategy:
+            logger.info(f"⚠️ 검색 결과 0건. 임계값 완화하여 재검색 시도 ({constraints.similarity_threshold} → 0.2)")
+            original_threshold = constraints.similarity_threshold
+            constraints.similarity_threshold = 0.2
+            try:
+                retry_result = await self._execute_tool(
+                    tool_name="vector_search",
+                    query=query,
+                    db_session=db_session,
+                    keywords=keywords,
+                    constraints=constraints,
+                    chunks=[],
+                    context=context
+                )
+                if retry_result.success and hasattr(retry_result, 'data'):
+                    new_chunks = retry_result.data
+                    if new_chunks:
+                        all_chunks.extend(new_chunks)
+                        search_results_by_type["vector_search_retry"] = len(new_chunks)
+                        logger.info(f"   ✅ 재검색 성공: {len(new_chunks)}개 청크 확보")
+            except Exception as e:
+                logger.error(f"❌ 재검색 실패: {e}")
+            finally:
+                constraints.similarity_threshold = original_threshold
+
+        # 후처리 도구 실행 (deduplicate, rerank 등)
+        processing_tools = [t for t in strategy if t not in search_tools and t != "context_builder"]
+        for tool_name in processing_tools:
+            tool = self.tools.get(tool_name)
+            if not tool:
+                logger.warning(f"⚠ 도구 없음: {tool_name}")
+                continue
+
+            try:
+                tool_result = await self._execute_tool(
+                    tool_name=tool_name,
+                    query=query,
+                    db_session=db_session,
+                    keywords=keywords,
+                    constraints=constraints,
+                    chunks=all_chunks,
+                    context=context
+                )
+
+                if tool_result.success and hasattr(tool_result, 'data'):
+                    before_count = len(all_chunks)
+                    all_chunks = tool_result.data
+                    logger.info(f"   ✅ {tool_name}: {before_count}개 → {len(all_chunks)}개")
+            except Exception as e:
+                logger.error(f"❌ 도구 실행 실패: {tool_name} - {e}")
+
+        if search_results_by_type:
+            logger.info(f"   📊 하이브리드 검색 완료: {search_results_by_type}")
+
+        if all_chunks:
+            all_chunks = await self._validate_search_quality(all_chunks, query)
+
+        if "context_builder" not in strategy:
+            raise ValueError("context_builder 도구가 전략에 포함되어야 합니다.")
+
+        context_result = await self._execute_tool(
+            tool_name="context_builder",
+            query=query,
+            db_session=db_session,
+            keywords=keywords,
+            constraints=constraints,
+            chunks=all_chunks,
+            context=None
+        )
+
+        if not context_result.success:
+            raise Exception("컨텍스트 구성 실패")
+
+        context_text = context_result.data if isinstance(context_result.data, str) else ""
+        used_chunks = getattr(context_result, 'used_chunks', all_chunks[:constraints.max_chunks])
+
+        if attached_document_context:
+            context_text = f"""[첨부된 문서 내용]
+{attached_document_context}
+
+[검색된 관련 문서]
+{context_text}"""
+
+        latency_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+        metrics = {
+            "retrieval_latency_ms": latency_ms,
+            "chunks_found": len(all_chunks),
+            "chunks_used": len(used_chunks),
+            "search_results_by_type": search_results_by_type,
+            "context_tokens": getattr(context_result, 'total_tokens', 0)
+        }
+
+        return {
+            "chunks": all_chunks,
+            "used_chunks": used_chunks,
+            "context_text": context_text,
+            "metrics": metrics
+        }
+
     async def _execute_tool(
         self,
         tool_name: str,

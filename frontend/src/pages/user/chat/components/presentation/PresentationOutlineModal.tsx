@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import FileViewer from '../../../../../components/common/FileViewer';
 import PPTMappingWithSlideManager from '../../../../../components/presentation/PPTMappingWithSlideManager';
-import { ContentSegment, SimpleTemplateMetadata, SlideLayoutSelection, TextBoxMapping } from '../../../../../types/presentation';
+import { ContentSegment, DiagramData, SimpleTemplateMetadata, SlideLayoutSelection, TextBoxMapping } from '../../../../../types/presentation';
 import { Document } from '../../../../../types/user.types';
 import AnswerTab from './AnswerTab';
 import TemplateManager from './TemplateManager';
@@ -15,6 +15,7 @@ interface OutlineData {
         title: string;
         content: string;
         layoutSelection?: SlideLayoutSelection;
+        diagram?: DiagramData;
     }>;
 }
 
@@ -70,11 +71,15 @@ const PresentationOutlineModal: React.FC<Props> = ({
     const toModalOutline = useCallback((apiOutline: any): OutlineData => {
         if (!apiOutline) return { title: '', sections: [] };
 
-        const sections = (apiOutline.sections || []).map((section: any, index: number) => ({
+        // API might return 'slides' instead of 'sections'
+        const sourceSlides = apiOutline.sections || apiOutline.slides || [];
+
+        const sections = sourceSlides.map((section: any, index: number) => ({
             id: section.id || `section_${index}`,
             title: section.title || `섹션 ${index + 1}`,
-            content: section.content || '',
-            layoutSelection: section.layoutSelection || undefined
+            content: section.content || section.key_message || '',
+            layoutSelection: section.layoutSelection || undefined,
+            diagram: section.diagram || undefined
         }));
 
         return {
@@ -90,23 +95,28 @@ const PresentationOutlineModal: React.FC<Props> = ({
         }
     }, [initialOutline, toModalOutline]);
 
-    // 템플릿 목록 동기화 및 기본 템플릿 선택
+    // 템플릿 목록 동기화
     useEffect(() => {
-        setAllTemplates(templates);
+        if (templates && templates.length > 0) {
+            setAllTemplates(templates);
+        }
+    }, [templates]);
 
+    // 기본 템플릿 선택
+    useEffect(() => {
         // 템플릿이 로드되고 선택된 템플릿이 없을 때 기본 템플릿 자동 선택
-        if (templates.length > 0 && !selectedTemplateId) {
-            const defaultTemplate = templates.find(t => t.is_default);
+        if (allTemplates.length > 0 && !selectedTemplateId) {
+            const defaultTemplate = allTemplates.find(t => t.is_default);
             if (defaultTemplate && onTemplateChange) {
                 console.log('🎯 기본 템플릿 자동 선택:', defaultTemplate.name);
                 onTemplateChange(defaultTemplate.id);
-            } else if (templates.length > 0 && onTemplateChange) {
+            } else if (allTemplates.length > 0 && onTemplateChange) {
                 // 기본 템플릿이 없으면 첫 번째 템플릿 선택
-                console.log('🎯 첫 번째 템플릿 자동 선택:', templates[0].name);
-                onTemplateChange(templates[0].id);
+                console.log('🎯 첫 번째 템플릿 자동 선택:', allTemplates[0].name);
+                onTemplateChange(allTemplates[0].id);
             }
         }
-    }, [templates, selectedTemplateId, onTemplateChange]);
+    }, [allTemplates, selectedTemplateId, onTemplateChange]);
 
     // AI 답변 자동 분할 함수
     const autoSegmentContent = useCallback((content: string) => {
@@ -145,7 +155,7 @@ const PresentationOutlineModal: React.FC<Props> = ({
             try {
                 // 단순화된 메타데이터 로드 (매핑용)
                 const simpleMetadataResponse = await fetch(
-                    `/api/v1/chat/presentation/templates/${encodeURIComponent(selectedTemplateId)}/simple-metadata`,
+                    `/api/v1/agent/presentation/templates/${encodeURIComponent(selectedTemplateId)}/simple-metadata`,
                     {
                         headers: {
                             'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
@@ -176,7 +186,7 @@ const PresentationOutlineModal: React.FC<Props> = ({
     const handleTemplatesRefresh = async () => {
         try {
             const response = await fetch(
-                `/api/v1/chat/presentation/templates`,
+                `/api/v1/agent/presentation/templates`,
                 {
                     headers: {
                         'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
@@ -204,14 +214,19 @@ const PresentationOutlineModal: React.FC<Props> = ({
     }, []);
 
     const handleConfirm = () => {
+        const mappedSlides = outline.sections.map(section => ({
+            id: section.id,
+            title: section.title,
+            content: section.content,
+            key_message: section.content,
+            layoutSelection: section.layoutSelection,
+            diagram: section.diagram
+        }));
+
         const finalOutline = {
             title: outline.title,
-            sections: outline.sections.map(section => ({
-                id: section.id,
-                title: section.title,
-                content: section.content,
-                layoutSelection: section.layoutSelection
-            })),
+            sections: mappedSlides,
+            slides: mappedSlides,
             // 매핑 정보 추가
             textBoxMappings: textBoxMappings,
             contentSegments: contentSegments,
@@ -228,6 +243,13 @@ const PresentationOutlineModal: React.FC<Props> = ({
         onConfirm(finalOutline);
         onClose();
     };
+
+    // 템플릿 목록이 비어있으면 자동으로 로드
+    useEffect(() => {
+        if (allTemplates.length === 0) {
+            handleTemplatesRefresh();
+        }
+    }, [allTemplates.length]);
 
     if (!open) return null;
 

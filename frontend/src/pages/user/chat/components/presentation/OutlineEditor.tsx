@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { SlideLayoutSelection } from '../../../../../types/presentation';
+import { DiagramData, SlideLayoutSelection } from '../../../../../types/presentation';
 
 // SVG 아이콘 컴포넌트들
 const PlusIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
@@ -33,6 +33,7 @@ interface OutlineData {
         title: string;
         content: string;
         layoutSelection?: SlideLayoutSelection;
+        diagram?: DiagramData;
     }>;
 }
 
@@ -262,6 +263,110 @@ const OutlineEditor: React.FC<OutlineEditorProps> = ({
                             className="w-full p-3 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
                             placeholder="슬라이드 내용을 입력하세요..."
                         />
+                    </div>
+
+                    {/* 시각화 요소 선택 */}
+                    <div>
+                        <label className="block text-xs font-medium text-gray-700 mb-2">
+                            시각화 요소 (차트/다이어그램)
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                onClick={() => updateSection(activeTabIndex, { diagram: undefined })}
+                                className={`p-2 text-xs border rounded-md ${!currentSection.diagram
+                                    ? 'bg-blue-50 border-blue-500 text-blue-700'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                    }`}
+                            >
+                                없음
+                            </button>
+                            <button
+                                onClick={() => updateSection(activeTabIndex, {
+                                    diagram: {
+                                        type: 'chart',
+                                        chart: {
+                                            type: 'column',
+                                            title: '차트 제목',
+                                            categories: ['항목1', '항목2', '항목3'],
+                                            series: [{ name: '데이터', values: [10, 20, 30] }]
+                                        }
+                                    }
+                                })}
+                                className={`p-2 text-xs border rounded-md ${currentSection.diagram?.type === 'chart'
+                                    ? 'bg-blue-50 border-blue-500 text-blue-700'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                    }`}
+                            >
+                                📊 차트 추가
+                            </button>
+                            <button
+                                onClick={() => updateSection(activeTabIndex, {
+                                    diagram: { type: 'process' }
+                                })}
+                                className={`p-2 text-xs border rounded-md ${currentSection.diagram?.type !== 'chart' && currentSection.diagram?.type !== 'none' && currentSection.diagram
+                                    ? 'bg-blue-50 border-blue-500 text-blue-700'
+                                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
+                                    }`}
+                            >
+                                🔄 다이어그램 추가
+                            </button>
+                        </div>
+
+                        {/* 차트 상세 설정 (간단히) */}
+                        {currentSection.diagram?.type === 'chart' && currentSection.diagram.chart && (
+                            <div className="mt-2 p-3 bg-gray-50 rounded-md border border-gray-200 space-y-2">
+                                <div>
+                                    <label className="text-xs text-gray-500">차트 유형</label>
+                                    <select
+                                        value={currentSection.diagram.chart.type}
+                                        onChange={(e) => {
+                                            const newChart = { ...currentSection.diagram!.chart!, type: e.target.value as any };
+                                            updateSection(activeTabIndex, { diagram: { ...currentSection.diagram!, chart: newChart } });
+                                        }}
+                                        className="ml-2 text-xs border-gray-300 rounded"
+                                    >
+                                        <option value="column">막대형 (Column)</option>
+                                        <option value="bar">가로 막대형 (Bar)</option>
+                                        <option value="line">꺾은선형 (Line)</option>
+                                        <option value="pie">원형 (Pie)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs text-gray-500">차트 제목</label>
+                                    <input
+                                        type="text"
+                                        value={currentSection.diagram.chart.title}
+                                        onChange={(e) => {
+                                            const newChart = { ...currentSection.diagram!.chart!, title: e.target.value };
+                                            updateSection(activeTabIndex, { diagram: { ...currentSection.diagram!, chart: newChart } });
+                                        }}
+                                        className="w-full mt-1 p-1 text-xs border border-gray-300 rounded"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* 다이어그램 상세 설정 */}
+                        {currentSection.diagram && currentSection.diagram.type !== 'chart' && currentSection.diagram.type !== 'none' && (
+                            <div className="mt-2 p-3 bg-gray-50 rounded-md border border-gray-200 space-y-2">
+                                <div>
+                                    <label className="text-xs text-gray-500">다이어그램 유형</label>
+                                    <select
+                                        value={currentSection.diagram.type}
+                                        onChange={(e) => {
+                                            updateSection(activeTabIndex, { diagram: { ...currentSection.diagram!, type: e.target.value as any } });
+                                        }}
+                                        className="ml-2 text-xs border-gray-300 rounded"
+                                    >
+                                        <option value="process">프로세스 (Process)</option>
+                                        <option value="cycle">순환형 (Cycle)</option>
+                                        <option value="hierarchy">계층형 (Hierarchy)</option>
+                                        <option value="relationship">관계형 (Relationship)</option>
+                                        <option value="pyramid">피라미드 (Pyramid)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* 레이아웃 선택 (향후 구현) */}

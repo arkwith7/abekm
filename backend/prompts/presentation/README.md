@@ -10,6 +10,7 @@ backend/prompts/presentation/
 ├── content_structurer_user.txt      # StructuredOutline 생성 사용자 프롬프트
 ├── html_generator_system.txt        # HTML 생성 시스템 프롬프트
 ├── html_generator_user.txt          # HTML 생성 사용자 프롬프트
+├── react_agent_system.prompt        # ReAct Agent 시스템 프롬프트 (Quick PPT용)
 └── README.md                         # 본 문서
 ```
 
@@ -57,6 +58,26 @@ backend/prompts/presentation/
 - StructuredOutline JSON 전달
 - Base template 참조 제공
 - HTML 생성 요청
+
+### 3. ReAct Agent System Prompt
+
+**파일:** `react_agent_system.prompt`
+
+**역할:** ReAct (Reasoning + Acting) Agent 시스템 프롬프트
+
+**사용 위치:** `backend/app/agents/presentation/presentation_agent.py`
+
+**프롬프트 내용:**
+- AI 에이전트 역할 정의 (프레젠테이션 생성 전문가)
+- 사용 가능한 도구 설명 (outline_generation, quick_pptx_builder 등)
+- **필수 워크플로우:** outline → pptx_builder → Final Answer
+- 응답 형식 규칙 (Thought → Action → Observation)
+- 주의사항 (파일 생성 전 Final Answer 출력 금지)
+
+**특징:**
+- 외부 파일로 관리하여 프롬프트 수정 용이
+- LLM이 파일 생성을 건너뛰는 문제 방지
+- 명확한 단계별 지침 제공
 
 ## 🔧 사용 방법
 

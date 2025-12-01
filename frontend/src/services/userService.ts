@@ -735,7 +735,21 @@ export const downloadByUrl = async (url: string, fallbackTitle?: string, fallbac
     console.info('📥 [downloadByUrl] 프록시 경로 사용:', fullUrl);
   }
 
-  const response = await axios.get(fullUrl, { responseType: 'blob' });
+  // 토큰이 필요하지만 포함되지 않았다면 자동으로 추가
+  if (fullUrl.startsWith('/api') && !fullUrl.includes('token=')) {
+    const token = localStorage.getItem('ABEKM_token');
+    if (token) {
+      const separator = fullUrl.includes('?') ? '&' : '?';
+      fullUrl = `${fullUrl}${separator}token=${encodeURIComponent(token)}`;
+      console.info('📥 [downloadByUrl] 토큰 자동 부착:', fullUrl);
+    }
+  }
+
+  const authToken = localStorage.getItem('ABEKM_token');
+  const response = await axios.get(fullUrl, {
+    responseType: 'blob',
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined
+  });
 
   const headers = response.headers || {} as any;
   const contentDisposition = headers['content-disposition'] || '';

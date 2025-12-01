@@ -37,10 +37,24 @@ export interface SlideLayoutSelection {
   layoutType: string;
 }
 
+export interface ChartData {
+  type: 'column' | 'bar' | 'line' | 'pie';
+  title: string;
+  categories: string[];
+  series: { name: string; values: number[] }[];
+}
+
+export interface DiagramData {
+  type: 'none' | 'chart' | 'process' | 'cycle' | 'hierarchy' | 'relationship' | 'pyramid';
+  data?: any;
+  chart?: ChartData;
+}
+
 export interface ExtendedOutlineSection {
   title: string;
   bullets?: string[];
   layoutSelection?: SlideLayoutSelection;
+  diagram?: DiagramData;
 }
 
 export interface ExtendedOutlineData {

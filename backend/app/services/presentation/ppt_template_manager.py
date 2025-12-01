@@ -269,7 +269,7 @@ class PPTTemplateManager:
                     'file_size_mb': round(file_size / 1024 / 1024, 1),
                     'slide_count': slide_count,
                     'is_user_uploaded': is_user_uploaded,
-                    'thumbnail_url': f"/api/v1/chat/presentation/templates/{t['id']}/thumbnail" if thumb else None
+                    'thumbnail_url': f"/api/v1/agent/presentation/templates/{t['id']}/thumbnail" if thumb else None
                 }
                 out.append(template_info)
             else:
@@ -589,7 +589,7 @@ class PPTTemplateManager:
         thumb = self.get_thumbnail_path(template_id)
         extra: Dict[str, Any] = {'analysis': analysis}
         if thumb:
-            extra['thumbnail_url'] = f"/api/v1/chat/presentation/templates/{template_id}/thumbnail"
+            extra['thumbnail_url'] = f"/api/v1/agent/presentation/templates/{template_id}/thumbnail"
         return info | extra
 
     def get_template_metadata(self, template_id: str) -> Optional[Dict[str, Any]]:

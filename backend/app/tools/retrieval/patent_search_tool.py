@@ -425,7 +425,7 @@ class KIPRISClient:
             async with session.get(endpoint, params=params) as response:
                 if response.status != 200:
                     logger.error(f"❌ [KIPRIS Fallback] API 오류: {response.status}")
-                    return self._get_demo_patents("", applicant)
+                    return []  # 오류 시 빈 결과 반환 (데모 데이터 제거)
                 
                 content = await response.text()
                 patents = self._parse_kipris_response(content)
@@ -656,74 +656,7 @@ class KIPRISClient:
         }
         return status_map.get(status_str, PatentStatus.APPLICATION)
     
-    def _get_demo_patents(self, query: str, applicant: Optional[str] = None) -> List[PatentData]:
-        """데모용 샘플 특허 데이터"""
-        demo_data = [
-            PatentData(
-                patent_number="10-2023-0123456",
-                title=f"인공지능 기반 {query} 처리 시스템",
-                abstract=f"{query}을(를) 효율적으로 처리하기 위한 인공지능 기반 시스템 및 방법에 관한 것으로, 딥러닝 모델을 활용하여 높은 정확도와 처리 속도를 달성한다.",
-                applicant=applicant or "삼성전자주식회사",
-                inventors=["김영희", "이철수"],
-                ipc_codes=["G06N3/08", "G06F18/24"],
-                application_date="2023-05-15",
-                publication_date="2023-11-20",
-                status=PatentStatus.PUBLISHED,
-                jurisdiction=PatentJurisdiction.KR,
-                relevance_score=0.95,
-                url="https://kpat.kipris.or.kr/kpat/demo"
-            ),
-            PatentData(
-                patent_number="10-2022-0098765",
-                title=f"반도체 소자의 {query} 적용 방법",
-                abstract=f"반도체 제조 공정에서 {query} 기술을 적용하여 성능을 향상시키는 방법 및 장치에 관한 것이다.",
-                applicant=applicant or "SK하이닉스주식회사",
-                inventors=["박민수", "정다은"],
-                ipc_codes=["H01L21/00", "G06N3/04"],
-                application_date="2022-08-10",
-                publication_date="2023-02-15",
-                grant_date="2024-01-20",
-                status=PatentStatus.GRANTED,
-                jurisdiction=PatentJurisdiction.KR,
-                relevance_score=0.88,
-                url="https://kpat.kipris.or.kr/kpat/demo"
-            ),
-            PatentData(
-                patent_number="10-2024-0045678",
-                title=f"자연어 처리를 위한 {query} 알고리즘",
-                abstract=f"대규모 언어 모델에서 {query}을(를) 처리하기 위한 효율적인 알고리즘을 제안한다.",
-                applicant=applicant or "네이버주식회사",
-                inventors=["최지현"],
-                ipc_codes=["G06F40/30", "G06N3/08"],
-                application_date="2024-03-01",
-                status=PatentStatus.APPLICATION,
-                jurisdiction=PatentJurisdiction.KR,
-                relevance_score=0.82,
-                url="https://kpat.kipris.or.kr/kpat/demo"
-            )
-        ]
-        
-        # 출원인 필터 적용
-        if applicant:
-            demo_data = [p for p in demo_data if applicant in p.applicant]
-            if not demo_data:
-                # 필터에 맞는 데이터 생성
-                demo_data = [
-                    PatentData(
-                        patent_number=f"10-2023-{hash(applicant) % 100000:06d}",
-                        title=f"{query} 관련 {applicant} 특허",
-                        abstract=f"{applicant}의 {query} 관련 기술",
-                        applicant=applicant,
-                        inventors=["발명자"],
-                        ipc_codes=["G06N3/00"],
-                        application_date="2023-01-01",
-                        status=PatentStatus.APPLICATION,
-                        jurisdiction=PatentJurisdiction.KR,
-                        relevance_score=0.90
-                    )
-                ]
-        
-        return demo_data
+
 
 
 # =============================================================================
@@ -1093,67 +1026,7 @@ class SerpAPIGooglePatentsClient:
             relevance_score=0.95  # 상세 조회는 높은 관련성
         )
     
-    def _get_demo_global_patents(
-        self, 
-        query: str, 
-        applicant: Optional[str] = None,
-        jurisdiction: Optional[str] = None
-    ) -> List[PatentData]:
-        """데모용 글로벌 특허 데이터"""
-        jur = PatentJurisdiction(jurisdiction) if jurisdiction else PatentJurisdiction.US
-        
-        demo_data = [
-            PatentData(
-                patent_number="US11234567B2",
-                title=f"System and Method for {query} Processing",
-                abstract=f"A system and method for efficiently processing {query} using machine learning algorithms.",
-                applicant=applicant or "Apple Inc.",
-                inventors=["John Smith", "Jane Doe"],
-                ipc_codes=["G06N3/08", "G06F18/24"],
-                application_date="2022-03-15",
-                grant_date="2023-08-20",
-                status=PatentStatus.GRANTED,
-                jurisdiction=jur,
-                cited_by_count=45,
-                relevance_score=0.92,
-                url="https://patents.google.com/patent/US11234567B2"
-            ),
-            PatentData(
-                patent_number="US20230123456A1",
-                title=f"Neural Network Architecture for {query}",
-                abstract=f"An improved neural network architecture optimized for {query} tasks with reduced computational requirements.",
-                applicant=applicant or "Google LLC",
-                inventors=["Alice Johnson"],
-                ipc_codes=["G06N3/04", "G06N3/08"],
-                application_date="2023-01-10",
-                publication_date="2023-07-15",
-                status=PatentStatus.PUBLISHED,
-                jurisdiction=jur,
-                cited_by_count=12,
-                relevance_score=0.88,
-                url="https://patents.google.com/patent/US20230123456A1"
-            ),
-            PatentData(
-                patent_number="EP3876543B1",
-                title=f"Semiconductor Device with {query} Capability",
-                abstract=f"A semiconductor device incorporating {query} functionality for enhanced performance.",
-                applicant=applicant or "Samsung Electronics Co., Ltd.",
-                inventors=["Kim Minsu", "Park Jiyeon"],
-                ipc_codes=["H01L21/00", "G06N3/063"],
-                application_date="2021-06-20",
-                grant_date="2024-02-10",
-                status=PatentStatus.GRANTED,
-                jurisdiction=PatentJurisdiction.EP,
-                cited_by_count=28,
-                relevance_score=0.85,
-                url="https://patents.google.com/patent/EP3876543B1"
-            )
-        ]
-        
-        if applicant:
-            demo_data = [p for p in demo_data if applicant.lower() in p.applicant.lower()]
-        
-        return demo_data
+
 
 
 # Alias for backward compatibility
