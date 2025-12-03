@@ -674,15 +674,16 @@ async def agent_chat_stream(
                     
                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'ppt_content', 'status': 'completed', 'message': f'콘텐츠 구조화 완료 ({len(structured_answer)}자)'}, ensure_ascii=False)}\n\n"
                     
-                    # Step 2: 즉시 PPT 생성 (ReAct Agent)
+                    # Step 2: 즉시 PPT 생성 (Unified Agent)
                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'ppt_generation', 'status': 'started', 'message': 'PPT 파일을 생성하고 있습니다...'}, ensure_ascii=False)}\n\n"
                     
-                    from app.agents.presentation.presentation_agent import quick_ppt_react_agent
+                    from app.agents.presentation.unified_presentation_agent import unified_presentation_agent
                     
-                    ppt_result = await quick_ppt_react_agent.run(
-                        user_request="PPT 생성",
+                    ppt_result = await unified_presentation_agent.run(
+                        mode="quick",
+                        pattern="react",
+                        topic="PPT 생성", # 자동 추론을 위해 일반적인 주제 전달 (내부에서 context 기반 추론 가능)
                         context_text=structured_answer,
-                        topic=None,  # 자동 추론
                         max_slides=8
                     )
                     

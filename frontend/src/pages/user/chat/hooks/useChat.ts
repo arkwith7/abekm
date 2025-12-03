@@ -1293,6 +1293,7 @@ export const useChat = (options: UseChatOptions = {}) => {
   return {
     // State
     messages,
+    setMessages, // 🆕 setMessages 노출
     isLoading,
     error,
     conversationState,

@@ -513,16 +513,21 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
    * 🆕 어시스턴트 메시지 추가 (PPT 다운로드 링크 등)
    */
   const addAssistantMessage = useCallback((content: string, metadata?: Record<string, any>) => {
+    // metadata에 id가 있으면 사용, 없으면 자동 생성
+    const messageId = metadata?.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const { id: _ignoredId, ...restMetadata } = metadata || {};
+
     const newMessage: AgentMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: messageId,
       role: 'assistant',
       content,
       timestamp: new Date().toISOString(),
-      ...metadata
+      ...restMetadata
     };
 
     setMessages(prev => [...prev, newMessage]);
     console.log('💬 [useAgentChat] 어시스턴트 메시지 추가:', content.substring(0, 50));
+    return messageId; // id 반환
   }, []);
 
   /**
@@ -773,6 +778,7 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     setUploadedAssets,  // 🆕 첨부 파일 관리
     removeAttachment,   // 🆕 개별 파일 제거
     clearAttachments,   // 🆕 전체 파일 제거
+    setMessages,        // 🆕 메시지 직접 업데이트 (진행 상태 표시용)
 
     // 🆕 세션 관리
     loadSession,

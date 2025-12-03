@@ -13,8 +13,9 @@ from app.core.security import AuthUtils
 from app.services.auth.async_user_service import AsyncUserService
 from app.core.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.models import User
-from app.models.chat import RedisChatManager, get_redis_client
+from app.models.chat import RedisChatManager, get_redis_client, TbChatHistory, RedisChatMessage, MessageType
 from app.core.config import settings
 from app.services.presentation.quick_ppt_generator_service import quick_ppt_service
 from app.services.presentation.templated_ppt_generator_service import templated_ppt_service
@@ -24,10 +25,9 @@ from app.services.presentation.template_debugger import template_debugger
 from app.services.file_manager import file_manager
 from app.services.office_generator_client import office_generator_client
 from app.models.presentation import PresentationRequest, PresentationResponse, PresentationMetadata, StructuredOutline
-from app.agents.presentation.content_structurer import structure_markdown_to_outline
-from app.agents.presentation.html_generator import generate_presentation_html
-from app.agents.presentation.orchestrator import presentation_agent
-from app.agents.presentation.presentation_agent import quick_ppt_react_agent  # 🆕 ReAct Agent
+
+# 🚀 Unified Agent (Replaces all legacy agents)
+from app.agents.presentation.unified_presentation_agent import unified_presentation_agent
 import logging
 
 
@@ -41,11 +41,80 @@ def get_redis_chat_manager() -> RedisChatManager:
     return RedisChatManager(redis_client)
 
 
-async def _get_message_by_id(chat_manager: RedisChatManager, session_id: str, message_id: str):
+async def _get_message_by_id(chat_manager: RedisChatManager, session_id: str, message_id: str, db: Optional[AsyncSession] = None):
+    # 1. Redis lookup
     msgs = await chat_manager.get_recent_messages(session_id, limit=1000)
     for msg in msgs:
         if getattr(msg, 'message_id', None) == message_id:
             return msg, msgs
+            
+    # 2. DB lookup (Fallback)
+    if db:
+        try:
+            # Fetch all messages for session
+            stmt = select(TbChatHistory).where(TbChatHistory.session_id == session_id).order_by(TbChatHistory.created_date.asc())
+            result = await db.execute(stmt)
+            history = result.scalars().all()
+            
+            if not history:
+                return None, msgs
+                
+            # Convert DB history to pseudo-RedisChatMessage objects
+            converted_msgs = []
+            target_msg = None
+            
+            for row in history:
+                # User message
+                user_msg_obj = RedisChatMessage(
+                    message_id=f"user_{row.chat_id}",
+                    session_id=row.session_id,
+                    message_type=MessageType.USER,
+                    content=row.user_message,
+                    user_emp_no=row.user_emp_no,
+                    user_name="",
+                    timestamp=row.created_date,
+                    sequence_number=row.chat_id * 2 - 1
+                )
+                converted_msgs.append(user_msg_obj)
+                if message_id == user_msg_obj.message_id:
+                    target_msg = user_msg_obj
+                    
+                # Assistant message
+                asst_msg_obj = RedisChatMessage(
+                    message_id=f"agent_{row.chat_id}",
+                    session_id=row.session_id,
+                    message_type=MessageType.ASSISTANT,
+                    content=row.assistant_response,
+                    user_emp_no=row.user_emp_no,
+                    user_name="AI Agent",
+                    timestamp=row.created_date,
+                    sequence_number=row.chat_id * 2,
+                    model_used=row.model_used,
+                    search_context=row.search_results,
+                    referenced_documents=row.referenced_documents
+                )
+                converted_msgs.append(asst_msg_obj)
+                
+                if message_id == asst_msg_obj.message_id:
+                    target_msg = asst_msg_obj
+            
+            # Fallback: If exact match failed, but we have messages, try to find by timestamp or just return last assistant message
+            if not target_msg and converted_msgs:
+                # If message_id looks like a timestamp (agent_17...), it might be from a fresh session that was saved to DB
+                # In this case, we can't match ID exactly.
+                # We assume the user wants the latest context.
+                assistants = [m for m in converted_msgs if m.message_type == MessageType.ASSISTANT]
+                if assistants:
+                    target_msg = assistants[-1]
+                    logger.info(f"⚠️ Exact message ID match failed for {message_id}, using last assistant message from DB")
+            
+            if target_msg:
+                logger.info(f"✅ Found message in DB: {target_msg.message_id}")
+                return target_msg, converted_msgs
+                
+        except Exception as e:
+            logger.error(f"❌ DB lookup failed: {e}")
+
     return None, msgs
 
 
@@ -230,141 +299,31 @@ async def _compose_fallback_context(chat_manager: RedisChatManager, session_id: 
 @router.post(
     "/agent/presentation/generate",
     response_model=PresentationResponse,
-    summary="Generate presentation via HTML-first pipeline"
+    summary="[DEPRECATED] Generate presentation via HTML-first pipeline",
+    deprecated=True
 )
 async def generate_agent_presentation(
     request: PresentationRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
 ):
-    """Generate an HTML presentation using the new modular pipeline."""
-    options = request.options or {}
-    chat_manager = get_redis_chat_manager()
-
-    inferred_title = request.title_override
-    markdown = request.markdown
-    if not markdown:
-        source_msg, msgs = await _get_message_by_id(chat_manager, request.session_id, request.message_id)
-        if source_msg:
-            title_from_msg, context_text, _ = _compose_context_from_messages(source_msg, msgs)
-            markdown = context_text
-            if not inferred_title:
-                inferred_title = title_from_msg
-        else:
-            fallback_title = inferred_title or options.get("title")
-            fallback_message = options.get("message")
-            title_from_msg, context_text, _ = await _compose_fallback_context(
-                chat_manager,
-                request.session_id,
-                fallback_title,
-                fallback_message,
-            )
-            markdown = context_text
-            if not inferred_title:
-                inferred_title = title_from_msg
-
-    if not markdown or not markdown.strip():
-        raise HTTPException(status_code=400, detail="No content available for presentation generation")
-
-    try:
-        max_slides_opt = options.get("max_slides", 12)
-        max_slides = int(max_slides_opt) if isinstance(max_slides_opt, (int, str)) else 12
-    except (TypeError, ValueError):  # pragma: no cover - defensive
-        max_slides = 12
-
-    audience = options.get("audience", "general")
-
-    try:
-        outline = await structure_markdown_to_outline(
-            markdown=markdown,
-            max_slides=max_slides,
-            audience=audience,
-            style=request.style,
-        )
-    except ValueError as exc:
-        logger.error("Structured outline generation failed: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Outline generation failed: {exc}") from exc
-
-    presentation_title = inferred_title or outline.title
-    theme_override = options.get("theme") or request.style or outline.theme
-    outline = outline.model_copy(update={
-        "title": presentation_title,
-        "theme": theme_override,
-    })
-
-    temperature_opt = options.get("temperature", 0.5)
-    try:
-        temperature = float(temperature_opt)
-    except (TypeError, ValueError):
-        temperature = 0.5
-
-    max_tokens_opt = options.get("max_tokens", 6000)
-    try:
-        max_tokens = int(max_tokens_opt)
-    except (TypeError, ValueError):
-        max_tokens = 6000
-
-    try:
-        html_content = await generate_presentation_html(
-            outline,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-    except Exception as exc:  # pragma: no cover - network errors
-        logger.error("HTML generation failed: %s", exc, exc_info=True)
-        raise HTTPException(status_code=502, detail="HTML generation failed") from exc
-
-    output_path = file_manager.save_html(html_content, title=presentation_title)
-    file_size = output_path.stat().st_size if output_path.exists() else 0
-
-    outline_payload = outline.model_dump(mode="json")
-    outline_json = json.dumps(outline_payload, ensure_ascii=False, indent=2)
-    outline_path = file_manager.save_outline(outline_json, title=presentation_title)
-    outline_size = outline_path.stat().st_size if outline_path.exists() else 0
-
-    metadata = PresentationMetadata(
-        title=presentation_title,
-        created_at=datetime.utcnow(),
-        file_size_bytes=file_size,
-        slide_count=len(outline.slides),
-        theme=outline.theme,
-        html_filename=output_path.name,
-        outline_filename=outline_path.name,
-        outline_file_size_bytes=outline_size,
-    )
-
-    html_url = f"/api/v1/agent/presentation/view/{output_path.name}"
-    outline_url = f"/api/v1/agent/presentation/outline/{outline_path.name}"
-
-    # Generate PPTX if requested
-    pptx_url = None
-    if request.output_format in ("pptx", "both"):
-        try:
-            logger.info("Generating PPTX automatically...")
-            pptx_data = await office_generator_client.convert_to_pptx(outline, theme_override)
-            pptx_path = file_manager.save_pptx(pptx_data, title=presentation_title)
-            pptx_url = f"/api/v1/agent/presentation/download/{pptx_path.name}"
-            logger.info(f"PPTX generated: {pptx_path.name} ({len(pptx_data)} bytes)")
-        except Exception as e:
-            logger.error(f"Auto PPTX generation failed: {e}", exc_info=True)
-            # Don't fail the entire request, just log the error
-            pptx_url = None
-
-    logger.info(
-        "🖼️ HTML presentation generated: %s (slides=%d)",
-        output_path.name,
-        len(outline.slides),
-    )
-
-    return PresentationResponse(
-        success=True,
-        html_url=html_url,
-        pptx_url=pptx_url,
-        preview_available=True,
-        slide_count=len(outline.slides),
-        metadata=metadata,
-        outline_url=outline_url,
-        error=None,
-        error_code=None,
+    """
+    [DEPRECATED] This legacy endpoint has been removed.
+    
+    Please use one of the following endpoints instead:
+    - /api/v1/agent/presentation/build-quick (Quick PPT)
+    - /api/v1/agent/presentation/build-unified (Unified Agent)
+    """
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "error": "This endpoint has been deprecated and removed.",
+            "alternatives": [
+                "/api/v1/agent/presentation/build-quick",
+                "/api/v1/agent/presentation/build-unified"
+            ],
+            "message": "Please use the new unified agent endpoints for presentation generation."
+        }
     )
 
 
@@ -960,13 +919,14 @@ async def get_template_metadata(
 async def create_presentation_outline(
     req: PresentationOutlineRequest,
     current_user: User = Depends(get_current_user),
-    chat_manager: RedisChatManager = Depends(get_redis_chat_manager)
+    chat_manager: RedisChatManager = Depends(get_redis_chat_manager),
+    db: AsyncSession = Depends(get_db)
 ):
     try:
         logger.info(f"🔍 아웃라인 생성 요청: session_id={req.session_id}, source_message_id={req.source_message_id}")
         logger.info(f"🔍 요청 파라미터: provider={req.provider}, title={req.title}, presentation_type={req.presentation_type}")
         
-        source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id)
+        source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id, db)
         referenced_documents: Optional[List[Dict[str, Any]]] = None
         document_filename: Optional[str] = None
         if not source_msg:
@@ -1018,7 +978,8 @@ async def create_presentation_outline(
 async def build_presentation_from_message_sse(
     req: PresentationBuildFromMessageRequest,
     current_user: User = Depends(get_current_user),
-    chat_manager: RedisChatManager = Depends(get_redis_chat_manager)
+    chat_manager: RedisChatManager = Depends(get_redis_chat_manager),
+    db: AsyncSession = Depends(get_db)
 ):
     async def stream():
         try:
@@ -1026,7 +987,7 @@ async def build_presentation_from_message_sse(
             t0 = time.perf_counter()
             yield f"data: {json.dumps({'type': 'start'})}\n\n"
             try:
-                source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id)
+                source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id, db)
                 if not source_msg:
                     logger.warning(f"⚠️ source_message_id not found → fallback context")
                     topic, context_text, document_filename = await _compose_fallback_context(
@@ -1138,7 +1099,8 @@ class QuickPresentationBuildRequest(BaseModel):
 async def build_presentation_quick(
     req: QuickPresentationBuildRequest,
     current_user: User = Depends(get_current_user),
-    chat_manager: RedisChatManager = Depends(get_redis_chat_manager)
+    chat_manager: RedisChatManager = Depends(get_redis_chat_manager),
+    db: AsyncSession = Depends(get_db)
 ):
     """ReAct Agent 기반 Quick PPT 생성 (기존 파이프라인 대체)"""
     async def stream():
@@ -1152,7 +1114,7 @@ async def build_presentation_quick(
             
             if req.source_message_id:
                 logger.info(f"🔍 [ReAct] 메시지 ID로 검색: {req.source_message_id}")
-                source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id)
+                source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id, db)
                 
                 if not source_msg:
                     if req.message:
@@ -1196,32 +1158,50 @@ async def build_presentation_quick(
             logger.info(f"🧠 [ReAct] Agent 실행 시작 - topic: '{topic[:50]}', context: {len(context_text)}자")
             
             # 📝 콘텐츠 구조화 전처리 (마크다운 헤더 구조 보장)
+            yield f"data: {json.dumps({'type': 'status', 'message': '질의어를 기반으로 Task를 만들고 있습니다...'})}\n\n"
             structured_context = _ensure_markdown_structure(context_text, topic)
             logger.info(f"📐 [ReAct] 구조화 완료: {len(structured_context)}자 (원본: {len(context_text)}자)")
             
-            yield f"data: {json.dumps({'type': 'agent_thinking', 'message': 'ReAct Agent가 분석 중입니다...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': '질의어를 재구성했습니다.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': '질의어를 기반으로 검색 전략을 수립했습니다.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': 'PPT 콘텐츠를 구조화하고 있습니다...'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': f'컨텍스트 구조화 완료 ({len(structured_context)}자)'})}\n\n"
             
-            # 🧠 ReAct Agent 실행
+            # 🧠 Unified Agent (Quick + ReAct) 실행
             try:
-                result = await quick_ppt_react_agent.run(
-                    user_request="PPT 생성",
-                    context_text=structured_context,
+                yield f"data: {json.dumps({'type': 'status', 'message': 'PPT 파일을 생성하고 있습니다...'})}\n\n"
+                
+                result = await unified_presentation_agent.run(
+                    mode="quick",
+                    pattern="react",
                     topic=topic,
+                    context_text=structured_context,
                     max_slides=req.max_slides
                 )
                 
                 # 결과 확인
                 if result.get("success"):
+                    file_path = result.get("file_path")
                     file_name = result.get("file_name")
+                    slide_count = result.get("slide_count", 0)
+                    
+                    # file_path에서 file_name 추출 (폴백)
+                    if file_path and not file_name:
+                        file_name = os.path.basename(file_path)
+                    
                     if file_name:
                         file_url = f"/api/v1/agent/presentation/download/{urllib.parse.quote(file_name)}"
-                        logger.info(f"📦 [ReAct] PPT 생성 완료 - 파일: {file_name}")
+                        logger.info(f"📦 [QuickReAct] PPT 생성 완료 - 파일: {file_name}")
+                        
+                        # 최종 상태 메시지
+                        yield f"data: {json.dumps({'type': 'status', 'message': f'PPT 생성 완료 ({file_name})'})}\n\n"
                         
                         response_data: Dict[str, Any] = {
                             'type': 'complete',
                             'file_url': file_url,
                             'file_name': file_name,
                             'agent_type': 'ReAct',
+                            'slide_count': slide_count,
                             'iterations': result.get("iterations", 0),
                             'tools_used': result.get("tools_used", []),
                         }
@@ -1273,12 +1253,402 @@ async def build_presentation_quick_react_redirect(
 
 class TemplatedPresentationBuildRequest(BaseModel):
     session_id: str
-    source_message_id: str
+    source_message_id: Optional[str] = None
+    message: Optional[str] = None
     template_id: str
-    outline: Dict[str, Any]
+    max_slides: int = 8
+    presentation_type: str = "general"
+    outline: Optional[Dict[str, Any]] = None
     slide_management: Optional[List[SlideManagementInfo]] = None
     object_mappings: Optional[List[Dict[str, Any]]] = None
     content_segments: Optional[List[Dict[str, Any]]] = None
+
+
+@router.post(
+    "/agent/presentation/build-with-template-react",
+    summary="🎨 ReAct Agent 기반 Template PPT 생성",
+    description="""
+    **ReAct Agent** 패턴을 사용한 템플릿 기반 PPT 생성.
+    
+    LLM이 직접 도구를 선택하고 Thought → Action → Observation 루프를 통해 
+    템플릿을 활용한 고품질 PPT를 생성합니다.
+    
+    **특징:**
+    - outline_generation_tool: 구조화된 아웃라인 생성
+    - template_analyzer_tool: 템플릿 구조 분석
+    - content_mapping_tool: AI 기반 콘텐츠 매핑
+    - templated_pptx_builder_tool: 템플릿 기반 빌드
+    - ppt_quality_validator_tool: 품질 검증 (선택적)
+    """
+)
+async def build_presentation_with_template_react(
+    req: TemplatedPresentationBuildRequest,
+    current_user: User = Depends(get_current_user),
+    chat_manager: RedisChatManager = Depends(get_redis_chat_manager),
+    db: AsyncSession = Depends(get_db)
+):
+    """ReAct Agent 기반 Template PPT 생성"""
+    async def stream():
+        try:
+            yield f"data: {json.dumps({'type': 'start', 'agent_type': 'TemplatedReAct'})}\n\n"
+            
+            # 메시지 소스 추출
+            topic = "발표자료"
+            context_text = ""
+            referenced_documents = None
+            
+            # 폴백 0: outline/content_segments에서 직접 컨텍스트 추출 (모달에서 전달된 경우)
+            # Note: req.outline은 dict이므로 .get() 사용
+            if req.outline:
+                content_segments = req.outline.get('contentSegments') or req.outline.get('content_segments') or []
+                if content_segments:
+                    context_text = "\n\n".join([seg.get('content', '') for seg in content_segments if seg.get('content')])
+                    if context_text and len(context_text.strip()) >= 50:
+                        logger.info(f"✅ [TemplatedReAct] 폴백 0a: outline.contentSegments에서 컨텍스트 추출 (길이: {len(context_text)}자)")
+                        topic = context_text[:80]
+            
+            # 폴백 0b: req.content_segments 직접 사용 (프론트엔드에서 별도 전달 시)
+            if not context_text and req.content_segments:
+                context_text = "\n\n".join([seg.get('content', '') for seg in req.content_segments if seg.get('content')])
+                if context_text and len(context_text.strip()) >= 50:
+                    logger.info(f"✅ [TemplatedReAct] 폴백 0b: req.content_segments에서 컨텍스트 추출 (길이: {len(context_text)}자)")
+                    topic = context_text[:80]
+            
+            # 폴백 0c: req.message 직접 사용 (프론트엔드에서 AI 답변 전달 시)
+            if not context_text and req.message and len(req.message.strip()) >= 50:
+                logger.info(f"✅ [TemplatedReAct] 폴백 0c: req.message에서 컨텍스트 추출 (길이: {len(req.message)}자)")
+                context_text = req.message
+                topic = req.message[:80]
+            
+            # 🆕 폴백 0에서 context_text를 이미 확보했으면 Redis 조회 건너뛰기
+            if context_text and len(context_text.strip()) >= 50:
+                logger.info(f"✅ [TemplatedReAct] 컨텍스트 이미 확보됨 (길이: {len(context_text)}자) - Redis 조회 건너뜀")
+            elif req.source_message_id:
+                logger.info(f"🔍 [TemplatedReAct] 메시지 ID로 검색: {req.source_message_id}")
+                logger.info(f"🔍 [TemplatedReAct] 세션 ID: {req.session_id}")
+                
+                source_msg = None
+                msgs = []
+                
+                try:
+                    source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id, db)
+                    logger.info(f"🔍 [TemplatedReAct] 메시지 검색 완료: found={source_msg is not None}, total_msgs={len(msgs) if msgs else 0}")
+                    
+                    # 디버깅: 실제 메시지 ID 목록 출력
+                    if not source_msg and msgs:
+                        msg_ids = [getattr(m, 'message_id', 'N/A') for m in msgs[:10]]
+                        logger.warning(f"⚠️ [TemplatedReAct] 메시지 미발견. 찾는 ID: {req.source_message_id}, 실제 ID 샘플: {msg_ids}")
+                        # 사용자에게 즉시 안내
+                        yield f"data: {json.dumps({'type': 'warning', 'message': '요청한 메시지를 찾을 수 없어 최근 대화를 사용합니다...'})}\n\n"
+                except Exception as e:
+                    logger.error(f"❌ [TemplatedReAct] 메시지 검색 오류: {e}")
+                    # 검색 오류 시 폴백 시도 (바로 return하지 않음)
+                
+                if not source_msg:
+                    # 폴백 1: req.message 사용
+                    if req.message and len(req.message.strip()) >= 50:
+                        logger.info(f"✅ [TemplatedReAct] 폴백 1: 요청 본문의 message 사용 (길이: {len(req.message)}자)")
+                        topic = req.message[:80]
+                        context_text = req.message
+                    # 폴백 2: 세션 최근 메시지 사용
+                    elif msgs and len(msgs) > 0:
+                        logger.info(f"✅ [TemplatedReAct] 폴백 2: 세션 최근 메시지 사용")
+                        # 가장 최근 assistant 메시지 찾기
+                        for msg in reversed(msgs):
+                            if msg.message_type == MessageType.ASSISTANT and len(msg.content.strip()) >= 50:
+                                source_msg = msg
+                                logger.info(f"✅ [TemplatedReAct] 대체 메시지 발견: {msg.message_id}")
+                                break
+                        if source_msg:
+                            tpc, ctx, ref_docs = _compose_context_from_messages(source_msg, msgs)
+                            topic, context_text, referenced_documents = (tpc or topic), (ctx or context_text), ref_docs
+                        else:
+                            # 최근 user + assistant 페어 사용
+                            if len(msgs) >= 2:
+                                recent_asst = msgs[-1] if msgs[-1].message_type == MessageType.ASSISTANT else None
+                                if recent_asst and len(recent_asst.content.strip()) >= 50:
+                                    topic = "발표자료"
+                                    context_text = recent_asst.content
+                                    logger.info(f"✅ [TemplatedReAct] 폴백 3: 최근 응답 사용 (길이: {len(context_text)}자)")
+                    
+                    # 모든 폴백 실패
+                    if not context_text or len(context_text.strip()) < 50:
+                        error_details = f"메시지 ID '{req.source_message_id[:20]}...' 조회 실패. 세션에 {len(msgs) if msgs else 0}개 메시지 존재."
+                        logger.error(f"❌ [TemplatedReAct] 컨텍스트 부족: {error_details}")
+                        error_msg = '먼저 문서 검색 질문을 하신 후 "📝 PPT 생성" 버튼을 눌러주세요. 현재 대화 세션을 확인해주세요.'
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'PPT 생성에 필요한 AI 답변을 찾을 수 없습니다.', 'details': error_msg})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                else:
+                    tpc, ctx, ref_docs = _compose_context_from_messages(source_msg, msgs or [])
+                    topic, context_text, referenced_documents = (tpc or topic), (ctx or context_text), ref_docs
+            elif req.message:
+                # 폴백: message 필드에서 컨텍스트 추출
+                topic = req.message[:80]
+                context_text = req.message
+            elif not context_text:
+                # 모든 폴백 실패 시에만 에러
+                yield f"data: {json.dumps({'type': 'error', 'message': 'message or source_message_id required'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            # 컨텍스트 유효성 검증
+            if not context_text or len(context_text.strip()) < 50:
+                yield f"data: {json.dumps({'type': 'error', 'message': f'AI 답변 내용이 충분하지 않습니다 (현재: {len(context_text)}자). 최소 50자 이상의 답변이 필요합니다.'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            logger.info(f"🎨 [TemplatedReAct] Agent 실행 시작 - template: '{req.template_id}', topic: '{topic[:50]}'")
+            logger.info(f"📝 [TemplatedReAct] 컨텍스트 길이: {len(context_text)}자")
+            
+            # 사용자에게 컨텍스트 확보 알림
+            yield f"data: {json.dumps({'type': 'status', 'message': f'AI 답변 확보 완료 ({len(context_text)}자). 템플릿 PPT 생성을 시작합니다...'})}\n\n"
+            
+            # 콘텐츠 구조화
+            yield f"data: {json.dumps({'type': 'status', 'message': '질의어를 기반으로 Task를 만들고 있습니다...'})}\n\n"
+            structured_context = _ensure_markdown_structure(context_text, topic)
+            
+            yield f"data: {json.dumps({'type': 'status', 'message': '질의어를 재구성했습니다.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': '질의어를 기반으로 검색 전략을 수립했습니다.'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'message': 'PPT 콘텐츠를 구조화하고 있습니다...'})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'status', 'message': f'컨텍스트 구조화 완료 ({len(structured_context)}자)'})}\n\n"
+            
+            # 🎨 Unified Agent (Template + ReAct) 실행
+            try:
+                template_msg = f'템플릿 "{req.template_id}" 적용 시작...'
+                yield f"data: {json.dumps({'type': 'status', 'message': template_msg})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': 'AI가 템플릿 구조를 분석하고 콘텐츠를 생성 중입니다...'})}\n\n"
+                yield f"data: {json.dumps({'type': 'status', 'message': '⏳ 이 작업은 1-2분 정도 소요될 수 있습니다. 잠시만 기다려주세요...'})}\n\n"
+                
+                # 🆕 백그라운드 태스크로 Agent 실행 + Heartbeat 유지
+                import asyncio
+                
+                agent_task = asyncio.create_task(
+                    unified_presentation_agent.run(
+                        mode="template",
+                        pattern="react",
+                        topic=topic,
+                        context_text=structured_context,
+                        template_id=req.template_id,
+                        max_slides=req.max_slides,
+                        presentation_type=req.presentation_type
+                    )
+                )
+                
+                # Heartbeat: Agent 실행 중 주기적으로 keep-alive 전송
+                heartbeat_messages = [
+                    "🔄 아웃라인을 생성하고 있습니다...",
+                    "📊 템플릿 구조를 분석 중입니다...",
+                    "🎨 콘텐츠를 슬라이드에 배치하고 있습니다...",
+                    "📝 슬라이드 내용을 작성 중입니다...",
+                    "✨ PPT 파일을 생성하고 있습니다...",
+                    "🔍 품질을 검증하고 있습니다...",
+                ]
+                heartbeat_idx = 0
+                
+                while not agent_task.done():
+                    # 5초마다 heartbeat 전송
+                    await asyncio.sleep(5)
+                    if not agent_task.done():
+                        msg = heartbeat_messages[heartbeat_idx % len(heartbeat_messages)]
+                        yield f"data: {json.dumps({'type': 'heartbeat', 'message': msg})}\n\n"
+                        heartbeat_idx += 1
+                
+                # Agent 결과 가져오기
+                result = await agent_task
+                
+                # 결과 확인
+                if result.get("success"):
+                    file_path = result.get("file_path")
+                    file_name = result.get("file_name")
+                    slide_count = result.get("slide_count", 0)
+                    
+                    # file_path에서 file_name 추출 (폴백)
+                    if file_path and not file_name:
+                        file_name = os.path.basename(file_path)
+                    
+                    if file_name:
+                        file_url = f"/api/v1/agent/presentation/download/{urllib.parse.quote(file_name)}"
+                        logger.info(f"📦 [TemplatedReAct] PPT 생성 완료 - 파일: {file_name}")
+                        
+                        # 최종 상태 메시지
+                        yield f"data: {json.dumps({'type': 'status', 'message': f'PPT 생성 완료 ({file_name})'})}\n\n"
+                        
+                        response_data: Dict[str, Any] = {
+                            'type': 'complete',
+                            'file_url': file_url,
+                            'file_name': file_name,
+                            'agent_type': 'TemplatedReAct',
+                            'template_id': req.template_id,
+                            'slide_count': slide_count,
+                            'iterations': result.get("iterations", 0),
+                            'tools_used': result.get("tools_used", []),
+                        }
+                        
+                        if result.get("final_answer"):
+                            response_data['agent_summary'] = result["final_answer"]
+                        
+                        if referenced_documents:
+                            response_data['referenced_documents'] = referenced_documents
+                        
+                        yield f"data: {json.dumps(response_data)}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Agent가 파일 생성에 실패했습니다'})}\n\n"
+                else:
+                    error_msg = result.get("error", "Agent 실행 중 오류 발생")
+                    tools_used = result.get("tools_used", [])
+                    iterations = result.get("iterations", 0)
+                    detail_msg = f"{error_msg} (반복: {iterations}회, 사용 도구: {', '.join(tools_used) if tools_used else '없음'})"
+                    yield f"data: {json.dumps({'type': 'error', 'message': detail_msg})}\n\n"
+                    
+            except Exception as agent_error:
+                logger.error(f"❌ [TemplatedReAct] Agent 실행 오류: {agent_error}")
+                import traceback
+                traceback.print_exc()
+                yield f"data: {json.dumps({'type': 'error', 'message': f'Agent 오류: {str(agent_error)}'})}\n\n"
+            
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            logger.error(f"❌ [TemplatedReAct] 스트림 오류: {e}")
+            import traceback
+            traceback.print_exc()
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@router.post(
+    "/agent/presentation/build-with-template-plan-execute",
+    summary="🧠 Plan-and-Execute Agent 기반 Template PPT 생성",
+    description="""
+    **Plan-and-Execute Agent** 패턴을 사용한 템플릿 기반 PPT 생성.
+    
+    **특징:**
+    - Planning Phase: AI가 전체 워크플로우를 사전 계획
+    - Execution Phase: 계획을 순차적으로 실행
+    - Re-planning: 실패 시 동적 재계획
+    - LangGraph 기반으로 ReAct보다 효율적
+    
+    **도구:**
+    - outline_generation_tool
+    - template_analyzer_tool
+    - content_mapping_tool
+    - templated_pptx_builder_tool
+    - ppt_quality_validator_tool
+    """
+)
+async def build_presentation_with_template_plan_execute(
+    req: TemplatedPresentationBuildRequest,
+    current_user: User = Depends(get_current_user),
+    chat_manager: RedisChatManager = Depends(get_redis_chat_manager),
+    db: AsyncSession = Depends(get_db)
+):
+    """Plan-and-Execute Agent 기반 Template PPT 생성"""
+    async def stream():
+        try:
+            yield f"data: {json.dumps({'type': 'start', 'agent_type': 'PlanExecute'})}\n\n"
+            
+            # 메시지 소스 추출
+            topic = "발표자료"
+            context_text = ""
+            referenced_documents = None
+            
+            if req.source_message_id:
+                logger.info(f"🔍 [PlanExecute] 메시지 ID로 검색: {req.source_message_id}")
+                source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id, db)
+                
+                if not source_msg:
+                    if req.message:
+                        logger.info(f"✅ [PlanExecute] 폴백으로 요청 본문의 message 사용")
+                        topic = req.message[:80]
+                        context_text = req.message
+                    else:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'source_message_id를 찾을 수 없습니다'})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                else:
+                    tpc, ctx, ref_docs = _compose_context_from_messages(source_msg, msgs or [])
+                    topic, context_text, referenced_documents = (tpc or topic), (ctx or context_text), ref_docs
+            elif req.message:
+                topic = req.message[:80]
+                context_text = req.message
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'message or source_message_id required'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            # 컨텍스트 유효성 검증
+            if not context_text or len(context_text.strip()) < 50:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'AI 답변 내용이 충분하지 않습니다.'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            logger.info(f"🧠 [PlanExecute] Agent 실행 시작 - template: '{req.template_id}'")
+            
+            # 콘텍스트 구조화
+            structured_context = _ensure_markdown_structure(context_text, topic)
+            
+            yield f"data: {json.dumps({'type': 'agent_thinking', 'message': 'Plan-and-Execute Agent가 계획을 수립하고 있습니다...'})}\n\n"
+            
+            # 🧠 Unified Agent (Template + Plan-Execute) 실행
+            try:
+                result = await unified_presentation_agent.run(
+                    mode="template",
+                    pattern="plan_execute",
+                    topic=topic,
+                    context_text=structured_context,
+                    template_id=req.template_id,
+                    max_slides=req.max_slides
+                )
+                
+                # 결과 확인
+                if result.get("success"):
+                    file_path = result.get("file_path")
+                    if file_path:
+                        file_name = os.path.basename(file_path)
+                        file_url = f"/api/v1/agent/presentation/download/{urllib.parse.quote(file_name)}"
+                        logger.info(f"📦 [PlanExecute] PPT 생성 완료 - 파일: {file_name}")
+                        
+                        response_data: Dict[str, Any] = {
+                            'type': 'complete',
+                            'file_url': file_url,
+                            'file_name': file_name,
+                            'agent_type': 'PlanExecute',
+                            'template_id': req.template_id,
+                            'execution_metadata': result.get("execution_metadata", {}),
+                            'plan_steps': len(result.get("plan", [])),
+                        }
+                        
+                        if result.get("validation_result"):
+                            response_data['validation_result'] = result["validation_result"]
+                        
+                        if referenced_documents:
+                            response_data['referenced_documents'] = referenced_documents
+                        
+                        yield f"data: {json.dumps(response_data)}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Agent가 파일 생성에 실패했습니다'})}\n\n"
+                else:
+                    error_msg = result.get("error", "Agent 실행 중 오류 발생")
+                    yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                    
+            except Exception as agent_error:
+                logger.error(f"❌ [PlanExecute] Agent 실행 오류: {agent_error}")
+                import traceback
+                traceback.print_exc()
+                yield f"data: {json.dumps({'type': 'error', 'message': f'Agent 오류: {str(agent_error)}'})}\n\n"
+            
+            yield "data: [DONE]\n\n"
+            
+        except Exception as e:
+            logger.error(f"❌ [PlanExecute] 스트림 오류: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 @router.post(
@@ -1288,7 +1658,7 @@ class TemplatedPresentationBuildRequest(BaseModel):
     description="""
     **DEPRECATED**: This endpoint is deprecated and will be removed in a future release.
     
-    **Migration**: Use `POST /api/v1/presentation/agent/generate` with `mode="enhanced"` and `template_path` instead.
+    **Migration**: Use `POST /api/v1/agent/presentation/build-with-template-react` instead.
     
     See PRESENTATION_API_MIGRATION_GUIDE.md for details.
     """
@@ -1387,10 +1757,11 @@ async def build_presentation_with_template(
 async def build_presentation_from_outline(
     req: PresentationBuildRequest,
     current_user: User = Depends(get_current_user),
-    chat_manager: RedisChatManager = Depends(get_redis_chat_manager)
+    chat_manager: RedisChatManager = Depends(get_redis_chat_manager),
+    db: AsyncSession = Depends(get_db)
 ):
     try:
-        source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id)
+        source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id, db)
         referenced_documents: Optional[List[Dict[str, Any]]] = None
         document_filename: Optional[str] = None
         if not source_msg and not req.outline:
@@ -1615,90 +1986,170 @@ class AgentPresentationResponse(BaseModel):
 @router.post(
     "/agent/generate",
     response_model=AgentPresentationResponse,
-    summary="🤖 Agent-Based PPT Generation",
-    description="""
-    Generate presentations using the PresentationAgent tool orchestration framework.
-    
-    **Modes:**
-    - `quick`: Fast automated generation (outline → viz → builder)
-    - `enhanced`: Advanced generation with optional templates
-    
-    **Strategies** (auto-selected by agent):
-    - `quick_generation`: Simple automated pipeline
-    - `enhanced_auto`: Enhanced without template
-    - `enhanced_template`: Enhanced with custom template
-    
-    **Options:**
-    - `max_slides`: Maximum number of slides (default: 10)
-    - `template_path`: Path to custom template (for enhanced mode)
-    - `visualization_hints`: Enable chart/diagram suggestions
-    """
+    summary="[DEPRECATED] 🤖 Agent-Based PPT Generation",
+    deprecated=True
 )
 async def generate_presentation_with_agent(
     request: AgentPresentationRequest,
     current_user: User = Depends(get_current_user)
 ):
     """
-    Generate presentation using PresentationAgent.
+    [DEPRECATED] This legacy endpoint has been removed.
     
-    This endpoint provides a unified interface for both Quick and Enhanced
-    generation modes, with automatic strategy selection and tool orchestration.
+    Please use one of the following endpoints instead:
+    - /api/v1/agent/presentation/build-quick (Quick PPT)
+    - /api/v1/agent/presentation/build-unified (Unified Agent)
     """
-    try:
-        logger.info(
-            f"Agent presentation request: mode={request.mode}, topic={request.topic[:50]}, "
-            f"user={current_user.email}"
-        )
-        
-        # Prepare options
-        options = {
-            "max_slides": request.max_slides,
-            "visualization_hints": request.visualization_hints
+    raise HTTPException(
+        status_code=410,
+        detail={
+            "error": "This endpoint has been deprecated and removed.",
+            "alternatives": [
+                "/api/v1/agent/presentation/build-quick",
+                "/api/v1/agent/presentation/build-unified"
+            ],
+            "message": "Please use the new unified agent endpoints for presentation generation."
         }
-        
-        if request.template_path:
-            options["template_path"] = request.template_path
-        
-        # Execute via agent
-        result = await presentation_agent.execute(
-            mode=request.mode,
-            topic=request.topic,
-            context_text=request.context_text,
-            options=options
-        )
-        
-        if result["success"]:
-            logger.info(
-                f"Agent generated presentation: {result['file_path']}, "
-                f"slides={result.get('slide_count')}, strategy={result.get('strategy')}, "
-                f"time={result.get('execution_time'):.2f}s"
-            )
-            
-            return AgentPresentationResponse(
-                success=True,
-                file_path=result.get("file_path"),
-                slide_count=result.get("slide_count"),
-                mode=result.get("mode"),
-                strategy=result.get("strategy"),
-                execution_time=result.get("execution_time"),
-                steps=result.get("steps", [])
-            )
-        else:
-            error_msg = result.get("error", "Unknown error")
-            logger.error(f"Agent generation failed: {error_msg}")
-            
-            return AgentPresentationResponse(
-                success=False,
-                mode=request.mode,
-                error=error_msg,
-                steps=result.get("steps", [])
-            )
+    )
+
+
+# ========================================
+# 🚀 Unified Agent API (NEW)
+# ========================================
+
+class UnifiedPresentationRequest(BaseModel):
+    """통합 프레젠테이션 생성 요청"""
+    session_id: str
+    source_message_id: Optional[str] = None
+    message: Optional[str] = None
+    mode: str = "quick"  # "quick" | "template"
+    pattern: str = "react"  # "react" | "plan_execute"
+    template_id: Optional[str] = None
+    max_slides: int = 8
+
+
+@router.post(
+    "/agent/presentation/build-unified",
+    summary="🚀 통합 에이전트 기반 PPT 생성",
+    description="""
+    **Unified Presentation Agent**: Quick PPT와 Template PPT를 하나의 엔드포인트로 통합.
     
-    except Exception as e:
-        logger.error(f"Agent endpoint error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Presentation generation failed: {str(e)}"
-        )
+    **Parameters:**
+    - `mode`: "quick" (빠른 생성) | "template" (템플릿 기반)
+    - `pattern`: "react" (ReAct 패턴) | "plan_execute" (Plan-and-Execute 패턴)
+    - `template_id`: 템플릿 ID (mode="template"인 경우 필수)
+    
+    **Examples:**
+    - Quick PPT with ReAct: `mode=quick, pattern=react`
+    - Template PPT with ReAct: `mode=template, pattern=react, template_id=xxx`
+    - Template PPT with Plan-Execute: `mode=template, pattern=plan_execute, template_id=xxx`
+    
+    **Migration from legacy endpoints:**
+    - `/build-quick` → `/build-unified?mode=quick&pattern=react`
+    - `/build-with-template-react` → `/build-unified?mode=template&pattern=react`
+    - `/build-with-template-plan-execute` → `/build-unified?mode=template&pattern=plan_execute`
+    """
+)
+async def build_presentation_unified(
+    req: UnifiedPresentationRequest,
+    current_user: User = Depends(get_current_user),
+    chat_manager: RedisChatManager = Depends(get_redis_chat_manager)
+):
+    """통합 에이전트 기반 PPT 생성"""
+    async def stream():
+        try:
+            yield f"data: {json.dumps({'type': 'start', 'mode': req.mode, 'pattern': req.pattern})}\n\n"
+            
+            # 메시지 소스 추출
+            topic = "발표자료"
+            context_text = ""
+            referenced_documents = None
+            
+            if req.source_message_id:
+                logger.info(f"🔍 [Unified] 메시지 ID로 검색: {req.source_message_id}")
+                source_msg, msgs = await _get_message_by_id(chat_manager, req.session_id, req.source_message_id)
+                
+                if not source_msg:
+                    if req.message:
+                        logger.info(f"✅ [Unified] 폴백으로 요청 본문의 message 사용")
+                        topic = req.message[:80]
+                        context_text = req.message
+                    else:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'source_message_id를 찾을 수 없습니다'})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+                else:
+                    tpc, ctx, ref_docs = _compose_context_from_messages(source_msg, msgs or [])
+                    topic, context_text, referenced_documents = (tpc or topic), (ctx or context_text), ref_docs
+            elif req.message:
+                topic = req.message[:80]
+                context_text = req.message
+            else:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'message or source_message_id required'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            # 컨텍스트 유효성 검증
+            if not context_text or len(context_text.strip()) < 50:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'AI 답변 내용이 충분하지 않습니다.'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            # Template 모드 검증
+            if req.mode == "template" and not req.template_id:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'template_id is required for template mode'})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
+            logger.info(
+                f"🚀 [Unified] Agent 실행 시작 - mode={req.mode}, pattern={req.pattern}, "
+                f"template={req.template_id or 'N/A'}"
+            )
+            
+            # 콘텐츠 구조화
+            structured_context = _ensure_markdown_structure(context_text, topic)
+            
+            yield f"data: {json.dumps({'type': 'agent_thinking', 'message': f'{req.pattern.upper()} Agent가 분석 중입니다...'})}\n\n"
+            
+            # 🚀 Unified Agent 실행
+            try:
+                result = await unified_presentation_agent.run(
+                    mode=req.mode,
+                    pattern=req.pattern,
+                    topic=topic,
+                    context_text=structured_context,
+                    template_id=req.template_id,
+                    max_slides=req.max_slides,
+                )
+                
+                # 결과 확인
+                if result.get("success"):
+                    file_path = result.get("file_path")
+                    file_name = result.get("file_name")
+                    
+                    if file_path and file_name:
+                        file_url = f"/api/v1/presentation/agent/presentation/download/{urllib.parse.quote(file_name)}"
+                        
+                        yield f"data: {json.dumps({'type': 'complete', 'file_url': file_url, 'file_name': file_name, 'slide_count': result.get('slide_count', 0), 'execution_time': result.get('execution_time', 0), 'iterations': result.get('iterations', 0)})}\n\n"
+                        logger.info(f"✅ [Unified] 성공: {file_name}, slides={result.get('slide_count')}, time={result.get('execution_time', 0):.2f}s")
+                    else:
+                        yield f"data: {json.dumps({'type': 'error', 'message': 'Agent가 파일 생성에 실패했습니다'})}\n\n"
+                else:
+                    error_msg = result.get("error", "Unknown error")
+                    yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+                    logger.error(f"❌ [Unified] 실패: {error_msg}")
+            
+            except Exception as agent_error:
+                logger.error(f"❌ [Unified] Agent 실행 오류: {agent_error}", exc_info=True)
+                yield f"data: {json.dumps({'type': 'error', 'message': f'Agent 오류: {str(agent_error)}'})}\n\n"
+            
+            yield "data: [DONE]\n\n"
+        
+        except Exception as e:
+            logger.error(f"❌ [Unified] Streaming 오류: {e}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield "data: [DONE]\n\n"
+    
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 

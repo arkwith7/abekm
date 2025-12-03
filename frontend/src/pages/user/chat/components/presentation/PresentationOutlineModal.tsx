@@ -241,7 +241,8 @@ const PresentationOutlineModal: React.FC<Props> = ({
         console.log('  slide_management:', slideManagement);
         console.log('  Full outline:', finalOutline);
         onConfirm(finalOutline);
-        onClose();
+        // ⚠️ 모달 닫기를 onConfirm 콜백 내부에서 처리하도록 변경 (AI 진행 과정 표시 후)
+        // onClose();
     };
 
     // 템플릿 목록이 비어있으면 자동으로 로드
@@ -367,12 +368,15 @@ const PresentationOutlineModal: React.FC<Props> = ({
                         >
                             취소
                         </button>
-                        <button
-                            onClick={handleConfirm}
-                            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
-                        >
-                            PPT 생성하기
-                        </button>
+                        {/* "매핑 편집" 탭에서만 "PPT 생성하기" 버튼 표시 */}
+                        {primaryTab === 'mapping' && (
+                            <button
+                                onClick={handleConfirm}
+                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+                            >
+                                PPT 생성하기
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

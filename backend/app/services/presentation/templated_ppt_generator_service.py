@@ -380,6 +380,25 @@ class TemplatedPPTGeneratorService:
             slides = []
             
             slides_data = data.get('slides', [])
+            
+            # slides가 비어있으면 slide_management에서 추출 시도
+            if not slides_data and data.get('slide_management'):
+                logger.warning("⚠️ 'slides' 필드가 비어있음, 'slide_management'에서 슬라이드 데이터 추출 시도")
+                slide_mgmt = data.get('slide_management', [])
+                slides_data = []
+                for sm in slide_mgmt:
+                    if sm.get('action') in ['keep', 'update'] and sm.get('content'):
+                        # slide_management의 content를 slides 형식으로 변환
+                        slides_data.append({
+                            'title': sm.get('content', {}).get('title', '제목 없음'),
+                            'key_message': sm.get('content', {}).get('key_message', ''),
+                            'bullets': sm.get('content', {}).get('bullets', []),
+                            'layout': sm.get('layout', 'title_and_content'),
+                            'speaker_notes': sm.get('content', {}).get('speaker_notes', ''),
+                            'visual_suggestion': ''
+                        })
+                logger.info(f"🔄 slide_management에서 {len(slides_data)}개 슬라이드 복원")
+            
             logger.info(f"🔍 슬라이드 데이터 수: {len(slides_data)}")
             
             for i, slide_data in enumerate(slides_data):

@@ -70,6 +70,7 @@ const ChatPage: React.FC = () => {
 
   const {
     messages,
+    setMessages, // 🆕 setMessages 추가
     isLoading,
     conversationState,
     sendMessage,
@@ -559,11 +560,45 @@ const ChatPage: React.FC = () => {
                 window.alert('템플릿을 선택해 주세요.');
                 return;
               }
+
+              // 🔹 모달을 먼저 닫아서 채팅창에서 AI 사고 과정 확인 가능하도록
+              setOutlineModalOpen(false);
+
+              // 🔹 AI 에이전트 시작 메시지를 채팅창에 추가
+              addAssistantMessage(
+                '🤖 Template PPT 생성을 시작합니다...\n템플릿 기반 에이전트가 작업 중입니다.',
+                { agent_type: 'presentation', message_subtype: 'agent_thinking' }
+              );
+
               const serverOutline = toServerOutline(outline);
               setPptProgress({ stage: 'outline_generating', message: '커스텀 아웃라인 사용' });
               const outlineWithTemplate = { ...serverOutline };
               await buildWithOutline(pendingSourceMessageId, outlineWithTemplate, selectedTemplateId, {
-                onProgress: (p) => setPptProgress(p),
+                messageContent: sourceAnswerContent,  // 🆕 AI 답변 원본 전달 (Redis 조회 실패 시 폴백용)
+                onProgress: (p) => {
+                  setPptProgress(p);
+                  // 🔹 AI 사고 과정을 채팅창에도 표시
+                  if (p.stage === 'outline_generating' && p.message) {
+                    // 기존 agent_thinking 메시지 업데이트 또는 새로 추가
+                    const lastMsg = messages[messages.length - 1];
+                    if (lastMsg?.metadata?.message_subtype === 'agent_thinking') {
+                      // 마지막 메시지가 agent_thinking이면 업데이트
+                      const updatedMessages = [...messages];
+                      updatedMessages[updatedMessages.length - 1] = {
+                        ...lastMsg,
+                        content: `🤖 ${p.message}`,
+                        timestamp: new Date().toISOString()
+                      };
+                      setMessages(updatedMessages);
+                    } else {
+                      // 새 메시지 추가
+                      addAssistantMessage(
+                        `🤖 ${p.message}`,
+                        { agent_type: 'presentation', message_subtype: 'agent_thinking' }
+                      );
+                    }
+                  }
+                },
                 onComplete: (fileUrl, fileName) => {
                   const token = localStorage.getItem('ABEKM_token');
                   const downloadUrl = token ? `${fileUrl}?token=${encodeURIComponent(token)}` : fileUrl;
@@ -572,7 +607,6 @@ const ChatPage: React.FC = () => {
                   setPptProgress(null);
                 }
               });
-              setOutlineModalOpen(false);
             }}
           />
 

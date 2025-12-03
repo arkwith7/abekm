@@ -24,8 +24,8 @@ from app.core.config import settings
 from app.services.presentation.ppt_models import DeckSpec, SlideSpec
 from app.services.presentation.enhanced_object_processor import EnhancedPPTObjectProcessor
 from app.services.presentation.ppt_template_manager import template_manager
-from app.tools.presentation.visualization_tools import DiagramBuilderTool
-from app.tools.presentation.design_tools import TemplateSelectorTool, LayoutOptimizerTool
+from app.tools.presentation.archived.visualization_tools import DiagramBuilderTool
+from app.tools.presentation.archived.design_tools import TemplateSelectorTool, LayoutOptimizerTool
 
 
 class SlideBuilderTool(BaseTool):

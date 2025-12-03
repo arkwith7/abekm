@@ -194,7 +194,7 @@ class RerankTool(BaseTool):
                     )
                     
             elif provider == "bedrock":
-                from langchain_aws import ChatBedrock
+                from langchain_aws import ChatBedrock, ChatBedrockConverse
                 
                 rerank_model_id = settings.rag_reranking_bedrock_model_id or settings.bedrock_llm_model_id
                 rerank_region = settings.rag_reranking_bedrock_region or settings.aws_region
@@ -205,14 +205,28 @@ class RerankTool(BaseTool):
                 logger.info(f"🔧 리랭킹 모델: {rerank_model_id}")
                 logger.info(f"🔧 리랭킹 리전: {rerank_region}")
                 
-                rerank_llm = ChatBedrock(
-                    model=rerank_model_id,
-                    region_name=rerank_region,
-                    model_kwargs={
-                        "temperature": settings.rag_reranking_temperature,
-                        "max_tokens": settings.rag_reranking_max_tokens,
-                    }
-                )
+                # 교차 리전 추론 모델 감지 (us., eu., apac. 등 프리픽스)
+                is_cross_region = any(rerank_model_id.startswith(prefix) for prefix in ["us.", "eu.", "apac.", "global."])
+                
+                if is_cross_region:
+                    # 교차 리전 추론: ChatBedrockConverse 사용
+                    logger.info(f"🌐 교차 리전 리랭킹 모델: {rerank_model_id}")
+                    rerank_llm = ChatBedrockConverse(
+                        model=rerank_model_id,
+                        region_name=rerank_region,
+                        max_tokens=settings.rag_reranking_max_tokens,
+                        temperature=settings.rag_reranking_temperature,
+                    )
+                else:
+                    # 단일 리전: ChatBedrock 사용
+                    rerank_llm = ChatBedrock(
+                        model=rerank_model_id,
+                        region_name=rerank_region,
+                        model_kwargs={
+                            "temperature": settings.rag_reranking_temperature,
+                            "max_tokens": settings.rag_reranking_max_tokens,
+                        }
+                    )
                 
             else:
                 raise ValueError(f"지원하지 않는 리랭킹 제공자: {provider}")

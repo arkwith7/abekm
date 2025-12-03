@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Any
 from pathlib import Path
 import logging
 
-from .pptx_template_analyzer import PPTXTemplateAnalyzer, PresentationTemplate, pptx_template_analyzer
+from .archived.pptx_template_analyzer import PPTXTemplateAnalyzer, PresentationTemplate, pptx_template_analyzer
 
 logger = logging.getLogger(__name__)
 

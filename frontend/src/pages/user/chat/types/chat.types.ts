@@ -40,7 +40,7 @@ export interface ChatMessage {
   // 백엔드 Redis 상의 메시지 ID (SSE complete에서 제공)
   message_id?: string;
   agent_type?: string;
-  message_subtype?: 'user_question' | 'selected_documents' | 'presentation_download';  // 메시지 서브타입 추가
+  message_subtype?: 'user_question' | 'selected_documents' | 'presentation_download' | 'agent_thinking';  // 메시지 서브타입 추가
   // 프론트엔드 의도 감지 결과 (PPT 관련 여부)
   presentation_intent?: boolean;
   selected_documents?: SelectedDocument[];  // 선택된 문서 정보
@@ -129,6 +129,25 @@ export interface ChatMessage {
     structured_content?: string;
     [key: string]: any;
   };
+
+  // 🆕 PPT 생성 진행 상태 (AI 사고 과정 표시용)
+  pptReasoning?: PPTReasoningData;
+}
+
+// 🆕 PPT 생성 진행 상태 데이터
+export interface PPTProgressStep {
+  message: string;
+  status: 'in_progress' | 'completed' | 'error';
+  timestamp?: string;
+}
+
+export interface PPTReasoningData {
+  steps: PPTProgressStep[];
+  isComplete: boolean;
+  hasError: boolean;
+  mode: 'quick' | 'template';  // PPT 생성 모드
+  resultFileName?: string;
+  resultFileUrl?: string;
 }
 
 // 선택된 문서 정보 인터페이스 추가

@@ -5,6 +5,7 @@ import { annotateMessagesWithPresentationIntent } from '../utils/intent';
 import ConversationContextToggle from './ConversationContextToggle';
 import LoadingIndicator from './LoadingIndicator';
 import MessageBubble from './MessageBubble';
+import PPTReasoningPanel from './presentation/PPTReasoningPanel';
 import ReasoningPanel from './ReasoningPanel';
 
 interface MessageListProps {
@@ -69,6 +70,20 @@ const MessageList: React.FC<MessageListProps> = ({
           <ReasoningPanel
             reasoning={(message as any).reasoning}
             isLoading={isLoading && idx === annotatedMessages.length - 1}
+          />
+        </div>
+      );
+    }
+
+    // 🆕 PPT 생성 진행 상태 패널 표시 (pptReasoning이 있는 경우)
+    if (message.role === 'assistant' && (message as any).pptReasoning) {
+      const pptData = (message as any).pptReasoning;
+      renderedMessages.push(
+        <div key={`ppt-reasoning-${message.id || idx}`} className="max-w-4xl mx-auto">
+          <PPTReasoningPanel
+            data={pptData}
+            isLoading={isLoading && idx === annotatedMessages.length - 1 && !pptData.isComplete}
+            mode={pptData.mode || 'quick'}
           />
         </div>
       );

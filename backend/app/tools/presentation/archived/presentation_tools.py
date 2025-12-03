@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any, Type, List
 from pydantic import BaseModel, Field
 from langchain.tools import BaseTool
-from app.services.presentation.enhanced_ppt_generator_service import EnhancedPPTGeneratorService
+from app.services.presentation.archived.enhanced_ppt_generator_service import EnhancedPPTGeneratorService
 from app.services.presentation.ppt_models import DeckSpec
 from loguru import logger
 

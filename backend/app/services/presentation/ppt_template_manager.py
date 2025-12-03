@@ -63,19 +63,28 @@ class PPTTemplateManager:
         # NOTE: 기존에는 parents[3] (backend 디렉토리) 기준으로 잡혀 실제 루트(/project_root/uploads/templates)가 아닌
         #       /project_root/backend/uploads/templates 를 바라봐 존재하지 않는 경로로 인해 템플릿 미적용 문제가 발생.
         #       아래 로직은 루트 후보(parents[4]) 우선 검사 후 fallback 하여 안정적으로 실제 템플릿 디렉토리를 사용.
-        root_candidate = None
-        try:
-            root_candidate = Path(__file__).parents[4]
-        except Exception:
-            root_candidate = Path(__file__).parents[3]
-        base_dir_root = root_candidate / 'uploads' / 'templates'
+        # 템플릿 디렉토리 경로 해결: backend/uploads/templates 우선 (실제 파일 위치)
         base_dir_backend = Path(__file__).parents[3] / 'uploads' / 'templates'
-        if base_dir_root.exists():
-            base_dir = base_dir_root
-        else:
+        
+        # 루트 레벨 경로도 시도 (parents[4]/uploads/templates)
+        try:
+            base_dir_root = Path(__file__).parents[4] / 'uploads' / 'templates'
+        except Exception:
+            base_dir_root = None
+        
+        # 우선순위: backend/uploads/templates (파일이 실제로 있는 곳)
+        # backend 경로에 PPTX 파일이 있으면 사용, 없으면 root 경로 시도
+        if base_dir_backend.exists() and list(base_dir_backend.glob('*.pptx')):
             base_dir = base_dir_backend
-        base_dir.mkdir(parents=True, exist_ok=True)
-        logger.debug(f"PPTTemplateManager base_dir resolved -> {base_dir} (root_exists={base_dir_root.exists()})")
+            logger.info(f"✅ 템플릿 디렉토리: {base_dir} (backend/uploads)")
+        elif base_dir_root and base_dir_root.exists() and list(base_dir_root.glob('*.pptx')):
+            base_dir = base_dir_root
+            logger.info(f"✅ 템플릿 디렉토리: {base_dir} (root/uploads)")
+        else:
+            # 둘 다 없으면 backend 경로를 생성하여 사용
+            base_dir = base_dir_backend
+            base_dir.mkdir(parents=True, exist_ok=True)
+            logger.warning(f"⚠️ 템플릿 파일 없음, 디렉토리 생성: {base_dir}")
         # 빈 레지스트리로 시작 - 실제 PPTX 파일만 자동 스캔으로 등록
         self._registry: Dict[str, Dict[str, Any]] = {}
         

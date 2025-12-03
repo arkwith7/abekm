@@ -1,19 +1,28 @@
 """Presentation agent package exports."""
 
-from .presentation_agent import (
+# Unified agent (recommended)
+from .unified_presentation_agent import (
+    UnifiedPresentationAgent,
+    unified_presentation_agent,
     PresentationAgentTool,
     presentation_agent_tool,
-    PresentationReActAgent,
-    QuickPPTReActAgent,
-    presentation_react_agent,
-    quick_ppt_react_agent,
 )
 
+# Legacy aliases for backward compatibility
+# These now point to the unified agent
+PresentationReActAgent = UnifiedPresentationAgent
+QuickPPTReActAgent = UnifiedPresentationAgent
+presentation_react_agent = unified_presentation_agent
+quick_ppt_react_agent = unified_presentation_agent
+
 __all__ = [
-    # Legacy (Pipeline-based)
+    # Unified Agent (Recommended)
+    "UnifiedPresentationAgent",
+    "unified_presentation_agent",
     "PresentationAgentTool", 
     "presentation_agent_tool",
-    # New (ReAct-based)
+    
+    # Legacy aliases (for backward compatibility)
     "PresentationReActAgent",
     "QuickPPTReActAgent",
     "presentation_react_agent",

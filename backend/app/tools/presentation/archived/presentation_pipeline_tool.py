@@ -16,8 +16,8 @@ except ImportError:
 from app.services.presentation.ppt_models import DeckSpec
 from app.tools.contracts import ToolResult, ToolMetrics
 from app.tools.presentation.pptxgenjs_tool import get_pptxgenjs_tool
-from app.tools.presentation.content_planning_tools import OutlineGeneratorTool
-from app.tools.presentation.assembly_tools import SlideAssemblerTool
+from app.tools.presentation.archived.content_planning_tools import OutlineGeneratorTool
+from app.tools.presentation.archived.assembly_tools import SlideAssemblerTool
 
 
 class PresentationPipelineTool(BaseTool):

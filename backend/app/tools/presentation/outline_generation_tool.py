@@ -101,10 +101,12 @@ class OutlineGenerationTool(BaseTool):
 
             return {
                 "success": True,
-                "deck": deck.model_dump(),
+                "deck_spec": deck.model_dump(),
+                "deck": deck.model_dump(),  # 레거시 호환
                 "slide_count": len(deck.slides),
                 "topic": deck.topic,
-                "outline_text": regenerated_text if 'regenerated_text' in locals() and regenerated_text else context_text
+                "outline_text": regenerated_text if 'regenerated_text' in locals() and regenerated_text else context_text,
+                "message": "아웃라인 생성 완료. 다음 단계로 quick_pptx_builder_tool을 호출하여 PPT 파일을 생성하세요."
             }
 
         except Exception as e:

@@ -55,7 +55,8 @@ const AgentChatPage: React.FC = () => {
         uploadedAssets,      // 🆕 세션 첨부 파일
         removeAttachment,    // 🆕 개별 파일 제거
         clearAttachments,    // 🆕 전체 파일 제거
-        sessionId            // 🆕 세션 ID
+        sessionId,           // 🆕 세션 ID
+        setMessages          // 🆕 메시지 직접 업데이트 (진행 상태 표시용)
     } = useAgentChat({
         defaultSettings: DEFAULT_AGENT_SETTINGS
     });
@@ -103,13 +104,112 @@ const AgentChatPage: React.FC = () => {
             const msg = messages.find(m => (m.message_id || m.id) === sourceMessageId);
             const messageContent = msg?.content || '';
 
+            // 🆕 PPT Reasoning 데이터 초기화
+            const thinkingMessageId = `thinking_quick_${Date.now()}`;
+            const initialPptReasoning = {
+                steps: [{ message: 'Quick PPT 생성을 시작합니다...', status: 'in_progress' as const }],
+                isComplete: false,
+                hasError: false,
+                mode: 'quick' as const
+            };
+
+            // 🔹 AI 사고 과정 메시지 시작 (pptReasoning 데이터 포함)
+            addAssistantMessage(
+                '',  // 내용은 PPTReasoningPanel에서 표시
+                {
+                    agent_type: 'presentation',
+                    message_subtype: 'agent_thinking',
+                    id: thinkingMessageId,
+                    pptReasoning: initialPptReasoning
+                }
+            );
+
+            let pptSteps: Array<{ message: string; status: 'in_progress' | 'completed' | 'error' }> = [
+                { message: 'Quick PPT 생성을 시작합니다...', status: 'completed' }
+            ];
+            let hasError = false;
+
             // SSE 빌드하고 완료 시 다운로드 링크를 채팅 메시지로 추가
             buildFromMessage(sourceMessageId, {
+                onProgress: (p) => {
+                    // 🆕 pptReasoning steps에 추가
+                    if (p.message) {
+                        const newStep = {
+                            message: p.message,
+                            status: p.stage === 'error' ? 'error' as const : 'in_progress' as const
+                        };
+
+                        if (p.stage === 'error') {
+                            hasError = true;
+                        }
+
+                        // 이전 스텝들을 completed로 변경하고 새 스텝 추가
+                        pptSteps = pptSteps.map(s => ({ ...s, status: 'completed' as const }));
+                        pptSteps.push(newStep);
+
+                        // 메시지 업데이트 (pptReasoning 데이터)
+                        setMessages(prev => prev.map(msg =>
+                            msg.id === thinkingMessageId
+                                ? {
+                                    ...msg,
+                                    pptReasoning: {
+                                        steps: pptSteps,
+                                        isComplete: false,
+                                        hasError: hasError,
+                                        mode: 'quick' as const
+                                    }
+                                }
+                                : msg
+                        ));
+                    }
+                },
                 onComplete: (fileUrl, fileName) => {
+                    // 마지막 스텝을 completed로 변경
+                    pptSteps = pptSteps.map(s => ({ ...s, status: 'completed' as const }));
+
+                    if (hasError) {
+                        console.log('⚠️ PPT 생성 중 오류 발생');
+                        setMessages(prev => prev.map(msg =>
+                            msg.id === thinkingMessageId
+                                ? {
+                                    ...msg,
+                                    pptReasoning: {
+                                        steps: pptSteps,
+                                        isComplete: true,
+                                        hasError: true,
+                                        mode: 'quick' as const
+                                    }
+                                }
+                                : msg
+                        ));
+                        return;
+                    }
+
                     console.log('✅ PPT 생성 완료:', fileUrl);
                     const modeLabel = presentationType === 'product_introduction' ? '제품소개서' : 'PPT';
                     const token = localStorage.getItem('ABEKM_token');
                     const downloadUrl = token ? `${fileUrl}?token=${encodeURIComponent(token)}` : fileUrl;
+
+                    // 완료 상태로 업데이트
+                    pptSteps.push({ message: `PPT 생성 완료 (${fileName || 'presentation.pptx'})`, status: 'completed' });
+
+                    setMessages(prev => prev.map(msg =>
+                        msg.id === thinkingMessageId
+                            ? {
+                                ...msg,
+                                pptReasoning: {
+                                    steps: pptSteps,
+                                    isComplete: true,
+                                    hasError: false,
+                                    mode: 'quick' as const,
+                                    resultFileName: fileName || `생성된 ${modeLabel}.pptx`,
+                                    resultFileUrl: downloadUrl
+                                }
+                            }
+                            : msg
+                    ));
+
+                    // 다운로드 링크 메시지도 별도로 추가
                     const link = `📎 [${fileName || `생성된 ${modeLabel} 다운로드`}](${downloadUrl})`;
                     addAssistantMessage(link, { agent_type: 'presentation', message_subtype: 'presentation_download' });
                 },
@@ -125,7 +225,7 @@ const AgentChatPage: React.FC = () => {
             window.removeEventListener('presentation:openOutline', handleOpenOutline as EventListener);
             window.removeEventListener('presentation:buildOneClick', handleBuildOneClick as EventListener);
         };
-    }, [buildFromMessage, addAssistantMessage, messages]);
+    }, [buildFromMessage, addAssistantMessage, messages, setMessages]);
 
     // 🆕 URL 파라미터 기반 세션 복원
     useEffect(() => {
@@ -415,20 +515,124 @@ const AgentChatPage: React.FC = () => {
                         onConfirm={(outline) => {
                             console.log('✅ [AgentChat] PPT 재생성 시작:', outline);
 
+                            // 🔹 모달을 먼저 닫아서 채팅창에서 AI 사고 과정 확인 가능하도록
+                            setOutlineModalOpen(false);
+
+                            // 🆕 PPT Reasoning 데이터 초기화
+                            const thinkingMessageId = `thinking_template_${Date.now()}`;
+                            const initialPptReasoning = {
+                                steps: [{ message: 'Template PPT 생성을 시작합니다...', status: 'in_progress' as const }],
+                                isComplete: false,
+                                hasError: false,
+                                mode: 'template' as const
+                            };
+
+                            // 🔹 AI 사고 과정 메시지 시작 (pptReasoning 데이터 포함)
+                            addAssistantMessage(
+                                '',  // 내용은 PPTReasoningPanel에서 표시
+                                {
+                                    agent_type: 'presentation',
+                                    message_subtype: 'agent_thinking',
+                                    id: thinkingMessageId,
+                                    pptReasoning: initialPptReasoning
+                                }
+                            );
+
+                            let pptSteps: Array<{ message: string; status: 'in_progress' | 'completed' | 'error' }> = [
+                                { message: 'Template PPT 생성을 시작합니다...', status: 'completed' }
+                            ];
+                            let hasError = false;
+
                             // 아웃라인 기반 PPT 재생성 API 호출
+                            // 🆕 messageContent 추가: AI 답변 원본을 백엔드에 전달 (Redis 조회 실패 시 폴백용)
                             buildWithOutline(targetMessageId, outline, selectedTemplateId, {
+                                messageContent: structuredContent,  // 🆕 AI 답변 원본 전달
+                                onProgress: (p) => {
+                                    // 🆕 pptReasoning steps에 추가
+                                    if (p.message) {
+                                        const newStep = {
+                                            message: p.message,
+                                            status: p.stage === 'error' ? 'error' as const : 'in_progress' as const
+                                        };
+
+                                        if (p.stage === 'error') {
+                                            hasError = true;
+                                        }
+
+                                        // 이전 스텝들을 completed로 변경하고 새 스텝 추가
+                                        pptSteps = pptSteps.map(s => ({ ...s, status: 'completed' as const }));
+                                        pptSteps.push(newStep);
+
+                                        // 메시지 업데이트 (pptReasoning 데이터)
+                                        setMessages(prev => prev.map(msg =>
+                                            msg.id === thinkingMessageId
+                                                ? {
+                                                    ...msg,
+                                                    pptReasoning: {
+                                                        steps: pptSteps,
+                                                        isComplete: false,
+                                                        hasError: hasError,
+                                                        mode: 'template' as const
+                                                    }
+                                                }
+                                                : msg
+                                        ));
+                                    }
+                                },
                                 onComplete: (fileUrl, fileName) => {
+                                    // 마지막 스텝을 completed로 변경
+                                    pptSteps = pptSteps.map(s => ({ ...s, status: 'completed' as const }));
+
+                                    if (hasError) {
+                                        console.log('⚠️ Template PPT 생성 중 오류 발생');
+                                        setMessages(prev => prev.map(msg =>
+                                            msg.id === thinkingMessageId
+                                                ? {
+                                                    ...msg,
+                                                    pptReasoning: {
+                                                        steps: pptSteps,
+                                                        isComplete: true,
+                                                        hasError: true,
+                                                        mode: 'template' as const
+                                                    }
+                                                }
+                                                : msg
+                                        ));
+                                        return;
+                                    }
+
                                     console.log('✅ PPT 재생성 완료:', fileUrl);
+
                                     if (fileUrl) {
                                         const token = localStorage.getItem('ABEKM_token');
                                         const downloadUrl = token ? `${fileUrl}?token=${encodeURIComponent(token)}` : fileUrl;
                                         const linkText = fileName || '재생성된 PPT 다운로드';
+
+                                        // 완료 상태로 업데이트
+                                        pptSteps.push({ message: `PPT 생성 완료 (${linkText})`, status: 'completed' });
+
+                                        setMessages(prev => prev.map(msg =>
+                                            msg.id === thinkingMessageId
+                                                ? {
+                                                    ...msg,
+                                                    pptReasoning: {
+                                                        steps: pptSteps,
+                                                        isComplete: true,
+                                                        hasError: false,
+                                                        mode: 'template' as const,
+                                                        resultFileName: linkText,
+                                                        resultFileUrl: downloadUrl
+                                                    }
+                                                }
+                                                : msg
+                                        ));
+
+                                        // 다운로드 링크 메시지도 별도로 추가
                                         const markdownLink = `📎 [${linkText}](${downloadUrl})`;
                                         addAssistantMessage(markdownLink, { agent_type: 'presentation', message_subtype: 'presentation_download' });
                                     } else {
                                         console.warn('⚠️ PPT 재생성 완료 알림에 파일 URL이 없습니다.');
                                     }
-                                    setOutlineModalOpen(false);
                                 }
                             });
                         }}

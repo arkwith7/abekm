@@ -75,14 +75,20 @@ export function usePresentation(sessionId: string) {
               if (data.type === 'error') {
                 setError(data.message || '생성 중 오류가 발생했습니다');
                 opts?.onProgress?.({ stage: 'error', message: data.message });
+              } else if (data.type === 'warning') {
+                // 백엔드 경고 메시지 표시
+                opts?.onProgress?.({ stage: 'outline_generating', message: data.message });
+              } else if (data.type === 'status') {
+                // 백엔드 상태 메시지 표시 (가장 중요!)
+                opts?.onProgress?.({ stage: 'outline_generating', message: data.message });
               } else if ((data.type === 'structuring') || (data.type === 'outline_generating')) {
-                opts?.onProgress?.({ stage: 'outline_generating', message: '구조화 중' });
+                opts?.onProgress?.({ stage: 'outline_generating', message: data.message || '구조화 중' });
               } else if (data.type === 'agent_thinking') {
                 // ReAct Agent 분석 중
                 opts?.onProgress?.({ stage: 'outline_generating', message: data.message || 'AI Agent가 분석 중입니다...' });
               } else if (data.type === 'start') {
                 // 시작 이벤트 (agent_type 정보 포함 가능)
-                opts?.onProgress?.({ stage: 'outline_generating', message: data.agent_type === 'ReAct' ? 'ReAct Agent 시작...' : '생성 시작...' });
+                opts?.onProgress?.({ stage: 'outline_generating', message: data.message || (data.agent_type === 'ReAct' ? 'ReAct Agent 시작...' : '생성 시작...') });
               } else if (data.type === 'complete') {
                 const fileUrl: string | undefined = data.file_url;
                 const fileName: string | undefined = data.file_name;
@@ -147,7 +153,11 @@ export function usePresentation(sessionId: string) {
     sourceMessageId: string,
     outline: any,
     templateId?: string,
-    opts?: { onProgress?: (p: BuildProgress) => void; onComplete?: (fileUrl: string, fileName?: string) => void }
+    opts?: {
+      onProgress?: (p: BuildProgress) => void;
+      onComplete?: (fileUrl: string, fileName?: string) => void;
+      messageContent?: string;  // AI 답변 원본 (폴백용)
+    }
   ) => {
     // SSE 엔드포인트 재사용 (outline 전달)
     setLoading(true);
@@ -165,7 +175,8 @@ export function usePresentation(sessionId: string) {
         }
       });
 
-      const response = await fetch(`/api/v1/agent/presentation/build-with-template`, {
+      // 🆕 ReAct Agent 엔드포인트 사용 (Plan-Execute도 지원)
+      const response = await fetch(`/api/v1/agent/presentation/build-with-template-react`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -175,6 +186,11 @@ export function usePresentation(sessionId: string) {
           session_id: sessionId,
           source_message_id: sourceMessageId,
           template_id: templateId,
+          max_slides: outline?.slides?.length || outline?.sections?.length || 8,
+          presentation_type: 'general',
+          // 🆕 AI 답변 원본을 message 필드로 전달 (폴백용)
+          message: opts?.messageContent,
+          // 레거시 필드 (폴백용)
           outline,
           slide_management: outline?.slide_management,
           object_mappings: outline?.object_mappings,
@@ -209,6 +225,22 @@ export function usePresentation(sessionId: string) {
               if (data.type === 'error') {
                 setError(data.message || '생성 중 오류');
                 opts?.onProgress?.({ stage: 'error', message: data.message });
+              } else if (data.type === 'warning') {
+                // 백엔드 경고 메시지 표시
+                opts?.onProgress?.({ stage: 'outline_generating', message: data.message });
+              } else if (data.type === 'status') {
+                // 백엔드 상태 메시지 표시 (가장 중요!)
+                opts?.onProgress?.({ stage: 'outline_generating', message: data.message });
+              } else if (data.type === 'heartbeat') {
+                // 🆕 Heartbeat: 연결 유지 + 진행 상태 표시
+                opts?.onProgress?.({ stage: 'outline_generating', message: data.message || '작업 진행 중...' });
+              } else if (data.type === 'start') {
+                // ReAct/PlanExecute 시작
+                const agentType = data.agent_type === 'TemplatedReAct' ? 'Template ReAct' :
+                  data.agent_type === 'PlanExecute' ? 'Plan-Execute' : '에이전트';
+                opts?.onProgress?.({ stage: 'outline_generating', message: `${agentType} Agent 시작...` });
+              } else if (data.type === 'agent_thinking') {
+                opts?.onProgress?.({ stage: 'outline_generating', message: data.message || 'AI가 분석 중입니다...' });
               } else if (data.type === 'outline_generating' || data.type === 'template_loading') {
                 opts?.onProgress?.({ stage: 'outline_generating', message: '아웃라인/템플릿 준비' });
               } else if (data.type === 'outline_ready') {
@@ -217,6 +249,12 @@ export function usePresentation(sessionId: string) {
                 if (data.file_url) {
                   opts?.onProgress?.({ stage: 'complete' });
                   opts?.onComplete?.(data.file_url, data.file_name);
+                  // ReAct/PlanExecute 메타 정보 로깅
+                  if (data.agent_type === 'TemplatedReAct') {
+                    console.log(`✅ [TemplatedReAct] PPT 생성 완료 - iterations: ${data.iterations}, tools: ${data.tools_used?.join(', ')}`);
+                  } else if (data.agent_type === 'PlanExecute') {
+                    console.log(`✅ [PlanExecute] PPT 생성 완료 - steps: ${data.plan_steps}`);
+                  }
                   return { file_url: data.file_url, file_name: data.file_name };
                 }
               }

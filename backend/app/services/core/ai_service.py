@@ -2,7 +2,7 @@ from typing import List, Optional, Dict, Any
 import time
 from langchain.llms.base import BaseLLM
 from langchain.embeddings.base import Embeddings
-from langchain_aws import ChatBedrock, BedrockEmbeddings
+from langchain_aws import ChatBedrock, ChatBedrockConverse, BedrockEmbeddings
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings, ChatOpenAI, OpenAIEmbeddings
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from loguru import logger
@@ -88,15 +88,32 @@ class MultiVendorAIService:
                 os.environ["AWS_DEFAULT_REGION"] = settings.aws_region
                 
                 # LLM 초기화 - 동적 모델 사용
-                self.llm_providers["bedrock"] = ChatBedrock(
-                    model_id=settings.get_current_llm_model() if settings.get_current_llm_provider() == "bedrock" else settings.bedrock_llm_model_id,
-                    region_name=settings.aws_region,
-                    model_kwargs={
-                        "max_tokens": settings.max_tokens,
-                        "temperature": settings.temperature,
-                        "top_p": settings.top_p,
-                    }
-                )
+                model_id = settings.get_current_llm_model() if settings.get_current_llm_provider() == "bedrock" else settings.bedrock_llm_model_id
+                
+                # 교차 리전 추론 모델 감지 (us., eu., apac. 등 프리픽스)
+                is_cross_region = any(model_id.startswith(prefix) for prefix in ["us.", "eu.", "apac.", "global."])
+                
+                if is_cross_region:
+                    # 교차 리전 추론: ChatBedrockConverse 사용 (Converse API)
+                    logger.info(f"🌐 교차 리전 추론 모델 감지: {model_id} → ChatBedrockConverse 사용")
+                    self.llm_providers["bedrock"] = ChatBedrockConverse(
+                        model=model_id,
+                        region_name=settings.aws_region,
+                        max_tokens=settings.max_tokens,
+                        temperature=settings.temperature,
+                    )
+                else:
+                    # 단일 리전: ChatBedrock 사용 (InvokeModel API)
+                    logger.info(f"📍 단일 리전 모델: {model_id} → ChatBedrock 사용")
+                    self.llm_providers["bedrock"] = ChatBedrock(
+                        model_id=model_id,
+                        region_name=settings.aws_region,
+                        model_kwargs={
+                            "max_tokens": settings.max_tokens,
+                            "temperature": settings.temperature,
+                            "top_p": settings.top_p,
+                        }
+                    )
                 
                 # 임베딩 초기화 - 동적 모델 사용
                 self.embedding_providers["bedrock"] = BedrockEmbeddings(
