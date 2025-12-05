@@ -502,16 +502,34 @@ const AgentChatPage: React.FC = () => {
             {/* 🆕 하이브리드 모드: PPT 구조 확인 및 재생성 모달 */}
             {outlineModalOpen && targetMessageId && (() => {
                 const targetMsg = messages.find(m => m.id === targetMessageId || m.message_id === targetMessageId);
-                // 🆕 하이브리드 모드: metadata에서 구조화 답변 추출
-                const structuredContent = targetMsg?.metadata?.structured_content || targetMsg?.content;
+
+                // 🔧 FIX: 사용자의 원본 질의문 찾기 (AI 응답이 아닌 사용자 메시지)
+                // targetMsg는 AI 응답 메시지이므로, 그 직전의 사용자 메시지를 찾아야 함
+                const targetMsgIndex = messages.findIndex(m => m.id === targetMessageId || m.message_id === targetMessageId);
+                let userQuery = "";
+
+                // AI 응답 메시지 이전의 사용자 메시지 찾기
+                for (let i = targetMsgIndex - 1; i >= 0; i--) {
+                    if (messages[i].role === 'user') {
+                        userQuery = messages[i].content || "";
+                        break;
+                    }
+                }
+
+                // fallback: metadata에서 original_query 사용
+                if (!userQuery && targetMsg?.metadata?.original_query) {
+                    userQuery = targetMsg.metadata.original_query;
+                }
 
                 return (
                     <PresentationOutlineModal
                         open={outlineModalOpen}
                         onClose={() => setOutlineModalOpen(false)}
-                        sourceContent={structuredContent}
+                        sourceContent={userQuery}  // 🔧 사용자 원본 질의문만 전달
                         selectedTemplateId={selectedTemplateId}
                         onTemplateChange={setSelectedTemplateId}
+                        sessionId={sessionId}  // 채팅 세션 ID 전달
+                        containerIds={selectedDocuments?.map(d => String(d.containerId)).filter(Boolean)}  // 선택된 컨테이너 IDs
                         onConfirm={(outline) => {
                             console.log('✅ [AgentChat] PPT 재생성 시작:', outline);
 
@@ -546,7 +564,7 @@ const AgentChatPage: React.FC = () => {
                             // 아웃라인 기반 PPT 재생성 API 호출
                             // 🆕 messageContent 추가: AI 답변 원본을 백엔드에 전달 (Redis 조회 실패 시 폴백용)
                             buildWithOutline(targetMessageId, outline, selectedTemplateId, {
-                                messageContent: structuredContent,  // 🆕 AI 답변 원본 전달
+                                messageContent: targetMsg?.content || '',  // 🆕 AI 답변 원본 전달
                                 onProgress: (p) => {
                                     // 🆕 pptReasoning steps에 추가
                                     if (p.message) {

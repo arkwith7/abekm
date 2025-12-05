@@ -1,9 +1,13 @@
 """
 PPT 슬라이드 썸네일 생성 서비스
 사용자 업로드 템플릿의 각 페이지를 썸네일 이미지로 변환
+LibreOffice를 사용해 실제 슬라이드를 이미지로 렌더링
 """
 import os
 import logging
+import subprocess
+import tempfile
+import shutil
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 import hashlib
@@ -23,9 +27,29 @@ class ThumbnailGenerator:
         self.thumbnail_cache_dir.mkdir(parents=True, exist_ok=True)
         
         # 썸네일 설정
-        self.thumbnail_width = 320
-        self.thumbnail_height = 240
+        self.thumbnail_width = 640
+        self.thumbnail_height = 480
         self.cache_duration = 86400 * 7  # 7일
+        
+        # LibreOffice 경로 확인
+        self.libreoffice_path = self._find_libreoffice()
+    
+    def _find_libreoffice(self) -> Optional[str]:
+        """LibreOffice 실행 파일 찾기"""
+        for path in ['/usr/bin/libreoffice', '/usr/bin/soffice', 
+                     '/usr/local/bin/libreoffice', '/usr/local/bin/soffice']:
+            if os.path.exists(path):
+                return path
+        
+        # which 명령으로 찾기
+        try:
+            result = subprocess.run(['which', 'libreoffice'], capture_output=True, text=True)
+            if result.returncode == 0:
+                return result.stdout.strip()
+        except Exception:
+            pass
+        
+        return None
     
     def generate_template_thumbnails(self, pptx_file_path: str, template_id: str) -> List[Dict[str, Any]]:
         """템플릿의 모든 슬라이드 썸네일 생성"""
@@ -55,45 +79,183 @@ class ThumbnailGenerator:
             return self._create_fallback_thumbnails(pptx_file_path, template_id)
     
     def _create_thumbnails(self, pptx_file_path: str, template_id: str, cache_key: str) -> List[Dict[str, Any]]:
-        """실제 썸네일 생성"""
+        """LibreOffice를 사용해 실제 슬라이드를 이미지로 변환"""
+        thumbnails = []
+        
         try:
-            # PowerPoint 파일 로드
-            prs = Presentation(pptx_file_path)
-            thumbnails = []
+            # LibreOffice로 슬라이드를 PNG로 내보내기
+            png_files = self._convert_pptx_to_images(pptx_file_path, cache_key)
             
-            for slide_idx, slide in enumerate(prs.slides):
-                try:
-                    # 슬라이드 정보 추출
-                    slide_info = self._extract_slide_info(slide, slide_idx)
-                    
-                    # 썸네일 이미지 생성
-                    thumbnail_data = self._create_slide_thumbnail(slide, slide_info, cache_key, slide_idx)
-                    
-                    thumbnail = {
-                        "slide_index": slide_idx,
-                        "slide_title": slide_info["title"],
-                        "layout_name": slide_info["layout_name"],
-                        "description": slide_info["description"],
-                        "thumbnail_data": thumbnail_data,
-                        "thumbnail_url": f"/api/v1/agent/presentation/templates/{template_id}/thumbnails/{slide_idx}",
-                        "shape_count": slide_info["shape_count"],
-                        "text_shapes": slide_info["text_shapes"],
-                        "has_images": slide_info["has_images"],
-                        "has_charts": slide_info["has_charts"]
-                    }
-                    
-                    thumbnails.append(thumbnail)
-                    
-                except Exception as e:
-                    logger.warning(f"슬라이드 {slide_idx} 썸네일 생성 실패: {e}")
-                    # 기본 썸네일 생성
-                    thumbnails.append(self._create_fallback_slide_thumbnail(slide_idx, template_id))
-            
-            return thumbnails
+            if png_files:
+                # 슬라이드 정보 추출을 위해 PPT 로드
+                prs = Presentation(pptx_file_path)
+                
+                for slide_idx, png_path in enumerate(png_files):
+                    try:
+                        # 슬라이드 정보 추출
+                        if slide_idx < len(prs.slides):
+                            slide_info = self._extract_slide_info(prs.slides[slide_idx], slide_idx)
+                        else:
+                            slide_info = {"title": f"슬라이드 {slide_idx + 1}", "layout_name": "", 
+                                         "description": "", "shape_count": 0, "text_shapes": 0,
+                                         "has_images": False, "has_charts": False}
+                        
+                        # 이미지를 썸네일 크기로 리사이즈
+                        thumbnail_data = self._resize_and_encode(png_path, cache_key, slide_idx)
+                        
+                        thumbnail = {
+                            "slide_index": slide_idx,
+                            "slide_title": slide_info["title"],
+                            "layout_name": slide_info["layout_name"],
+                            "description": slide_info["description"],
+                            "thumbnail_data": thumbnail_data,
+                            "thumbnail_url": f"/api/v1/agent/presentation/templates/{template_id}/thumbnails/{slide_idx}",
+                            "shape_count": slide_info.get("shape_count", 0),
+                            "text_shapes": slide_info.get("text_shapes", 0),
+                            "has_images": slide_info.get("has_images", False),
+                            "has_charts": slide_info.get("has_charts", False)
+                        }
+                        
+                        thumbnails.append(thumbnail)
+                        
+                    except Exception as e:
+                        logger.warning(f"슬라이드 {slide_idx} 처리 실패: {e}")
+                        thumbnails.append(self._create_fallback_slide_thumbnail(slide_idx, template_id))
+                
+                return thumbnails
             
         except Exception as e:
-            logger.error(f"썸네일 생성 실패: {e}")
+            logger.error(f"LibreOffice 변환 실패: {e}")
+        
+        # LibreOffice 실패 시 기본 썸네일 생성
+        return self._create_fallback_thumbnails(pptx_file_path, template_id)
+    
+    def _convert_pptx_to_images(self, pptx_file_path: str, cache_key: str) -> List[Path]:
+        """LibreOffice를 사용해 PPTX를 PNG 이미지로 변환 (PDF 경유)"""
+        if not self.libreoffice_path:
+            logger.warning("LibreOffice를 찾을 수 없습니다")
             return []
+        
+        try:
+            # 임시 디렉토리 생성
+            temp_dir = tempfile.mkdtemp(prefix="ppt_thumb_")
+            
+            try:
+                # PDF로 먼저 변환 (모든 슬라이드 포함)
+                return self._convert_via_pdf(pptx_file_path, temp_dir, cache_key)
+                
+            finally:
+                # 임시 디렉토리 정리
+                shutil.rmtree(temp_dir, ignore_errors=True)
+                
+        except subprocess.TimeoutExpired:
+            logger.error("LibreOffice 변환 시간 초과")
+        except Exception as e:
+            logger.error(f"이미지 변환 실패: {e}")
+        
+        return []
+    
+    def _convert_via_pdf(self, pptx_file_path: str, temp_dir: str, cache_key: str) -> List[Path]:
+        """PDF 중간 변환을 통한 이미지 생성"""
+        try:
+            # PDF로 먼저 변환
+            cmd = [
+                self.libreoffice_path,
+                '--headless',
+                '--invisible', 
+                '--convert-to', 'pdf',
+                '--outdir', temp_dir,
+                pptx_file_path
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                env={**os.environ, 'HOME': temp_dir}
+            )
+            
+            if result.returncode != 0:
+                logger.warning(f"PDF 변환 실패: {result.stderr}")
+                return []
+            
+            # PDF 파일 찾기
+            pdf_file = Path(temp_dir) / f"{Path(pptx_file_path).stem}.pdf"
+            if not pdf_file.exists():
+                return []
+            
+            # PDF를 이미지로 변환 (pdf2image 또는 pdftoppm 사용)
+            try:
+                from pdf2image import convert_from_path
+                images = convert_from_path(str(pdf_file), dpi=150)
+                
+                result_files = []
+                for idx, img in enumerate(images):
+                    dest = self.thumbnail_cache_dir / f"{cache_key}_{idx}.png"
+                    img.save(str(dest), 'PNG')
+                    result_files.append(dest)
+                
+                return result_files
+                
+            except ImportError:
+                logger.warning("pdf2image 모듈 없음, pdftoppm 시도")
+                # pdftoppm 사용
+                return self._convert_pdf_with_pdftoppm(pdf_file, temp_dir, cache_key)
+                
+        except Exception as e:
+            logger.error(f"PDF 변환 실패: {e}")
+            return []
+    
+    def _convert_pdf_with_pdftoppm(self, pdf_file: Path, temp_dir: str, cache_key: str) -> List[Path]:
+        """pdftoppm을 사용해 PDF를 이미지로 변환"""
+        try:
+            output_prefix = Path(temp_dir) / "slide"
+            cmd = ['pdftoppm', '-png', '-r', '150', str(pdf_file), str(output_prefix)]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            
+            if result.returncode != 0:
+                logger.warning(f"pdftoppm 실패: {result.stderr}")
+                return []
+            
+            # 생성된 파일 찾기
+            png_files = sorted(Path(temp_dir).glob("slide*.png"))
+            
+            result_files = []
+            for idx, png_file in enumerate(png_files):
+                dest = self.thumbnail_cache_dir / f"{cache_key}_{idx}.png"
+                shutil.copy(png_file, dest)
+                result_files.append(dest)
+            
+            return result_files
+            
+        except Exception as e:
+            logger.error(f"pdftoppm 변환 실패: {e}")
+            return []
+    
+    def _resize_and_encode(self, image_path: Path, cache_key: str, slide_idx: int) -> str:
+        """이미지를 썸네일 크기로 리사이즈하고 Base64 인코딩"""
+        try:
+            img = Image.open(image_path)
+            
+            # 비율 유지하면서 리사이즈
+            img.thumbnail((self.thumbnail_width, self.thumbnail_height), Image.Resampling.LANCZOS)
+            
+            # 최종 썸네일 저장
+            thumb_path = self.thumbnail_cache_dir / f"{cache_key}_{slide_idx}.png"
+            img.save(thumb_path, 'PNG')
+            
+            # Base64 인코딩
+            buffer = io.BytesIO()
+            img.save(buffer, format='PNG')
+            buffer.seek(0)
+            
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+        except Exception as e:
+            logger.error(f"이미지 리사이즈 실패: {e}")
+            return self._create_fallback_image_data(slide_idx)
     
     def _extract_slide_info(self, slide, slide_idx: int) -> Dict[str, Any]:
         """슬라이드 정보 추출"""
@@ -147,80 +309,6 @@ class ThumbnailGenerator:
         info["description"] = ", ".join(features) if features else "기본 레이아웃"
         
         return info
-    
-    def _create_slide_thumbnail(self, slide, slide_info: Dict, cache_key: str, slide_idx: int) -> str:
-        """슬라이드 썸네일 이미지 생성"""
-        try:
-            # 기본 이미지 생성 (실제로는 더 복잡한 렌더링 필요)
-            img = Image.new('RGB', (self.thumbnail_width, self.thumbnail_height), color='white')
-            draw = ImageDraw.Draw(img)
-            
-            # 기본 폰트 (시스템에 따라 조정 필요)
-            try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
-                title_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 18)
-            except:
-                font = ImageFont.load_default()
-                title_font = ImageFont.load_default()
-            
-            # 배경 그라데이션 효과
-            for y in range(self.thumbnail_height):
-                color_val = int(240 + (y / self.thumbnail_height) * 15)
-                draw.line([(0, y), (self.thumbnail_width, y)], fill=(color_val, color_val, color_val))
-            
-            # 테두리
-            draw.rectangle([0, 0, self.thumbnail_width-1, self.thumbnail_height-1], outline='#CCCCCC', width=2)
-            
-            # 제목 표시
-            title = slide_info["title"]
-            title_bbox = draw.textbbox((0, 0), title, font=title_font)
-            title_width = title_bbox[2] - title_bbox[0]
-            title_x = (self.thumbnail_width - title_width) // 2
-            draw.text((title_x, 20), title, fill='#333333', font=title_font)
-            
-            # 레이아웃 정보 표시
-            layout_text = f"레이아웃: {slide_info['layout_name']}"
-            draw.text((10, 60), layout_text, fill='#666666', font=font)
-            
-            # 구성 요소 정보
-            desc_text = f"구성: {slide_info['description']}"
-            draw.text((10, 80), desc_text, fill='#666666', font=font)
-            
-            # 도형 개수 표시
-            shape_text = f"도형: {slide_info['shape_count']}개"
-            draw.text((10, 100), shape_text, fill='#666666', font=font)
-            
-            # 기능 아이콘 표시 (간단한 점으로 표현)
-            icon_y = 130
-            if slide_info["has_images"]:
-                draw.rectangle([10, icon_y, 30, icon_y+15], fill='#4CAF50', outline='#388E3C')
-                draw.text((35, icon_y+2), "이미지", fill='#4CAF50', font=font)
-                icon_y += 25
-            
-            if slide_info["has_charts"]:
-                draw.rectangle([10, icon_y, 30, icon_y+15], fill='#2196F3', outline='#1976D2')
-                draw.text((35, icon_y+2), "차트", fill='#2196F3', font=font)
-            
-            # 슬라이드 번호
-            num_text = f"#{slide_idx + 1}"
-            draw.text((self.thumbnail_width - 40, self.thumbnail_height - 25), num_text, fill='#999999', font=font)
-            
-            # Base64 인코딩
-            buffer = io.BytesIO()
-            img.save(buffer, format='PNG')
-            buffer.seek(0)
-            
-            thumbnail_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
-            
-            # 파일로도 저장 (캐싱용)
-            thumbnail_path = self.thumbnail_cache_dir / f"{cache_key}_{slide_idx}.png"
-            img.save(thumbnail_path)
-            
-            return thumbnail_data
-            
-        except Exception as e:
-            logger.error(f"썸네일 이미지 생성 실패: {e}")
-            return self._create_fallback_image_data(slide_idx)
     
     def _create_fallback_image_data(self, slide_idx: int) -> str:
         """기본 썸네일 이미지 데이터 생성"""
@@ -302,14 +390,61 @@ class ThumbnailGenerator:
         # 구현 시 JSON 파일이나 데이터베이스에 저장
         pass
     
-    def get_slide_thumbnail(self, template_id: str, slide_index: int) -> Optional[bytes]:
+    def get_slide_thumbnail(self, template_id: str, slide_index: int, user_id: Optional[str] = None) -> Optional[bytes]:
         """특정 슬라이드 썸네일 이미지 반환"""
         try:
-            # 캐시에서 찾기
-            cache_files = list(self.thumbnail_cache_dir.glob(f"*_{slide_index}.png"))
+            # 먼저 정확한 template_id로 캐시에서 찾기
+            cache_files = list(self.thumbnail_cache_dir.glob(f"{template_id}_*_{slide_index}.png"))
             if cache_files:
                 with open(cache_files[0], 'rb') as f:
                     return f.read()
+            
+            # 캐시에 없으면 템플릿 경로 찾기
+            template_path = None
+            
+            # 1. user_template_manager에서 찾기 (사용자 ID가 있는 경우)
+            if user_id:
+                try:
+                    from app.services.presentation.user_template_manager import user_template_manager
+                    template_path = user_template_manager.get_template_path(user_id, template_id)
+                except Exception:
+                    pass
+            
+            # 2. 기존 ppt_template_manager에서 찾기 (fallback)
+            if not template_path:
+                try:
+                    from app.services.presentation.ppt_template_manager import template_manager
+                    template_path = template_manager.get_template_path(template_id)
+                except Exception:
+                    pass
+            
+            # 3. users 디렉토리 전체에서 찾기 (user_id 모를 때)
+            if not template_path:
+                users_dir = Path(__file__).parents[3] / 'uploads' / 'templates' / 'users'
+                if users_dir.exists():
+                    for user_dir in users_dir.iterdir():
+                        if user_dir.is_dir():
+                            for pptx_file in user_dir.glob('*.pptx'):
+                                if pptx_file.stem.lower().replace(' ', '_') == template_id:
+                                    template_path = str(pptx_file)
+                                    break
+                        if template_path:
+                            break
+            
+            if template_path and Path(template_path).exists():
+                logger.info(f"템플릿에서 썸네일 생성: {template_id} from {template_path}")
+                thumbnails = self.generate_template_thumbnails(template_path, template_id)
+                
+                # 생성 후 다시 캐시에서 찾기
+                cache_files = list(self.thumbnail_cache_dir.glob(f"{template_id}_*_{slide_index}.png"))
+                if cache_files:
+                    with open(cache_files[0], 'rb') as f:
+                        return f.read()
+                
+                # 메모리에서 직접 반환
+                if slide_index < len(thumbnails) and 'thumbnail_data' in thumbnails[slide_index]:
+                    import base64
+                    return base64.b64decode(thumbnails[slide_index]['thumbnail_data'])
             
             return None
             

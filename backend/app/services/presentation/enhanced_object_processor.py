@@ -105,15 +105,21 @@ class EnhancedPPTObjectProcessor:
                 element_id = mapping.get('elementId')
                 new_content = mapping.get('newContent', '')
                 
+                # newContent가 list인 경우 문자열로 변환
+                if isinstance(new_content, list):
+                    new_content = '\n'.join(str(item) for item in new_content)
+                    mapping['newContent'] = new_content
+                
                 if element_id:
                     # 동일한 content가 이미 사용되었다면 스킵 (긴급 수정)
-                    if new_content and new_content.strip() and new_content.strip() in used_content:
-                        self.logger.warning(f"🔄 중복 content 사용 방지: elementId={element_id}, content='{new_content[:30]}...'")
+                    content_str = str(new_content).strip() if new_content else ''
+                    if content_str and content_str in used_content:
+                        self.logger.warning(f"🔄 중복 content 사용 방지: elementId={element_id}, content='{content_str[:30]}...'")
                         continue
                     
                     unique_mappings[element_id] = mapping
-                    if new_content and new_content.strip():
-                        used_content.add(new_content.strip())
+                    if content_str:
+                        used_content.add(content_str)
             
             filtered_mappings = list(unique_mappings.values())
             
@@ -276,12 +282,36 @@ class EnhancedPPTObjectProcessor:
                 except (ValueError, IndexError):
                     pass
             
+            # 2.5차: shape 타입에 한해 순차적 인덱스 매칭 (shape-0-2 -> 3번째 shape)
+            if element_id.startswith('shape-'):
+                try:
+                    # shape-0-2에서 마지막 숫자 추출
+                    parts = element_id.split('-')
+                    if len(parts) >= 3:
+                        target_index = int(parts[-1])
+                        shape_count = 0
+                        
+                        for i, shape in enumerate(slide.shapes):
+                            shape_type = self._get_shape_type(shape)
+                            # 텍스트를 포함한 shape 타입 (textbox가 아닌 것들)
+                            if shape_type == 'shape':
+                                if shape_count == target_index:
+                                    self.logger.info(f"✅ Shape 매칭 성공 (shape-sequential): {element_id} -> Shape {i} ({shape_count}번째 도형)")
+                                    return shape
+                                shape_count += 1
+                except (ValueError, IndexError):
+                    pass
+            
             # 3차: 기존 인덱스 기반 매칭 (fallback)
             for i, shape in enumerate(slide.shapes):
                 if element_id.endswith(f'-{i}'):
                     shape_type = self._get_shape_type(shape)
                     # textbox를 찾는데 shape가 매칭되는 경우 건너뜀
                     if element_id.startswith('textbox-') and shape_type != 'textbox':
+                        self.logger.info(f"⚠️ 타입 불일치로 인덱스 매칭 건너뜀: {element_id} (type={shape_type})")
+                        continue
+                    # shape를 찾는데 textbox가 매칭되는 경우 건너뜀
+                    if element_id.startswith('shape-') and shape_type == 'textbox':
                         self.logger.info(f"⚠️ 타입 불일치로 인덱스 매칭 건너뜀: {element_id} (type={shape_type})")
                         continue
                     self.logger.info(f"✅ Shape 매칭 성공 (index): {element_id} -> Shape {i}")
@@ -665,6 +695,22 @@ class EnhancedPPTObjectProcessor:
             # 텍스트 형태(newContent)로 전달된 경우 간단 파싱은 생략하고 로그만 남김
             if not headers and not rows:
                 self.logger.warning("테이블 교체 데이터가 비어있음 (headers/rows 없음)")
+                # 🆕 테이블 내용을 빈 문자열로 초기화 (이전 템플릿 데이터 제거)
+                try:
+                    if hasattr(shape, 'table') and shape.table:
+                        tbl = shape.table
+                        for row_idx in range(len(tbl.rows)):
+                            for col_idx in range(len(tbl.columns)):
+                                try:
+                                    cell = tbl.cell(row_idx, col_idx)
+                                    if hasattr(cell, 'text_frame') and cell.text_frame:
+                                        cell.text_frame.clear()
+                                        cell.text = ""
+                                except:
+                                    pass
+                        self.logger.info("✅ 테이블 내용을 빈 문자열로 초기화 완료")
+                except Exception as e:
+                    self.logger.warning(f"테이블 초기화 실패: {e}")
                 return
 
             if not hasattr(shape, 'table') or not shape.table:

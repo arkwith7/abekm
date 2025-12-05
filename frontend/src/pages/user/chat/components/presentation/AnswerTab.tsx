@@ -13,7 +13,7 @@ const AnswerTab: React.FC<AnswerTabProps> = ({ sourceContent }) => {
         ?.replace(/\n{3,}/g, '\n\n'); // 3개 이상의 연속된 줄바꿈을 2개로 제한
 
     return (
-        <div className="prose prose-sm max-w-none dark:prose-invert text-left">
+        <div className="prose prose-sm max-w-none dark:prose-invert text-left px-6 py-4">
             {formattedAnswer ? (
                 <ReactMarkdown
                     remarkPlugins={[remarkGfm]}

@@ -36,8 +36,8 @@ module.exports = function (app) {
     secure: false,
     ws: true, // WebSocket 프록시 활성화 (/api 경로만)
     logLevel: isDebug ? 'debug' : 'warn', // info → warn (로그 감소)
-    timeout: 30000,
-    proxyTimeout: 30000,
+    timeout: 180000,      // 🔧 3분으로 증가 (AI 처리 시간 고려)
+    proxyTimeout: 180000, // 🔧 3분으로 증가 (AI 처리 시간 고려)
     onProxyReq: (proxyReq, req, res) => {
       // HTTP 요청만 로깅 (WebSocket 제외)
       if (isDebug) {

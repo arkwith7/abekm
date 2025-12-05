@@ -56,63 +56,48 @@ class PPTTemplateManager:
     def _initialize_registry(self):
         """템플릿 레지스트리 초기화 (중복 호출 방지)"""
         if self._initialized:
-            logger.debug("PPTTemplateManager 이미 초기화됨 - 스킵")
             return
             
-        # uploads/templates 경로 사용
-        # NOTE: 기존에는 parents[3] (backend 디렉토리) 기준으로 잡혀 실제 루트(/project_root/uploads/templates)가 아닌
-        #       /project_root/backend/uploads/templates 를 바라봐 존재하지 않는 경로로 인해 템플릿 미적용 문제가 발생.
-        #       아래 로직은 루트 후보(parents[4]) 우선 검사 후 fallback 하여 안정적으로 실제 템플릿 디렉토리를 사용.
-        # 템플릿 디렉토리 경로 해결: backend/uploads/templates 우선 (실제 파일 위치)
+        # uploads/templates 경로 사용 (레거시 호환용, 실제 사용자 템플릿은 user_template_manager에서 관리)
         base_dir_backend = Path(__file__).parents[3] / 'uploads' / 'templates'
         
-        # 루트 레벨 경로도 시도 (parents[4]/uploads/templates)
         try:
             base_dir_root = Path(__file__).parents[4] / 'uploads' / 'templates'
         except Exception:
             base_dir_root = None
         
-        # 우선순위: backend/uploads/templates (파일이 실제로 있는 곳)
-        # backend 경로에 PPTX 파일이 있으면 사용, 없으면 root 경로 시도
+        # 경로 설정 (로그 없이)
         if base_dir_backend.exists() and list(base_dir_backend.glob('*.pptx')):
             base_dir = base_dir_backend
-            logger.info(f"✅ 템플릿 디렉토리: {base_dir} (backend/uploads)")
         elif base_dir_root and base_dir_root.exists() and list(base_dir_root.glob('*.pptx')):
             base_dir = base_dir_root
-            logger.info(f"✅ 템플릿 디렉토리: {base_dir} (root/uploads)")
         else:
-            # 둘 다 없으면 backend 경로를 생성하여 사용
             base_dir = base_dir_backend
             base_dir.mkdir(parents=True, exist_ok=True)
-            logger.warning(f"⚠️ 템플릿 파일 없음, 디렉토리 생성: {base_dir}")
-        # 빈 레지스트리로 시작 - 실제 PPTX 파일만 자동 스캔으로 등록
-        self._registry: Dict[str, Dict[str, Any]] = {}
         
-        # 디렉토리에 있는 모든 PPTX 파일을 자동으로 등록
-        self.base_dir = base_dir  # 나중에 사용할 수 있도록 저장
+        # 빈 레지스트리로 시작
+        self._registry: Dict[str, Dict[str, Any]] = {}
+        self.base_dir = base_dir
+        
+        # 디렉토리 스캔 (레거시 템플릿용, 로그 최소화)
         self._scan_and_register_directory_templates()
         
         # 기본 템플릿 설정 로드
         self._load_default_template_config()
         
-        # 초기화 완료 플래그 설정
+        # 초기화 완료
         self._initialized = True
-        logger.info(f"PPTTemplateManager 초기화 완료: {len(self._registry)}개 템플릿 등록됨")
     
     def _scan_and_register_directory_templates(self):
-        """템플릿 디렉토리의 모든 PPTX 파일을 스캔하여 자동 등록"""
+        """템플릿 디렉토리의 모든 PPTX 파일을 스캔하여 자동 등록 (레거시 호환용)"""
         try:
             if not self.base_dir.exists():
-                logger.warning(f"템플릿 디렉토리가 존재하지 않음: {self.base_dir}")
                 return
                 
             # PPTX 파일들을 스캔 (대소문자 구분 없이)
             pptx_files = []
             for pattern in ['*.pptx', '*.PPTX', '*.Pptx']:
                 pptx_files.extend(self.base_dir.glob(pattern))
-            
-            logger.info(f"📁 템플릿 디렉토리 스캔: {self.base_dir}")
-            logger.info(f"🔍 발견된 PPTX 파일 수: {len(pptx_files)}")
             
             for file_path in pptx_files:
                 # 이미 등록된 파일인지 확인 (경로 기준)
@@ -127,7 +112,6 @@ class PPTTemplateManager:
                     for template_id, template_info in self._registry.items():
                         if template_info.get('path') == file_str:
                             if not template_info.get('dynamic_template_id'):
-                                logger.info(f"🔄 기존 템플릿에 동적 분석 추가: {template_id}")
                                 self._add_dynamic_analysis_to_existing(template_id, file_path)
                             break
                     continue
@@ -287,6 +271,12 @@ class PPTTemplateManager:
         # 사용자 업로드 템플릿을 먼저 보여주도록 정렬
         out.sort(key=lambda x: (not x['is_user_uploaded'], x['name']))
         return out
+
+    def get_template_path(self, template_id: str) -> Optional[str]:
+        """템플릿 파일 경로 반환"""
+        if template_id in self._registry:
+            return self._registry[template_id].get('path')
+        return None
 
     def template_exists(self, template_id: str) -> bool:
         """템플릿이 존재하는지 확인"""

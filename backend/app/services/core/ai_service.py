@@ -13,8 +13,9 @@ from app.core.config import settings
 class MultiVendorAIService:
     """멀티 벤더 AI 서비스 - AWS Bedrock, Azure OpenAI, OpenAI 지원"""
     
-    # 추론 모델 목록 (temperature 미지원)
-    REASONING_MODELS = ["o1", "o3", "gpt-5"]
+    # 추론 모델 목록 (temperature 미지원) - 정확한 모델명 패턴
+    # o1, o3는 reasoning 모델이지만, gpt-5-nano는 일반 모델일 수 있음
+    REASONING_MODELS = ["o1-", "o1_", "o3-", "o3_", "-o1", "-o3"]
     
     def __init__(self):
         # Provider 별 LLM / Embedding 인스턴스
@@ -164,18 +165,23 @@ class MultiVendorAIService:
     
     def get_llm(self, provider: Optional[str] = None) -> Optional[BaseLLM]:
         """LLM 인스턴스 반환"""
+        requested_provider = provider
         provider = provider or self.default_provider
         
+        logger.info(f"🔍 get_llm called: requested={requested_provider}, resolved={provider}, default={self.default_provider}")
+        logger.info(f"🔍 Available LLM providers: {list(self.llm_providers.keys())}")
+        
         if provider in self.llm_providers:
+            logger.info(f"✅ Using LLM provider: {provider}")
             return self.llm_providers[provider]
         
         # 기본 제공자가 실패하면 사용 가능한 다른 제공자 시도
         for fallback_provider in settings.llm_providers:
             if fallback_provider in self.llm_providers:
-                logger.warning(f"기본 제공자 {provider} 실패, {fallback_provider}로 폴백")
+                logger.warning(f"⚠️ 기본 제공자 {provider} 실패, {fallback_provider}로 폴백")
                 return self.llm_providers[fallback_provider]
         
-        logger.error("사용 가능한 LLM 제공자가 없습니다")
+        logger.error("❌ 사용 가능한 LLM 제공자가 없습니다")
         return None
     
     def get_embeddings(self, provider: Optional[str] = None) -> Optional[Embeddings]:
@@ -254,29 +260,35 @@ class MultiVendorAIService:
             if temperature is not None:
                 llm = llm.bind(temperature=temperature)
 
-        lc_messages: List[HumanMessage | AIMessage] = []
+        lc_messages: List[HumanMessage | AIMessage | SystemMessage] = []
         for m in messages:
             role = (m.get("role") or "user").lower()
             content = m.get("content") or ""
             if role == "assistant":
                 lc_messages.append(AIMessage(content=content))
+            elif role == "system":
+                lc_messages.append(SystemMessage(content=content))
             else:
-                # system / user 둘 다 HumanMessage 로 처리 (간단화)
                 lc_messages.append(HumanMessage(content=content))
 
         start = time.time()
         used_provider = provider or self.default_provider
         try:
+            logger.info(f"🤖 LLM invoke: provider={used_provider}, model={model_name}, is_reasoning={is_reasoning}, messages_count={len(lc_messages)}")
             result = await llm.ainvoke(lc_messages)
             elapsed = int((time.time() - start) * 1000)
+            logger.info(f"🤖 LLM response received in {elapsed}ms, result type: {type(result)}")
+            
             if used_provider not in self._stats:
                 self._stats[used_provider] = {"requests": 0, "errors": 0, "last_error": None, "latencies_ms": []}
             self._stats[used_provider]["requests"] += 1
             self._stats[used_provider]["latencies_ms"].append(elapsed)
             if hasattr(result, "content"):
                 text = getattr(result, "content")  # type: ignore[attr-defined]
+                logger.info(f"🤖 Extracted content, length: {len(text) if text else 0}")
             else:
                 text = str(result)
+                logger.info(f"🤖 Using str(result), length: {len(text)}")
             return {"response": text, "provider": used_provider, "raw": result}
         except Exception as e:
             if used_provider not in self._stats:

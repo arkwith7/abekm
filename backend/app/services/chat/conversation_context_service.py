@@ -128,13 +128,12 @@ class ConversationContextService:
             query = text("""
                 SELECT 
                     user_message,
-                    ai_response,
-                    created_at,
-                    response_metadata
+                    assistant_response,
+                    created_date,
+                    conversation_context
                 FROM tb_chat_history 
                 WHERE session_id = :session_id 
-                    AND response_type != 'session_start'
-                ORDER BY created_at DESC 
+                ORDER BY created_date DESC 
                 LIMIT :limit
             """)
             
@@ -147,9 +146,9 @@ class ConversationContextService:
             for row in result.fetchall():
                 history.append({
                     "user_message": row.user_message,
-                    "ai_response": row.ai_response,
-                    "created_at": row.created_at,
-                    "metadata": row.response_metadata or {}
+                    "ai_response": row.assistant_response,
+                    "created_at": row.created_date,
+                    "metadata": row.conversation_context or {}
                 })
             
             return list(reversed(history))  # 시간순 정렬

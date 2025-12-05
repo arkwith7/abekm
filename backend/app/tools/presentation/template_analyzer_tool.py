@@ -12,13 +12,14 @@ try:
 except ImportError:
     from langchain.tools import BaseTool
 
-from app.services.presentation.ppt_template_manager import template_manager
+from app.services.presentation.user_template_manager import user_template_manager
 
 
 class TemplateAnalyzerInput(BaseModel):
     """Input schema for TemplateAnalyzerTool."""
 
     template_id: str = Field(..., description="Template ID to analyze")
+    user_id: Optional[int] = Field(default=None, description="User ID for user-specific templates")
 
 
 class TemplateAnalyzerTool(BaseTool):
@@ -43,6 +44,7 @@ class TemplateAnalyzerTool(BaseTool):
     async def _arun(
         self,
         template_id: str,
+        user_id: Optional[int] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
@@ -50,15 +52,40 @@ class TemplateAnalyzerTool(BaseTool):
 
         Args:
             template_id: Template identifier
+            user_id: User ID for user-specific templates
 
         Returns:
             Dict with template metadata and structure
         """
-        logger.info(f"🔍 [TemplateAnalyzer] 시작: template_id='{template_id}'")
+        logger.info(f"🔍 [TemplateAnalyzer] 시작: template_id='{template_id}', user_id={user_id}")
 
         try:
-            # Get template details
-            template_details = template_manager.get_template_details(template_id)
+            template_details = None
+            metadata = None
+            
+            # Strategy 1: user_id가 주어진 경우, 해당 사용자의 템플릿 확인
+            if user_id:
+                template_details = user_template_manager.get_template_details(str(user_id), template_id)
+                metadata = user_template_manager.get_template_metadata(str(user_id), template_id)
+                if template_details:
+                    logger.info(f"🔍 [TemplateAnalyzer] Found template in user {user_id}'s directory")
+            
+            # Strategy 2: 못 찾으면 템플릿 소유자 검색 (다른 사용자 템플릿)
+            if not template_details:
+                owner_id = user_template_manager.find_template_owner(template_id)
+                if owner_id:
+                    template_details = user_template_manager.get_template_details(owner_id, template_id)
+                    metadata = user_template_manager.get_template_metadata(owner_id, template_id)
+                    if template_details:
+                        logger.info(f"🔍 [TemplateAnalyzer] Found template owned by user {owner_id}")
+            
+            # Strategy 3: 시스템 템플릿 매니저에서 검색 (legacy)
+            if not template_details:
+                from app.services.presentation.ppt_template_manager import template_manager
+                template_details = template_manager.get_template_details(template_id)
+                metadata = template_manager.get_template_metadata(template_id)
+                if template_details:
+                    logger.info(f"🔍 [TemplateAnalyzer] Found template in system templates")
             
             if not template_details:
                 logger.error(f"❌ 템플릿을 찾을 수 없음: {template_id}")
@@ -67,39 +94,65 @@ class TemplateAnalyzerTool(BaseTool):
                     "error": f"Template not found: {template_id}",
                     "template_id": template_id,
                 }
-
-            # Get template metadata
-            metadata = template_manager.get_template_metadata(template_id)
             
             # Extract key information
             template_path = template_details.get('path')
             slide_count = 0
             layouts = []
             text_boxes = []
+            slides_with_roles = []  # 슬라이드 역할 정보 포함
             
             if metadata:
                 slide_count = len(metadata.get('slides', []))
                 
-                # Extract layout information
+                # Extract layout and role information
                 for idx, slide in enumerate(metadata.get('slides', [])):
                     layout_name = slide.get('layout_name', f'Layout_{idx}')
-                    elements = slide.get('elements', [])
+                    role = slide.get('role', 'content')  # title, toc, content, section, thanks
+                    role_confidence = slide.get('role_confidence', 0.5)
+                    shapes = slide.get('shapes', [])
+                    elements = slide.get('elements', shapes)  # shapes가 없으면 elements 사용
                     
                     layouts.append({
                         'index': idx,
                         'name': layout_name,
+                        'role': role,
+                        'role_confidence': role_confidence,
                         'element_count': len(elements),
-                        'has_textboxes': any(e.get('type') == 'textbox' for e in elements)
+                        'has_textboxes': any(
+                            e.get('type', '').upper() in ['TEXT_BOX', 'TEXTBOX'] or 
+                            e.get('name', '').startswith('textbox-')
+                            for e in elements
+                        )
+                    })
+                    
+                    # 슬라이드 역할 정보 저장 (slide_type_matcher용)
+                    slides_with_roles.append({
+                        'index': slide.get('index', idx + 1),
+                        'layout_name': layout_name,
+                        'role': role,
+                        'role_confidence': role_confidence,
+                        'shapes_count': len(shapes),
+                        'shapes': shapes  # 전체 shapes 정보 포함
                     })
                     
                     # Collect text box information
                     for element in elements:
-                        if element.get('type') == 'textbox':
+                        element_type = element.get('type', '').upper()
+                        element_name = element.get('name', '')
+                        
+                        if element_type in ['TEXT_BOX', 'TEXTBOX'] or element_name.startswith('textbox-'):
                             text_boxes.append({
                                 'slide_index': idx,
-                                'element_id': element.get('id'),
-                                'content': element.get('content', '')[:50],  # Preview
-                                'position': element.get('position', {})
+                                'element_id': element_name or element.get('id', f'element_{idx}'),
+                                'content': element.get('text', {}).get('raw', '')[:50] if element.get('text') else '',
+                                'position': {
+                                    'left_px': element.get('left_px'),
+                                    'top_px': element.get('top_px'),
+                                    'width_px': element.get('width_px'),
+                                    'height_px': element.get('height_px'),
+                                },
+                                'role': role  # 해당 슬라이드의 역할 정보 포함
                             })
 
             result = {
@@ -110,14 +163,18 @@ class TemplateAnalyzerTool(BaseTool):
                 "template_structure": {
                     "slide_count": slide_count,
                     "layouts": layouts,
-                    "text_boxes": text_boxes[:20],
+                    "text_boxes": text_boxes[:50],  # 더 많은 텍스트박스 정보
+                    "slides": slides_with_roles,  # slide_type_matcher용 전체 슬라이드 정보
+                },
+                "template_metadata": {
+                    "slides": slides_with_roles,  # 전체 슬라이드 역할 정보
                 },
                 "slide_count": slide_count,
                 "layouts": layouts,
-                "text_boxes": text_boxes[:20],  # Limit to first 20
+                "text_boxes": text_boxes[:50],
                 "total_textboxes": len(text_boxes),
                 "has_metadata": metadata is not None,
-                "message": "템플릿 분석 완료. 다음 단계로 content_mapping_tool을 호출하여 아웃라인과 템플릿을 매핑하세요."
+                "message": "템플릿 분석 완료. 다음 단계로 slide_type_matcher_tool을 호출하여 슬라이드 유형을 매칭하세요."
             }
 
             logger.info(

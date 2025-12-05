@@ -86,6 +86,7 @@ pdfminer.six==20231228
 unoconv>=0.9.0  # LibreOffice headless 변환
 pytesseract>=0.3.10  # OCR 엔진
 Pillow>=10.0.0  # 이미지 처리 (OCR용)
+pdf2image>=1.17.0  # PDF/PPT 슬라이드 이미지 변환
 ImageHash>=4.3.1  # 이미지 퍼셉추얼 해시 (유사 이미지 검색용)
 
 # HWP 파일 처리 (대안)

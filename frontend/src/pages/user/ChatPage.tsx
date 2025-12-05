@@ -554,6 +554,8 @@ const ChatPage: React.FC = () => {
             templates={templates}
             selectedTemplateId={selectedTemplateId}
             onTemplateChange={setSelectedTemplateId}
+            sessionId={sessionId}  // 채팅 세션 ID 전달
+            containerIds={selectedDocuments?.map(d => String(d.containerId)).filter(Boolean)}  // 선택된 컨테이너 IDs
             onConfirm={async (outline) => {
               if (!pendingSourceMessageId) return;
               if (!selectedTemplateId) {

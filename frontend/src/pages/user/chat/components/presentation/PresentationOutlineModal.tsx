@@ -1,22 +1,47 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import FileViewer from '../../../../../components/common/FileViewer';
-import PPTMappingWithSlideManager from '../../../../../components/presentation/PPTMappingWithSlideManager';
-import { ContentSegment, DiagramData, SimpleTemplateMetadata, SlideLayoutSelection, TextBoxMapping } from '../../../../../types/presentation';
-import { Document } from '../../../../../types/user.types';
-import AnswerTab from './AnswerTab';
-import TemplateManager from './TemplateManager';
+import { ArrowLeft, ArrowRight, Check, CheckCircle, Download, Edit3, Loader2, RefreshCw, Sparkles, Trash2, X } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-type PrimaryTab = 'answer' | 'mapping' | 'template';
+// ============================================
+// 타입 정의
+// ============================================
 
-interface OutlineData {
-    title: string;
-    sections: Array<{
-        id: string;
-        title: string;
-        content: string;
-        layoutSelection?: SlideLayoutSelection;
-        diagram?: DiagramData;
-    }>;
+type ModalStep = 'setup' | 'generating_content' | 'editor' | 'generating_ppt' | 'preview';
+
+// 위자드 단계 정의
+const WIZARD_STEPS = [
+    { id: 'setup', label: '템플릿 선택', number: 1 },
+    { id: 'editor', label: '내용 편집', number: 2 },
+    { id: 'preview', label: 'PPT 미리보기', number: 3 },
+] as const;
+
+interface TemplateInfo {
+    id: string;
+    name: string;
+    description?: string;
+    thumbnail_url?: string;
+    slide_count?: number;
+    is_default?: boolean;
+}
+
+interface SlideElement {
+    id: string;
+    text: string;
+    role?: string;
+    original_text?: string;
+    metadata?: {
+        tableData?: {
+            headers?: string[];
+            rows?: string[][];
+        };
+        [key: string]: any;
+    };
+}
+
+interface SlideContent {
+    index: number;
+    role: string;
+    elements: SlideElement[];
+    note?: string;
 }
 
 interface Props {
@@ -24,421 +49,850 @@ interface Props {
     onClose: () => void;
     initialOutline?: any;
     onConfirm: (outline: any) => void;
-    /** 원본 AI 답변 (참고용) */
     sourceContent?: string;
     loading?: boolean;
-    templates?: any[];
+    templates?: TemplateInfo[];
     selectedTemplateId?: string | null | undefined;
     onTemplateChange?: (id: string) => void;
+    sessionId?: string;  // 채팅 세션 ID (RAG 컨텍스트 수집용)
+    containerIds?: string[];  // 선택된 문서 컨테이너 IDs
 }
+
+// ============================================
+// 메인 컴포넌트
+// ============================================
 
 const PresentationOutlineModal: React.FC<Props> = ({
     open,
     onClose,
-    initialOutline,
     onConfirm,
     sourceContent,
-    loading,
     templates = [],
     selectedTemplateId,
-    onTemplateChange
+    onTemplateChange,
+    sessionId,
+    containerIds
 }) => {
-    const [outline, setOutline] = useState<OutlineData>({ title: '', sections: [] });
-    const [primaryTab, setPrimaryTab] = useState<PrimaryTab>('answer');
+    // ============================================
+    // 상태 관리
+    // ============================================
 
-    // 템플릿 관련 상태
-    const [allTemplates, setAllTemplates] = useState<any[]>([]);
+    const [currentStep, setCurrentStep] = useState<ModalStep>('setup');
+    const [allTemplates, setAllTemplates] = useState<TemplateInfo[]>([]);
+    const [localSelectedTemplateId, setLocalSelectedTemplateId] = useState<string | null>(null);
+    // userTopic 상태 제거 - sourceContent(채팅 원본 질의)만 사용
 
-    // 파일뷰어 상태
-    const [isFileViewerOpen, setIsFileViewerOpen] = useState(false);
-    const [fileViewerDocument, setFileViewerDocument] = useState<Document | null>(null);
+    // 🔧 중복 요청 방지 및 컴포넌트 마운트 상태 추적
+    const [isGenerating, setIsGenerating] = useState<boolean>(false);
+    const isGeneratingRef = useRef<boolean>(false);  // 🔧 비동기 호출 중 정확한 상태 추적
+    const isMountedRef = useRef<boolean>(true);
+    const abortControllerRef = useRef<AbortController | null>(null);
 
-    // 매핑 관련 상태
-    const [simpleMetadata, setSimpleMetadata] = useState<SimpleTemplateMetadata | null>(null);
-    const [contentSegments, setContentSegments] = useState<ContentSegment[]>([]);
-    const [textBoxMappings, setTextBoxMappings] = useState<TextBoxMapping[]>([]);
-    // 🆕 확장된 매핑 (테이블 메타데이터 등 포함)
-    const [pptObjectMappings] = useState<any[]>([]);
-    // 🆕 슬라이드 관리 정보
-    const [slideManagement, setSlideManagement] = useState<any[]>([]);
-    // const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
+    // 🆕 AI 사고 과정 (추론 단계) 표시
+    interface ReasoningStep {
+        id: string;
+        message: string;
+        status: 'pending' | 'in_progress' | 'completed' | 'error';
+    }
+    const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>([]);
 
-    // 클릭 기반 매핑을 위한 상태 (새 슬라이드 관리자에서는 사용하지 않음)
-    // const [selectedSegment, setSelectedSegment] = useState<ContentSegment | null>(null);
-    // const [selectedTextBox, setSelectedTextBox] = useState<string | null>(null);
+    // 편집 데이터
+    const [slidesContent, setSlidesContent] = useState<SlideContent[]>([]);
+    const [currentSlideIndex, setCurrentSlideIndex] = useState<number>(0);
 
-    // toModalOutline 함수
-    const toModalOutline = useCallback((apiOutline: any): OutlineData => {
-        if (!apiOutline) return { title: '', sections: [] };
+    // 미리보기용 썸네일
+    const [slideThumbnails, setSlideThumbnails] = useState<string[]>([]);
 
-        // API might return 'slides' instead of 'sections'
-        const sourceSlides = apiOutline.sections || apiOutline.slides || [];
+    // 결과물
+    const [generatedPptFilename, setGeneratedPptFilename] = useState<string | null>(null);
+    const [googlePreviewUrl, setGooglePreviewUrl] = useState<string | null>(null);
+    const [directDownloadUrl, setDirectDownloadUrl] = useState<string | null>(null);
 
-        const sections = sourceSlides.map((section: any, index: number) => ({
-            id: section.id || `section_${index}`,
-            title: section.title || `섹션 ${index + 1}`,
-            content: section.content || section.key_message || '',
-            layoutSelection: section.layoutSelection || undefined,
-            diagram: section.diagram || undefined
-        }));
+    const [error, setError] = useState<string | null>(null);
+    const [loadingMessage, setLoadingMessage] = useState<string>("");
 
-        return {
-            title: apiOutline.title || '새 프레젠테이션',
-            sections
+    // ============================================
+    // 초기화 및 정리
+    // ============================================
+
+    // 🔧 컴포넌트 마운트/언마운트 추적
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+            // 진행 중인 요청 취소
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
+            }
         };
     }, []);
 
-    // 초기 아웃라인 설정
-    useEffect(() => {
-        if (initialOutline) {
-            setOutline(toModalOutline(initialOutline));
-        }
-    }, [initialOutline, toModalOutline]);
-
-    // 템플릿 목록 동기화
     useEffect(() => {
         if (templates && templates.length > 0) {
             setAllTemplates(templates);
         }
     }, [templates]);
 
-    // 기본 템플릿 선택
     useEffect(() => {
-        // 템플릿이 로드되고 선택된 템플릿이 없을 때 기본 템플릿 자동 선택
-        if (allTemplates.length > 0 && !selectedTemplateId) {
-            const defaultTemplate = allTemplates.find(t => t.is_default);
-            if (defaultTemplate && onTemplateChange) {
-                console.log('🎯 기본 템플릿 자동 선택:', defaultTemplate.name);
-                onTemplateChange(defaultTemplate.id);
-            } else if (allTemplates.length > 0 && onTemplateChange) {
-                // 기본 템플릿이 없으면 첫 번째 템플릿 선택
-                console.log('🎯 첫 번째 템플릿 자동 선택:', allTemplates[0].name);
-                onTemplateChange(allTemplates[0].id);
-            }
+        if (selectedTemplateId) {
+            setLocalSelectedTemplateId(selectedTemplateId);
         }
-    }, [allTemplates, selectedTemplateId, onTemplateChange]);
+    }, [selectedTemplateId]);
 
-    // AI 답변 자동 분할 함수
-    const autoSegmentContent = useCallback((content: string) => {
-        if (!content) return;
-
-        // 문단별로 분할
-        const paragraphs = content.split('\n\n').filter(p => p.trim());
-
-        const segments: ContentSegment[] = paragraphs.map((paragraph, index) => {
-            // 제목인지 판단 (짧고 굵은 글씨체 또는 번호 형태)
-            const isTitle = paragraph.length < 100 &&
-                (paragraph.match(/^\d+\./) || paragraph.includes('**') || paragraph.match(/^#{1,3}\s/));
-
-            // 리스트 항목인지 판단
-            const isBullet = paragraph.includes('•') || paragraph.includes('-') || paragraph.match(/^\d+\./);
-
-            return {
-                id: `segment_${index}`,
-                content: paragraph.trim(),
-                type: isTitle ? 'title' : (isBullet ? 'bullet' : 'paragraph'),
-                priority: isTitle ? 9 : (isBullet ? 7 : 5),
-                suggestedPosition: isTitle ? 'center' : 'top-left-main'
-            };
-        });
-
-        setContentSegments(segments);
-    }, []);
-
-    // 단순화된 메타데이터 로드
     useEffect(() => {
-        const loadTemplateData = async () => {
-            if (!selectedTemplateId) {
+        if (open) {
+            setCurrentStep('setup');
+            setError(null);
+            setSlidesContent([]);
+            setIsGenerating(false);  // 🔧 생성 상태 초기화
+            isGeneratingRef.current = false;  // 🔧 ref도 초기화
+            // sourceContent(채팅 원본 질의)는 props에서 직접 사용
+
+            // 템플릿 로드 (allTemplates가 비어있을 때만)
+            loadTemplates();
+        } else {
+            // 🔧 모달이 닫힐 때 진행 중인 요청 취소
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+                abortControllerRef.current = null;
+            }
+            isGeneratingRef.current = false;  // 🔧 ref도 초기화
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
+
+    // ============================================
+    // API 호출
+    // ============================================
+
+    const loadTemplates = async () => {
+        try {
+            const response = await fetch('/api/v1/agent/presentation/templates', {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                if (isMountedRef.current) {
+                    setAllTemplates(data.templates || []);
+                }
+            }
+        } catch (error) {
+            console.error('템플릿 로드 실패:', error);
+        }
+    };
+
+    const loadThumbnails = async (templateId: string) => {
+        try {
+            const response = await fetch(
+                `/api/v1/agent/presentation/templates/${encodeURIComponent(templateId)}/thumbnails`,
+                { headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` } }
+            );
+            if (response.ok) {
+                const data = await response.json();
+                const urls = (data.thumbnails || []).map((_: any, idx: number) =>
+                    `/api/v1/agent/presentation/templates/${encodeURIComponent(templateId)}/thumbnails/${idx}`
+                );
+                setSlideThumbnails(urls);
+            }
+        } catch (e) {
+            console.error("썸네일 로드 실패", e);
+        }
+    };
+
+    // Step 1 -> 2: 콘텐츠 생성
+    const handleGenerateContent = useCallback(async () => {
+        // 🔧 중복 클릭 방지 (state와 ref 모두 체크)
+        if (isGenerating || isGeneratingRef.current) {
+            console.log("⏳ 이미 생성 중입니다... (state:", isGenerating, ", ref:", isGeneratingRef.current, ")");
+            return;
+        }
+
+        if (!localSelectedTemplateId) {
+            setError("템플릿을 선택해주세요.");
+            return;
+        }
+        // ⚠️ 원본 채팅 질의문(sourceContent) 사용 - 텍스트 영역 수정 내용 무시
+        const originalQuery = sourceContent?.trim();
+        if (!originalQuery) {
+            setError("채팅에서 프레젠테이션 요청이 필요합니다.");
+            return;
+        }
+
+        // 🔧 이전 요청이 있으면 취소
+        if (abortControllerRef.current) {
+            console.log("🛑 이전 요청 취소");
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+
+        // 🔧 즉시 ref 설정 (state 업데이트 전에 중복 방지)
+        isGeneratingRef.current = true;
+        setIsGenerating(true);
+        setCurrentStep('generating_content');
+        setLoadingMessage("AI가 관련 문서를 검색하고 맞춤형 콘텐츠를 생성하고 있습니다... (최대 2분 소요)");
+        setError(null);
+
+        // 🆕 AI 사고 과정 초기화
+        setReasoningSteps([
+            { id: 'analyze', message: '🔍 템플릿 구조를 분석하고 있습니다...', status: 'in_progress' },
+            { id: 'search', message: '📚 관련 문서를 검색하고 있습니다...', status: 'pending' },
+            { id: 'generate', message: '✍️ PPT 콘텐츠를 생성하고 있습니다...', status: 'pending' },
+            { id: 'match', message: '🧩 슬라이드 매칭을 진행하고 있습니다...', status: 'pending' },
+            { id: 'finalize', message: '✅ 콘텐츠 매핑을 완료하고 있습니다...', status: 'pending' },
+        ]);
+
+        // 🔧 새 AbortController 생성 및 저장
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        let timeoutId: NodeJS.Timeout | null = null;
+
+        // 🆕 추론 단계 업데이트 헬퍼 함수 (ID 기반)
+        const updateReasoningStep = (stepId: string, status: 'in_progress' | 'completed' | 'error') => {
+            if (!isMountedRef.current) return;
+            setReasoningSteps(prev => prev.map(step => {
+                if (step.id === stepId) return { ...step, status };
+                return step;
+            }));
+        };
+
+        const completeStepAndStartNext = (currentId: string, nextId: string) => {
+            if (!isMountedRef.current) return;
+            setReasoningSteps(prev => prev.map(step => {
+                if (step.id === currentId) return { ...step, status: 'completed' };
+                if (step.id === nextId) return { ...step, status: 'in_progress' };
+                return step;
+            }));
+        };
+
+        // 🔧 재시도 로직을 위한 내부 함수
+        const attemptFetch = async (retryCount: number = 0): Promise<Response> => {
+            const MAX_RETRIES = 2;
+
+            try {
+                console.log(`🚀 콘텐츠 생성 API 호출 (시도 ${retryCount + 1}/${MAX_RETRIES + 1}):`, localSelectedTemplateId);
+
+                const response = await fetch(`/api/v1/agent/presentation/templates/${encodeURIComponent(localSelectedTemplateId)}/generate-content`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`,
+                        'Connection': 'keep-alive'  // 🔧 연결 유지
+                    },
+                    body: JSON.stringify({
+                        user_query: originalQuery,  // 원본 채팅 질의문만 사용
+                        context: "",  // context는 비워둠 (RAG에서 수집)
+                        session_id: sessionId,  // 채팅 컨텍스트 활용
+                        container_ids: containerIds,  // RAG 검색 범위
+                        use_rag: true  // Agentic AI: RAG 검색 활성화
+                    }),
+                    signal: controller.signal,
+                    keepalive: true  // 🔧 연결 유지
+                });
+
+                return response;
+            } catch (fetchError: any) {
+                // 🔧 네트워크 오류 시 재시도 (AbortError 제외)
+                if (fetchError.name !== 'AbortError' && retryCount < MAX_RETRIES) {
+                    console.warn(`⚠️ 네트워크 오류, ${retryCount + 2}번째 시도 예정...`, fetchError.message);
+                    // 잠시 대기 후 재시도
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    return attemptFetch(retryCount + 1);
+                }
+                throw fetchError;
+            }
+        };
+
+        try {
+            // 썸네일 미리 로드 (비동기, 실패해도 계속 진행)
+            loadThumbnails(localSelectedTemplateId).catch(console.warn);
+
+            // 🔧 타임아웃 설정 (180초로 증가 - LLM 호출이 오래 걸릴 수 있음)
+            timeoutId = setTimeout(() => {
+                console.warn("⏰ 요청 타임아웃 (180초)");
+                controller.abort();
+            }, 180000);
+
+            // 🆕 Step 1 완료, Step 2 시작
+            completeStepAndStartNext('analyze', 'search');
+
+            // ⚠️ 재시도 로직 포함된 fetch 호출
+            const response = await attemptFetch();
+
+            // 🆕 Step 2 완료, Step 3 시작
+            completeStepAndStartNext('search', 'generate');
+
+            // 🔧 타임아웃 해제
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+
+            console.log("📥 API 응답 수신:", response.status, response.statusText);
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errorMsg = errorData.detail || `서버 오류 (${response.status}): 콘텐츠 생성에 실패했습니다.`;
+                throw new Error(errorMsg);
+            }
+
+            const data = await response.json();
+            console.log("✅ 콘텐츠 생성 완료:", data.slides?.length, "슬라이드");
+
+            // 🆕 Step 3 완료, Step 4 시작
+            completeStepAndStartNext('generate', 'match');
+
+            // 🔧 컴포넌트가 언마운트되었으면 상태 업데이트 안 함
+            if (!isMountedRef.current) {
+                console.log("⚠️ 컴포넌트가 언마운트됨, 상태 업데이트 스킵");
                 return;
             }
 
-            try {
-                // 단순화된 메타데이터 로드 (매핑용)
-                const simpleMetadataResponse = await fetch(
-                    `/api/v1/agent/presentation/templates/${encodeURIComponent(selectedTemplateId)}/simple-metadata`,
-                    {
-                        headers: {
-                            'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
-                        }
-                    }
-                );
-
-                if (simpleMetadataResponse.ok) {
-                    const simpleData = await simpleMetadataResponse.json();
-                    console.log('🎯 단순 메타데이터 로드 성공:', simpleData);
-                    setSimpleMetadata(simpleData.metadata);
-                    // AI 답변 자동 분할
-                    if (sourceContent) {
-                        autoSegmentContent(sourceContent);
-                    }
-                } else {
-                    console.error('🚫 단순 메타데이터 로드 실패:', simpleMetadataResponse.status);
-                    setSimpleMetadata(null);
-                }
-            } catch (error) {
-                console.error('템플릿 데이터 로드 실패:', error);
+            // 슬라이드 콘텐츠 검증
+            if (!data.slides || data.slides.length === 0) {
+                throw new Error("AI가 콘텐츠를 생성하지 못했습니다. 주제를 더 구체적으로 입력해주세요.");
             }
-        };
 
-        loadTemplateData();
-    }, [selectedTemplateId, sourceContent, autoSegmentContent]);
+            // 🆕 Step 4 완료, Step 5 시작
+            completeStepAndStartNext('match', 'finalize');
 
-    const handleTemplatesRefresh = async () => {
+            // 잠시 후 모든 단계 완료
+            setTimeout(() => {
+                if (isMountedRef.current) {
+                    setReasoningSteps(prev => prev.map(step => ({ ...step, status: 'completed' })));
+                }
+            }, 500);
+
+            setSlidesContent(data.slides);
+            setCurrentStep('editor');
+        } catch (e: any) {
+            console.error("❌ 콘텐츠 생성 오류:", e);
+            console.error("  - 오류 이름:", e.name);
+            console.error("  - 오류 메시지:", e.message);
+            console.error("  - 오류 스택:", e.stack);
+
+            // 🆕 현재 진행 중인 단계를 에러로 표시
+            setReasoningSteps(prev => prev.map(step => {
+                if (step.status === 'in_progress') return { ...step, status: 'error' };
+                return step;
+            }));
+
+            // 🔧 타임아웃 정리
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+            }
+
+            // 🔧 컴포넌트가 언마운트되었으면 상태 업데이트 안 함
+            if (!isMountedRef.current) {
+                return;
+            }
+
+            // 🔧 에러 유형별 사용자 친화적 메시지
+            let userMessage: string;
+            if (e.name === 'AbortError') {
+                userMessage = "요청이 취소되었거나 시간이 초과되었습니다. 다시 시도해주세요.";
+            } else if (e.message === 'Failed to fetch' || e.message?.includes('ERR_EMPTY_RESPONSE')) {
+                userMessage = "서버 응답을 받지 못했습니다. AI 처리에 시간이 오래 걸릴 수 있으니 잠시 후 다시 시도해주세요.";
+            } else if (e.message?.includes('NetworkError') || e.message?.includes('network')) {
+                userMessage = "네트워크 연결에 문제가 있습니다. 인터넷 연결을 확인해주세요.";
+            } else {
+                userMessage = e.message || "콘텐츠 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
+            }
+
+            setError(userMessage);
+            setCurrentStep('setup');
+        } finally {
+            // 🔧 생성 상태 해제 (ref와 state 모두)
+            isGeneratingRef.current = false;
+            if (isMountedRef.current) {
+                setIsGenerating(false);
+            }
+            // 🔧 AbortController 참조 정리
+            if (abortControllerRef.current === controller) {
+                abortControllerRef.current = null;
+            }
+        }
+    }, [isGenerating, localSelectedTemplateId, sourceContent, sessionId, containerIds]);
+
+    // Step 3 -> 4: PPT 생성
+    const handleBuildPPT = async () => {
+        setCurrentStep('generating_ppt');
+        setLoadingMessage("편집된 내용을 바탕으로 PPT 파일을 생성하고 있습니다...");
+        setError(null);
+
+        try {
+            const response = await fetch(`/api/v1/agent/presentation/templates/${encodeURIComponent(localSelectedTemplateId!)}/build-from-data`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
+                },
+                body: JSON.stringify({
+                    slides: slidesContent,
+                    output_filename: (sourceContent || '프레젠테이션').slice(0, 30).replace(/[\\/:*?"<>|]/g, '_')
+                })
+            });
+
+            if (!response.ok) throw new Error("PPT 생성 실패");
+
+            const data = await response.json();
+            // generatedPptUrl은 사용되지 않으므로 저장하지 않음
+            setGeneratedPptFilename(data.file_name || "presentation.pptx");
+
+            // 미리보기 URL 로드
+            await loadPreviewUrl(data.file_name || "presentation.pptx");
+
+            setCurrentStep('preview');
+        } catch (e: any) {
+            setError(e.message || "PPT 생성 중 오류가 발생했습니다.");
+            setCurrentStep('editor');
+        }
+    };
+
+    const loadPreviewUrl = async (filename: string) => {
         try {
             const response = await fetch(
-                `/api/v1/agent/presentation/templates`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`
-                    }
-                }
+                `/api/v1/agent/presentation/preview-url/${encodeURIComponent(filename)}`,
+                { headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` } }
             );
-
             if (response.ok) {
                 const data = await response.json();
-                setAllTemplates(data.templates || []);
+                // previewUrl은 googlePreviewUrl로 통합됨
+                setGooglePreviewUrl(data.google_preview_url || data.preview_url);
+                setDirectDownloadUrl(data.direct_url);
             }
-        } catch (error) {
-            console.error('템플릿 목록 새로고침 실패:', error);
+        } catch (e) {
+            console.error("미리보기 URL 로드 실패", e);
         }
     };
 
-    // 매핑 관련 핸들러들
-    const handleMappingChange = useCallback((mappings: TextBoxMapping[]) => {
-        setTextBoxMappings(mappings);
-    }, []);
+    // ============================================
+    // UI 렌더링
+    // ============================================
 
-    const handleCloseFileViewer = useCallback(() => {
-        setIsFileViewerOpen(false);
-        setFileViewerDocument(null);
-    }, []);
-
-    const handleConfirm = () => {
-        const mappedSlides = outline.sections.map(section => ({
-            id: section.id,
-            title: section.title,
-            content: section.content,
-            key_message: section.content,
-            layoutSelection: section.layoutSelection,
-            diagram: section.diagram
-        }));
-
-        const finalOutline = {
-            title: outline.title,
-            sections: mappedSlides,
-            slides: mappedSlides,
-            // 매핑 정보 추가
-            textBoxMappings: textBoxMappings,
-            contentSegments: contentSegments,
-            // 🆕 확장된 오브젝트 매핑 포함 (백엔드가 지원할 경우 사용)
-            object_mappings: pptObjectMappings,
-            // 🆕 슬라이드 관리 정보 추가
-            slide_management: slideManagement
-        };
-        console.log('🚀 PPT 생성을 위한 최종 데이터:');
-        console.log('  textBoxMappings:', textBoxMappings);
-        console.log('  object_mappings:', pptObjectMappings);
-        console.log('  slide_management:', slideManagement);
-        console.log('  Full outline:', finalOutline);
-        onConfirm(finalOutline);
-        // ⚠️ 모달 닫기를 onConfirm 콜백 내부에서 처리하도록 변경 (AI 진행 과정 표시 후)
-        // onClose();
-    };
-
-    // 템플릿 목록이 비어있으면 자동으로 로드
-    useEffect(() => {
-        if (allTemplates.length === 0) {
-            handleTemplatesRefresh();
-        }
-    }, [allTemplates.length]);
-
-    if (!open) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-7xl max-h-[90vh] flex flex-col">
-                {/* 헤더 */}
-                <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                    <h2 className="text-lg font-semibold text-gray-900">PPT 생성 설정</h2>
-                    <div className="flex items-center space-x-4">
-                        {/* 템플릿 선택 */}
-                        <select
-                            value={selectedTemplateId || ''}
-                            onChange={(e) => onTemplateChange?.(e.target.value)}
-                            className="text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        >
-                            <option value="">템플릿 선택...</option>
-                            {/* 기본 템플릿을 먼저 표시 */}
-                            {allTemplates
-                                .sort((a, b) => {
-                                    if (a.is_default && !b.is_default) return -1;
-                                    if (!a.is_default && b.is_default) return 1;
-                                    return a.name.localeCompare(b.name);
-                                })
-                                .map((template) => (
-                                    <option key={template.id} value={template.id}>
-                                        {template.name} {template.is_default ? '(기본)' : ''}
-                                    </option>
-                                ))}
-                        </select>
-
-                        <button
-                            onClick={onClose}
-                            className="text-gray-400 hover:text-gray-600 transition-colors"
-                        >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-
-                {/* 탭 네비게이션 */}
-                <div className="px-6 py-3 border-b border-gray-200">
-                    <div className="flex space-x-1">
-                        <button
-                            onClick={() => setPrimaryTab('answer')}
-                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${primaryTab === 'answer'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
-                                }`}
-                        >
-                            AI 답변
-                        </button>
-                        <button
-                            onClick={() => setPrimaryTab('mapping')}
-                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${primaryTab === 'mapping'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
-                                }`}
-                        >
-                            매핑 편집
-                        </button>
-                        <button
-                            onClick={() => setPrimaryTab('template')}
-                            className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${primaryTab === 'template'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
-                                }`}
-                        >
-                            템플릿 관리
-                        </button>
-                    </div>
-                </div>
-
-                {/* 메인 콘텐츠 */}
-                <div className="p-6 overflow-y-auto max-h-[calc(90vh-210px)]">
-                    {loading && outline.sections.length > 0 ? (
-                        // 🤖 AI 생성 중이지만 기본 아웃라인이 있는 경우
-                        <>
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                                <div className="flex items-center gap-3">
-                                    <div className="animate-spin h-5 w-5 rounded-full border-2 border-blue-200 border-t-blue-600" />
-                                    <div>
-                                        <div className="text-sm font-medium text-blue-800">🤖 AI가 더 나은 아웃라인을 생성하고 있습니다</div>
-                                        <div className="text-xs text-blue-600 mt-1">지금도 편집하실 수 있으며, AI 생성 완료 시 선택적으로 적용됩니다</div>
-                                    </div>
-                                </div>
-                            </div>
-                            {renderMainContent()}
-                        </>
-                    ) : loading ? (
-                        // 📝 완전 로딩 상태 (기본 아웃라인도 없는 경우)
-                        <div className="flex flex-col items-center justify-center py-24 text-center text-gray-500 gap-3">
-                            <div className="animate-spin h-8 w-8 rounded-full border-4 border-gray-200 border-t-blue-600" />
-                            <div className="text-sm font-medium">아웃라인을 생성하고 있습니다...</div>
-                            <div className="text-xs text-gray-400">곧 편집 가능한 상태로 전환됩니다</div>
-                        </div>
-                    ) : (
-                        renderMainContent()
-                    )}
-                </div>
-
-                {/* 푸터 */}
-                <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between bg-gray-50">
-                    <div className="flex items-center space-x-4">
-                        <div className="text-sm text-gray-600">
-                            총 {outline.sections.length}개 섹션
-                        </div>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                        <button
-                            onClick={onClose}
-                            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
-                        >
-                            취소
-                        </button>
-                        {/* "매핑 편집" 탭에서만 "PPT 생성하기" 버튼 표시 */}
-                        {primaryTab === 'mapping' && (
-                            <button
-                                onClick={handleConfirm}
-                                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors"
+    // 1. 설정 화면 (템플릿 선택 + 주제 입력)
+    const renderSetup = () => (
+        <div className="flex flex-col h-full">
+            {/* 스크롤 가능한 컨텐츠 영역 */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div>
+                    <h3 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                        <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm">1</span>
+                        템플릿 선택
+                    </h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 p-2 border rounded-lg bg-gray-50">
+                        {allTemplates.map(tpl => (
+                            <div
+                                key={tpl.id}
+                                onClick={() => {
+                                    setLocalSelectedTemplateId(tpl.id);
+                                    onTemplateChange?.(tpl.id);
+                                }}
+                                className={`cursor-pointer border-2 rounded-lg p-2 hover:bg-white transition-all bg-white ${localSelectedTemplateId === tpl.id ? 'border-blue-500 ring-2 ring-blue-200 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}
                             >
-                                PPT 생성하기
-                            </button>
-                        )}
+                                <div className="aspect-video bg-gray-200 rounded mb-2 overflow-hidden">
+                                    {tpl.thumbnail_url ? (
+                                        <img src={tpl.thumbnail_url} alt={tpl.name} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No Image</div>
+                                    )}
+                                </div>
+                                <div className="text-sm font-medium truncate text-center">{tpl.name}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 안내 메시지 */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                        <div className="p-2 bg-blue-100 rounded-full">
+                            <Sparkles className="text-blue-600" size={20} />
+                        </div>
+                        <div>
+                            <p className="text-blue-800 font-medium mb-1">원본 요청 내용</p>
+                            <p className="text-blue-700 text-sm">
+                                "{sourceContent || '(채팅에서 요청 내용이 전달됩니다)'}"
+                            </p>
+                            <p className="text-blue-500 text-xs mt-2">
+                                AI가 위 요청과 선택한 템플릿을 기반으로 프레젠테이션 초안을 자동 생성합니다.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* 템플릿 파일뷰어 */}
-            <FileViewer
-                isOpen={isFileViewerOpen}
-                onClose={handleCloseFileViewer}
-                document={fileViewerDocument}
-            />
+            {/* 고정된 하단 액션 바 */}
+            <div className="border-t bg-gray-50 px-6 py-4 flex justify-between items-center">
+                <button
+                    onClick={onClose}
+                    className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                    취소
+                </button>
+                <button
+                    onClick={handleGenerateContent}
+                    disabled={!localSelectedTemplateId || !sourceContent?.trim() || isGenerating}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-lg transition-all"
+                >
+                    {isGenerating ? (
+                        <>
+                            <Loader2 size={20} className="animate-spin" />
+                            AI 초안 생성 중...
+                        </>
+                    ) : (
+                        <>
+                            <Sparkles size={20} />
+                            다음: AI 초안 생성
+                            <ArrowRight size={18} />
+                        </>
+                    )}
+                </button>
+            </div>
         </div>
     );
 
-    // 메인 콘텐츠 렌더링 함수
-    function renderMainContent() {
-        switch (primaryTab) {
-            case 'answer':
-                return <AnswerTab sourceContent={sourceContent} />;
+    // 2. 에디터 화면 (슬라이드별 편집)
+    const renderEditor = () => {
+        const currentSlide = slidesContent[currentSlideIndex];
+        const currentThumbnail = slideThumbnails[currentSlideIndex];
 
-            case 'mapping':
-                return (
-                    <div className="h-full">
-                        {!simpleMetadata && selectedTemplateId && (
-                            <div className="flex items-center justify-center p-8">
-                                <div className="text-center">
-                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
-                                    <p className="text-gray-600">템플릿 메타데이터 로딩 중...</p>
+        return (
+            <div className="flex h-full">
+                {/* 좌측: 슬라이드 목록 */}
+                <div className="w-64 border-r bg-gray-50 flex flex-col">
+                    <div className="p-4 border-b font-semibold text-gray-700">슬라이드 목록</div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                        {slidesContent.map((slide, idx) => (
+                            <div
+                                key={idx}
+                                onClick={() => setCurrentSlideIndex(idx)}
+                                className={`p-2 rounded cursor-pointer flex items-center gap-3 transition-colors ${currentSlideIndex === idx ? 'bg-white shadow ring-1 ring-blue-500' : 'hover:bg-gray-200'}`}
+                            >
+                                <div className="w-6 h-6 flex items-center justify-center bg-gray-300 rounded text-xs font-bold text-gray-600">
+                                    {slide.index}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-xs font-medium text-gray-500 uppercase">{slide.role}</div>
+                                    <div className="text-sm truncate text-gray-800">
+                                        {slide.elements.find(e => e.role?.includes('title'))?.text || `Slide ${slide.index}`}
+                                    </div>
                                 </div>
                             </div>
-                        )}
+                        ))}
+                    </div>
+                </div>
 
-                        {!selectedTemplateId && (
-                            <div className="flex items-center justify-center p-8">
-                                <p className="text-gray-600">템플릿을 먼저 선택해주세요.</p>
+                {/* 우측: 편집 영역 */}
+                <div className="flex-1 flex flex-col h-full overflow-hidden">
+                    {/* 상단: 썸네일 미리보기 (참고용) */}
+                    <div className="h-48 bg-gray-100 border-b flex items-center justify-center p-4 relative">
+                        {currentThumbnail ? (
+                            <img src={currentThumbnail} alt={`Slide ${currentSlide?.index}`} className="h-full object-contain shadow-lg" />
+                        ) : (
+                            <div className="text-gray-400">미리보기 없음</div>
+                        )}
+                        <div className="absolute bottom-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
+                            템플릿 레이아웃 참고용
+                        </div>
+                    </div>
+
+                    {/* 하단: 폼 입력 */}
+                    <div className="flex-1 overflow-y-auto p-6">
+                        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                            <Edit3 size={18} />
+                            슬라이드 {currentSlide?.index} 내용 편집
+                            <span className="text-sm font-normal text-gray-500">
+                                ({currentSlide?.role || 'content'})
+                            </span>
+                        </h3>
+
+                        {(!currentSlide?.elements || currentSlide.elements.length === 0) ? (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                                <p className="text-yellow-700 mb-2">
+                                    이 슬라이드에는 편집 가능한 텍스트 요소가 감지되지 않았습니다.
+                                </p>
+                                <p className="text-sm text-yellow-600">
+                                    템플릿의 이미지나 도형 요소는 자동으로 유지됩니다.
+                                    다른 슬라이드에서 콘텐츠를 편집하세요.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                {currentSlide?.elements.map((element, elIdx) => (
+                                    <div key={element.id} className="bg-white p-4 rounded-lg border shadow-sm hover:shadow-md transition-shadow">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="text-sm font-medium text-gray-600 flex items-center gap-2">
+                                                <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded text-xs">{element.id}</span>
+                                                {element.role || 'Text Element'}
+                                            </label>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => {
+                                                        const newSlides = [...slidesContent];
+                                                        newSlides[currentSlideIndex].elements[elIdx].text = ""; // Clear text effectively removes it
+                                                        setSlidesContent(newSlides);
+                                                    }}
+                                                    className="text-gray-400 hover:text-red-500 p-1"
+                                                    title="내용 지우기"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <textarea
+                                            className="w-full p-3 border rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[80px]"
+                                            value={element.text}
+                                            onChange={(e) => {
+                                                const newSlides = [...slidesContent];
+                                                newSlides[currentSlideIndex].elements[elIdx].text = e.target.value;
+                                                setSlidesContent(newSlides);
+                                            }}
+                                            placeholder="(내용 없음)"
+                                        />
+                                        {element.original_text && (
+                                            <div className="mt-1 text-xs text-gray-400 truncate">
+                                                원본: {element.original_text}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
                             </div>
                         )}
-
-                        {simpleMetadata && (
-                            <PPTMappingWithSlideManager
-                                templateData={simpleMetadata}
-                                contentSegments={contentSegments}
-                                mappings={textBoxMappings}
-                                onMappingChange={handleMappingChange}
-                                onSlideManagementChange={setSlideManagement}
-                                className="h-full"
-                            />
-                        )}
                     </div>
-                ); case 'template':
-                return (
-                    <TemplateManager
-                        templates={allTemplates}
-                        selectedTemplateId={selectedTemplateId || null}
-                        onTemplateChange={onTemplateChange || (() => { })}
-                        onTemplatesRefresh={handleTemplatesRefresh}
-                    />
-                );
 
-            default:
-                return null;
-        }
-    }
+                    {/* 하단 액션바 - 고정 */}
+                    <div className="p-4 border-t bg-gray-50 flex justify-between items-center">
+                        <button
+                            onClick={() => setCurrentStep('setup')}
+                            className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg flex items-center gap-2 transition-colors"
+                        >
+                            <ArrowLeft size={16} /> 이전: 템플릿 선택
+                        </button>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={handleGenerateContent}
+                                className="px-4 py-2 text-blue-600 border border-blue-300 bg-blue-50 hover:bg-blue-100 rounded-lg flex items-center gap-2 transition-colors"
+                            >
+                                <RefreshCw size={16} /> AI 다시 생성
+                            </button>
+                            <button
+                                onClick={handleBuildPPT}
+                                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-lg transition-all"
+                            >
+                                <CheckCircle size={18} /> 다음: PPT 생성
+                                <ArrowRight size={16} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // 3. 미리보기 화면
+    const renderPreview = () => (
+        <div className="flex flex-col h-full">
+            {/* 미리보기 영역 */}
+            <div className="flex-1 bg-gray-100 relative overflow-hidden">
+                {googlePreviewUrl ? (
+                    <iframe
+                        src={googlePreviewUrl}
+                        className="w-full h-full border-0"
+                        title="PPT Preview"
+                    />
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-3">
+                        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                        <span>미리보기를 불러오는 중...</span>
+                    </div>
+                )}
+            </div>
+
+            {/* 고정된 하단 액션 바 */}
+            <div className="p-4 bg-gray-50 border-t flex justify-between items-center">
+                <button
+                    onClick={() => setCurrentStep('editor')}
+                    className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg flex items-center gap-2 transition-colors"
+                >
+                    <ArrowLeft size={16} /> 이전: 내용 편집
+                </button>
+                <div className="flex gap-3">
+                    {directDownloadUrl && (
+                        <a
+                            href={directDownloadUrl}
+                            download={generatedPptFilename || "presentation.pptx"}
+                            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 shadow-lg transition-all"
+                        >
+                            <Download size={18} /> PPT 다운로드
+                        </a>
+                    )}
+                    <button
+                        onClick={onClose}
+                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 shadow-lg transition-all"
+                    >
+                        <Check size={18} /> 완료
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+
+    // 로딩 화면
+    const renderLoading = () => (
+        <div className="flex flex-col items-center justify-center h-full space-y-6 p-8">
+            {/* 메인 로딩 표시 */}
+            <div className="flex flex-col items-center space-y-3">
+                <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+                <div className="text-lg font-medium text-gray-700">{loadingMessage}</div>
+            </div>
+
+            {/* AI 사고 과정 표시 */}
+            {reasoningSteps.length > 0 && (
+                <div className="w-full max-w-md bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-200">
+                        <span className="text-lg">🧠</span>
+                        <span className="text-sm font-semibold text-gray-700">AI 사고 과정</span>
+                    </div>
+                    <div className="space-y-2">
+                        {reasoningSteps.map((step) => (
+                            <div
+                                key={step.id}
+                                className={`flex items-start gap-2 p-2 rounded-lg transition-all ${step.status === 'in_progress'
+                                    ? 'bg-blue-50 border border-blue-200'
+                                    : step.status === 'completed'
+                                        ? 'bg-green-50 border border-green-200'
+                                        : step.status === 'error'
+                                            ? 'bg-red-50 border border-red-200'
+                                            : 'bg-gray-100 border border-gray-200'
+                                    }`}
+                            >
+                                <div className="flex-shrink-0 mt-0.5">
+                                    {step.status === 'in_progress' && (
+                                        <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                                    )}
+                                    {step.status === 'completed' && (
+                                        <Check className="w-4 h-4 text-green-600" />
+                                    )}
+                                    {step.status === 'error' && (
+                                        <X className="w-4 h-4 text-red-600" />
+                                    )}
+                                    {step.status === 'pending' && (
+                                        <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
+                                    )}
+                                </div>
+                                <span className={`text-sm ${step.status === 'in_progress'
+                                    ? 'text-blue-700 font-medium'
+                                    : step.status === 'completed'
+                                        ? 'text-green-700'
+                                        : step.status === 'error'
+                                            ? 'text-red-700'
+                                            : 'text-gray-500'
+                                    }`}>
+                                    {step.message}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {reasoningSteps.length === 0 && (
+                <div className="text-sm text-gray-500">잠시만 기다려주세요...</div>
+            )}
+        </div>
+    );
+
+    // 현재 위자드 단계 번호 계산
+    const getCurrentWizardStep = (): number => {
+        if (currentStep === 'setup' || currentStep === 'generating_content') return 1;
+        if (currentStep === 'editor') return 2;
+        if (currentStep === 'preview' || currentStep === 'generating_ppt') return 3;
+        return 1;
+    };
+
+    // 위자드 진행 표시기
+    const renderWizardProgress = () => {
+        const currentWizardStep = getCurrentWizardStep();
+
+        return (
+            <div className="flex items-center gap-2">
+                {WIZARD_STEPS.map((step, idx) => (
+                    <React.Fragment key={step.id}>
+                        <div className="flex items-center gap-2">
+                            <div
+                                className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold transition-all
+                                    ${currentWizardStep > step.number
+                                        ? 'bg-green-500 text-white'
+                                        : currentWizardStep === step.number
+                                            ? 'bg-blue-600 text-white ring-2 ring-blue-300'
+                                            : 'bg-gray-200 text-gray-500'
+                                    }`}
+                            >
+                                {currentWizardStep > step.number ? <Check size={14} /> : step.number}
+                            </div>
+                            <span className={`text-sm hidden sm:inline ${currentWizardStep === step.number ? 'font-semibold text-blue-600' : 'text-gray-500'}`}>
+                                {step.label}
+                            </span>
+                        </div>
+                        {idx < WIZARD_STEPS.length - 1 && (
+                            <div className={`w-8 h-0.5 ${currentWizardStep > step.number ? 'bg-green-500' : 'bg-gray-200'}`} />
+                        )}
+                    </React.Fragment>
+                ))}
+            </div>
+        );
+    };
+
+    if (!open) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl h-[85vh] flex flex-col overflow-hidden">
+                {/* 헤더: 좌측 타이틀 + 위자드 진행 표시 */}
+                <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50">
+                    <div className="flex items-center gap-4">
+                        <h2 className="text-lg font-bold flex items-center gap-2 text-gray-800">
+                            <Sparkles className="text-blue-500" size={22} />
+                            AI 프레젠테이션
+                        </h2>
+                        <div className="h-6 w-px bg-gray-300" />
+                        {renderWizardProgress()}
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                        title="닫기"
+                    >
+                        <X size={20} className="text-gray-500" />
+                    </button>
+                </div>
+
+                {/* 에러 메시지 */}
+                {error && (
+                    <div className="mx-6 mt-4 bg-red-50 text-red-600 p-3 rounded-lg border border-red-200 flex justify-between items-center">
+                        <span>{error}</span>
+                        <button onClick={() => setError(null)} className="hover:bg-red-100 p-1 rounded">
+                            <X size={16} />
+                        </button>
+                    </div>
+                )}
+
+                {/* 메인 컨텐츠 - 스크롤 가능 영역 */}
+                <div className="flex-1 overflow-hidden flex flex-col">
+                    {(currentStep === 'generating_content' || currentStep === 'generating_ppt') ? (
+                        <div className="flex-1">{renderLoading()}</div>
+                    ) : currentStep === 'setup' ? (
+                        renderSetup()
+                    ) : currentStep === 'editor' ? (
+                        renderEditor()
+                    ) : currentStep === 'preview' ? (
+                        renderPreview()
+                    ) : null}
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export default PresentationOutlineModal;

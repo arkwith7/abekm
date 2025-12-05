@@ -103,6 +103,7 @@ export const UserLayout: React.FC = () => {
     if (location.pathname.startsWith('/user/profile')) return 'profile';
     if (location.pathname.startsWith('/user/permission-requests')) return 'permission-requests';
     if (location.pathname.startsWith('/user/presentation/html')) return 'presentation-html';
+    if (location.pathname.startsWith('/user/settings')) return 'settings';
     return 'dashboard';
   }, [location.pathname]);
 
@@ -296,6 +297,7 @@ export const UserLayout: React.FC = () => {
                   if (activeMenu === 'presentation-html') return '프레젠테이션 뷰어';
                   if (activeMenu === 'profile') return '사용자정보';
                   if (activeMenu === 'permission-requests') return '권한신청현황';
+                  if (activeMenu === 'settings') return '설정';
                   return '대시보드';
                 })()}
               </h2>
@@ -385,7 +387,10 @@ export const UserLayout: React.FC = () => {
                     </button>
 
                     <button
-                      onClick={() => setShowUserMenu(false)}
+                      onClick={() => {
+                        setShowUserMenu(false);
+                        navigate('/user/settings');
+                      }}
                       className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
                     >
                       <Settings className="w-4 h-4" />

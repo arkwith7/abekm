@@ -66,6 +66,12 @@ class OutlineGenerationTool(BaseTool):
             Dict with deck specification and metadata
         """
         logger.info(f"🚀 [OutlineTool] 시작: topic='{topic[:50]}', max_slides={max_slides}")
+        
+        # 🆕 topic 정제: 요청 표현 제거 및 명사형 변환
+        refined_topic = await self._refine_topic(topic)
+        if refined_topic != topic:
+            logger.info(f"📝 제목 정제: '{topic[:50]}' → '{refined_topic[:50]}'")
+            topic = refined_topic
 
         try:
             # Pre-sanitize markdown
@@ -117,6 +123,55 @@ class OutlineGenerationTool(BaseTool):
                 "deck": None,
             }
 
+    async def _refine_topic(self, topic: str) -> str:
+        """요청 표현을 제거하고 명사형 제목으로 정제."""
+        # 간단한 패턴 매칭으로 처리 가능한 경우
+        simple_patterns = [
+            r'(.+?)\s*PPT\s*작성.*$',
+            r'(.+?)\s*프레젠테이션\s*[작만].*$',
+            r'(.+?)\s*발표\s*자료.*$',
+            r'(.+?)\s*슬라이드.*$',
+            r'(.+?)\s*해[주줘].*$',
+            r'(.+?)\s*부탁.*$',
+        ]
+        
+        for pattern in simple_patterns:
+            match = re.search(pattern, topic, re.IGNORECASE)
+            if match:
+                refined = match.group(1).strip()
+                if refined:
+                    return refined
+        
+        # 복잡한 경우 LLM 사용
+        if any(word in topic.lower() for word in ['작성', '해줘', '부탁', '만들', '생성']):
+            try:
+                prompt = (
+                    f"다음 요청문에서 핵심 주제만 추출하여 명사형 제목으로 변환하세요. "
+                    f"'PPT 작성', '해줘요' 같은 요청 표현은 모두 제거하고, 순수한 주제만 반환하세요.\n\n"
+                    f"요청문: \"{topic}\"\n\n"
+                    f"예시:\n"
+                    f"- 입력: '자동차산업 특허분석 방법론 PPT작성 해줘요' → 출력: '자동차산업 특허분석 방법론'\n"
+                    f"- 입력: 'AI 기술 트렌드 발표 자료 만들어줘' → 출력: 'AI 기술 트렌드'\n"
+                    f"- 입력: '2024 마케팅 전략' → 출력: '2024 마케팅 전략' (이미 명사형)\n\n"
+                    f"명사형 제목만 출력하세요 (설명 없이):"
+                )
+                
+                response_data = await ai_service.chat_completion(
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0
+                )
+                refined = response_data.get("response", "").strip()
+                
+                # 결과 검증 (너무 길거나 짧으면 원본 반환)
+                if refined and 3 <= len(refined) <= 100:
+                    return refined
+                    
+            except Exception as e:
+                logger.warning(f"제목 정제 LLM 호출 실패: {e}")
+        
+        # 정제 실패 시 원본 반환
+        return topic
+    
     async def _generate_outline_with_llm(self, topic: str, context: str, max_slides: int) -> Optional[str]:
         """Generate a structured outline using LLM when parsing fails."""
         prompt = (
@@ -227,7 +282,7 @@ class OutlineGenerationTool(BaseTool):
         km_regex = re.compile(r'^🔑\s*(?:\*\*)?([^\*:]+)(?:\*\*)?:?\s*(.*)$')
         detail_regex = re.compile(r'^📝\s*(?:\*\*)?([^\*:]+)(?:\*\*)?:?\s*(.*)$')
         overview_regex = re.compile(r'^###\s*📋\s*발표\s*개요')
-        toc_regex = re.compile(r'^###\s*📑\s*발표\s*목차')
+        toc_regex = re.compile(r'^###\s*(?:📑\s*)?발표\s*목차')
         summary_regex = re.compile(r'^###\s*감사합니다\s*$')
         layout_regex = re.compile(r'\[Layout:\s*([\w-]+)\]', re.IGNORECASE)
 
@@ -378,9 +433,17 @@ class OutlineGenerationTool(BaseTool):
                     if detail_bullets:
                         logger.info(f"🔄 폴백: {len(detail_bullets)}줄을 불릿으로 변환")
 
-                # Add section if title exists
+                # Add section if title exists (skip TOC-like titles since we generate TOC separately)
                 if slide_title:
                     final_title = normalized_title if normalized_title != slide_title else slide_title
+                    
+                    # Skip if this looks like a TOC slide (we generate it separately in _build_deck_spec)
+                    toc_title_pattern = re.compile(r'^(?:📑\s*)?발표\s*목차$|^목차$|^Table\s*of\s*Contents?$', re.IGNORECASE)
+                    if toc_title_pattern.match(final_title.strip()):
+                        logger.info(f"⏭️ 목차 슬라이드 건너뜀 (별도 생성): '{final_title}'")
+                        i = j
+                        continue
+                    
                     sections.append({
                         'title': final_title,
                         'key_message': key_message or f"{final_title}의 핵심 내용입니다.",

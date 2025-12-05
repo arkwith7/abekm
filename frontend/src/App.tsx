@@ -43,6 +43,7 @@ import HTMLPresentationViewer from './pages/user/presentation/HTMLPresentationVi
 import PresentationAgentChatPage from './pages/user/PresentationAgentChatPage';
 import SearchPage from './pages/user/SearchPage';
 import UserProfilePage from './pages/user/UserProfilePage';
+import UserSettingsPage from './pages/user/UserSettingsPage';
 
 // 네비게이션 설정 컴포넌트
 const NavigationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -116,6 +117,7 @@ function App() {
                       <Route path="presentation/html" element={<HTMLPresentationViewer />} />
                       <Route path="profile" element={<UserProfilePage />} />
                       <Route path="permission-requests" element={<PermissionRequestsPage />} />
+                      <Route path="settings" element={<UserSettingsPage />} />
                     </Route>
                   </Route>
 

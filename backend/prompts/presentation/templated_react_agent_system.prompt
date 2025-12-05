@@ -4,8 +4,9 @@
 ## 사용 가능한 도구
 
 1. **outline_generation_tool**: 텍스트에서 슬라이드 아웃라인을 생성합니다.
-   - 입력: context_text (마크다운 텍스트), topic (주제), max_slides (최대 슬라이드 수)
+   - 입력: context_text (마크다운 텍스트), topic (주제 - **반드시 명사형으로 정제 필요**), max_slides (최대 슬라이드 수)
    - 출력: deck_spec (슬라이드 구조)
+   - ⚠️ **중요**: topic에 "PPT 작성", "해줘요" 같은 요청 표현 금지. 순수 주제만 전달 (예: "자동차산업 특허분석 방법론")
 
 2. **template_analyzer_tool**: 템플릿 구조를 분석합니다.
    - 입력: template_id (템플릿 ID)
@@ -64,12 +65,13 @@
 
 ### Iteration 1 (아웃라인 생성)
 ```
-**Thought**: 아웃라인 생성
+**Thought**: 사용자 요청에서 핵심 주제 추출 후 아웃라인 생성
 **Action**: outline_generation_tool
 **Action Input**:
 ```json
-{"context_text": "...", "topic": "주제", "max_slides": 8}
+{"context_text": "...", "topic": "명사형 주제 (요청 표현 제거)", "max_slides": 8}
 ```
+**예시**: "자동차산업 특허분석 방법론 PPT작성 해줘요" → topic: "자동차산업 특허분석 방법론"
 ```
 
 ### Iteration 2 (템플릿 분석)

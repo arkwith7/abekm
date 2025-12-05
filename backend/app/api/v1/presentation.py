@@ -22,6 +22,7 @@ from app.services.presentation.templated_ppt_generator_service import templated_
 from app.services.presentation.ppt_template_manager import template_manager
 from app.services.presentation.template_migration_service import template_migration_service
 from app.services.presentation.template_debugger import template_debugger
+from app.services.presentation.template_content_generator_service import template_content_generator
 from app.services.file_manager import file_manager
 from app.services.office_generator_client import office_generator_client
 from app.models.presentation import PresentationRequest, PresentationResponse, PresentationMetadata, StructuredOutline
@@ -449,35 +450,8 @@ async def generate_pptx_from_outline(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get(
-    "/agent/presentation/download/{filename}",
-    summary="Download PPTX file",
-    description="Download generated PPTX presentation"
-)
-async def download_pptx(
-    filename: str,
-    current_user: User = Depends(get_current_user)
-):
-    """Download PPTX file"""
-    # 일부 생성 파이프라인은 기존 uploads 디렉터리를 사용하므로 다중 경로 탐색
-    safe_filename = Path(filename).name
-    search_roots = [file_manager.pptx_dir, settings.resolved_upload_dir]
-    pptx_path = None
-
-    for root in search_roots:
-        candidate = root / safe_filename
-        if candidate.is_file():
-            pptx_path = candidate
-            break
-
-    if not pptx_path:
-        raise HTTPException(status_code=404, detail="PPTX file not found")
-    
-    return FileResponse(
-        path=pptx_path,
-        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        filename=safe_filename
-    )
+# NOTE: 다운로드 엔드포인트는 download_presentation_file() 함수로 통합됨 (아래 참조)
+# 쿼리 파라미터 token 지원을 위해 중복 엔드포인트 제거
 
 
 # ===== Schemas (presentation only) =====
@@ -534,31 +508,12 @@ class PresentationBuildRequest(BaseModel):
 
 # ===== Templates =====
 @router.get("/agent/presentation/templates", summary="PPT 템플릿 목록")
-async def list_presentation_templates():
-    all_templates = template_manager.list_templates()
-    enhanced_templates = []
-    for template in all_templates:
-        enhanced_template = template.copy()
-        tid = template.get('id') or ""
-        details = template_manager.get_template_details(tid) if tid else None
-        if details and details.get('dynamic_template_id'):
-            enhanced_template['dynamic_template_id'] = details.get('dynamic_template_id')
-            enhanced_template['is_content_cleaned'] = details.get('is_content_cleaned', False)
-            enhanced_template['type'] = 'user-uploaded' if template.get('is_user_uploaded', False) else 'built-in'
-        else:
-            enhanced_template['type'] = 'user-uploaded' if template.get('is_user_uploaded', False) else 'built-in'
-        enhanced_template['is_default'] = template_manager._registry.get(tid, {}).get('is_default', False)  # noqa: SLF001
-        enhanced_templates.append(enhanced_template)
-    default_template_id = template_manager.get_default_template_id()
-    built_in = [t for t in enhanced_templates if t.get('type') == 'built-in']
-    user_uploaded = [t for t in enhanced_templates if t.get('type') == 'user-uploaded']
-    return {
-        "success": True,
-        "templates": enhanced_templates,
-        "built_in": built_in,
-        "user_uploaded": user_uploaded,
-        "default_template_id": default_template_id
-    }
+async def list_presentation_templates(current_user: User = Depends(get_current_user)):
+    """사용자별 템플릿 목록 조회 (공용 + 개인)"""
+    from app.services.presentation.user_template_manager import user_template_manager
+    
+    user_id = str(current_user.id)
+    return user_template_manager.list_templates_for_user(user_id)
 
 @router.get("/agent/presentation/templates/_debug/state", summary="[DEBUG] 템플릿 레지스트리 상태")
 async def debug_presentation_templates_state():
@@ -612,16 +567,32 @@ async def get_presentation_template_layouts(template_id: str):
 
 
 @router.get("/agent/presentation/templates/{template_id}/thumbnails", summary="템플릿 썸네일 목록")
-async def get_template_thumbnails(template_id: str):
+async def get_template_thumbnails(
+    template_id: str,
+    current_user: User = Depends(get_current_user)
+):
     try:
-        logger.info(f"템플릿 썸네일 목록 요청: {template_id}")
-        template_details = template_manager.get_template_details(template_id)
+        from app.services.presentation.user_template_manager import user_template_manager
+        import urllib.parse
+        
+        decoded_template_id = urllib.parse.unquote(template_id)
+        logger.info(f"템플릿 썸네일 목록 요청: {decoded_template_id} (user={current_user.id})")
+        
+        # 사용자 템플릿에서 먼저 찾기
+        template_details = user_template_manager.get_template_details(str(current_user.id), decoded_template_id)
+        
+        # 없으면 기존 template_manager에서 찾기 (fallback)
+        if not template_details:
+            template_details = template_manager.get_template_details(decoded_template_id)
+        
         if not template_details:
             raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다")
+        
         thumbnails = template_details.get('thumbnails', [])
+        logger.info(f"✅ 썸네일 수: {len(thumbnails)}")
         return {
             "success": True,
-            "template_id": template_id,
+            "template_id": decoded_template_id,
             "template_name": template_details.get('name', ''),
             "thumbnails": thumbnails
         }
@@ -653,29 +624,42 @@ async def get_slide_thumbnail(template_id: str, slide_index: int):
 @router.post("/agent/presentation/templates/upload", summary="PPT 템플릿 업로드")
 async def upload_presentation_template(
     file: UploadFile = File(...),
-    style: str = Form('business'),
     name: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user)
 ):
+    """사용자별 템플릿 업로드"""
+    from app.services.presentation.user_template_manager import user_template_manager
+    
     if not file.filename or not file.filename.lower().endswith('.pptx'):
         raise HTTPException(status_code=400, detail="pptx 파일만 지원합니다")
-    upload_dir = settings.resolved_upload_dir / 'templates'
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = file.filename.replace('..','_').replace('/','_')
-    dest = upload_dir / safe_name
+    
+    user_id = str(current_user.id)
     data = await file.read()
-    dest.write_bytes(data)
-    entry = template_manager.register_uploaded_template(dest, style=style, name=name)
+    
+    entry = user_template_manager.upload_template(
+        user_id=user_id,
+        file_content=data,
+        filename=file.filename,
+        name=name
+    )
     return {"success": True, "template": entry}
 
 
 @router.delete("/agent/presentation/templates/{template_id}", summary="PPT 템플릿 삭제")
-async def delete_presentation_template(template_id: str):
+async def delete_presentation_template(
+    template_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """사용자 템플릿 삭제 (공용 템플릿은 삭제 불가)"""
+    from app.services.presentation.user_template_manager import user_template_manager
+    
     try:
         decoded_template_id = urllib.parse.unquote(template_id)
-        ok = template_manager.remove_template(decoded_template_id)
+        user_id = str(current_user.id)
+        
+        ok = user_template_manager.delete_template(user_id, decoded_template_id)
         if not ok:
-            raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다")
+            raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없거나 삭제 권한이 없습니다")
         return {"success": True}
     except HTTPException:
         raise
@@ -689,9 +673,14 @@ async def set_default_presentation_template(
     template_id: str,
     current_user: User = Depends(get_current_user)
 ):
+    """사용자별 기본 템플릿 설정"""
+    from app.services.presentation.user_template_manager import user_template_manager
+    
     try:
         decoded_template_id = urllib.parse.unquote(template_id)
-        ok = template_manager.set_default_template(decoded_template_id)
+        user_id = str(current_user.id)
+        
+        ok = user_template_manager.set_default_template(user_id, decoded_template_id)
         if not ok:
             raise HTTPException(status_code=404, detail="템플릿을 찾을 수 없습니다")
         return {"success": True}
@@ -793,18 +782,31 @@ async def get_template_simple_metadata(
     }
     """
     try:
+        from app.services.presentation.user_template_manager import user_template_manager
+        
         logger.info(f"🔍 [simple-metadata] 요청: raw_id='{template_id}'")
         decoded_id = urllib.parse.unquote(template_id)
         logger.info(f"🔍 [simple-metadata] 디코딩된 ID: '{decoded_id}'")
+        
+        user_id = str(current_user.id)
 
-        # 템플릿 확인
-        template_details = template_manager.get_template_details(decoded_id)
+        # 🔄 사용자 템플릿에서 먼저 찾기
+        template_details = user_template_manager.get_template_details(user_id, decoded_id)
+        full = None
+        if template_details:
+            logger.info(f"✅ [simple-metadata] 사용자 템플릿 발견: user={user_id}")
+            full = user_template_manager.get_template_metadata(user_id, decoded_id)
+        else:
+            # 기존 template_manager에서 찾기 (fallback)
+            template_details = template_manager.get_template_details(decoded_id)
+            if template_details:
+                full = template_manager.get_template_metadata(decoded_id)
+        
         if not template_details:
             logger.error(f"❌ [simple-metadata] 템플릿을 찾을 수 없음: '{decoded_id}'")
             raise HTTPException(status_code=404, detail=f"템플릿을 찾을 수 없습니다: {decoded_id}")
 
-        # 원본(추출기) 메타데이터 로드
-        full = template_manager.get_template_metadata(decoded_id)
+        # 메타데이터 확인 (이미 위에서 로드됨)
         if not full:
             logger.warning(f"⚠️ [simple-metadata] 메타데이터 파일 없음 → 빈 기본값 반환: '{decoded_id}'")
             simple = {
@@ -907,9 +909,23 @@ async def get_template_metadata(
     current_user: User = Depends(get_current_user)
 ):
     try:
+        from app.services.presentation.user_template_manager import user_template_manager
+        
         decoded_id = urllib.parse.unquote(template_id)
-        data = template_manager.get_template_metadata(decoded_id)
+        user_id = str(current_user.id)
+        
+        # 🔄 사용자 템플릿에서 먼저 찾기
+        data = user_template_manager.get_template_metadata(user_id, decoded_id)
+        if not data:
+            # 기존 template_manager에서 찾기 (fallback)
+            data = template_manager.get_template_metadata(decoded_id)
+        
+        if not data:
+            raise HTTPException(status_code=404, detail=f"템플릿 메타데이터를 찾을 수 없습니다: {decoded_id}")
+        
         return data
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1432,7 +1448,8 @@ async def build_presentation_with_template_react(
                         context_text=structured_context,
                         template_id=req.template_id,
                         max_slides=req.max_slides,
-                        presentation_type=req.presentation_type
+                        presentation_type=req.presentation_type,
+                        user_id=current_user.id  # 🆕 user_id 전달하여 user-specific 템플릿 접근
                     )
                 )
                 
@@ -1601,7 +1618,8 @@ async def build_presentation_with_template_plan_execute(
                     topic=topic,
                     context_text=structured_context,
                     template_id=req.template_id,
-                    max_slides=req.max_slides
+                    max_slides=req.max_slides,
+                    user_id=current_user.id  # 🆕 user_id 전달하여 user-specific 템플릿 접근
                 )
                 
                 # 결과 확인
@@ -1810,6 +1828,123 @@ async def build_presentation_from_outline(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# --- New Models for Template-First Workflow ---
+class GenerateContentRequest(BaseModel):
+    user_query: str
+    context: Optional[str] = ""
+    session_id: Optional[str] = None  # 채팅 세션 ID (컨텍스트 수집용)
+    container_ids: Optional[List[str]] = None  # 문서 컨테이너 IDs (RAG 검색용)
+    use_rag: bool = True  # RAG 검색 활성화 여부
+
+class SlideElementData(BaseModel):
+    id: str
+    text: Optional[str]
+
+class SlideContentData(BaseModel):
+    index: int
+    role: Optional[str] = None
+    elements: List[SlideElementData]
+    note: Optional[str] = None
+
+class BuildFromDataRequest(BaseModel):
+    slides: List[SlideContentData]
+    output_filename: Optional[str] = "presentation"
+
+@router.post("/agent/presentation/templates/{template_id}/generate-content")
+async def generate_template_content(
+    template_id: str,
+    request: GenerateContentRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    템플릿 구조에 맞는 콘텐츠 생성 (Unified Agent 아키텍처)
+    
+    Agent가 다음 도구들을 순차 실행:
+    1. template_analyzer_tool: 템플릿 구조 분석
+    2. outline_generation_tool: RAG 기반 콘텐츠 생성
+    3. slide_type_matcher_tool: AI-템플릿 슬라이드 매칭
+    4. content_mapping_tool: 콘텐츠-텍스트박스 매핑
+    """
+    try:
+        user_id = str(current_user.emp_no) if hasattr(current_user, 'emp_no') else str(current_user.id)
+        
+        logger.info(f"📊 PPT 콘텐츠 생성 요청 (Agent): template={template_id}, user={user_id}, use_rag={request.use_rag}")
+        
+        # Agent 아키텍처로 전환: unified_presentation_agent 사용
+        result = await unified_presentation_agent.generate_content_for_template(
+            template_id=template_id,
+            user_query=request.user_query,
+            context=request.context or "",
+            user_id=user_id,
+            session_id=request.session_id,
+            container_ids=request.container_ids,
+            use_rag=request.use_rag
+        )
+        
+        if not result.get("success", False):
+            error_msg = result.get("error", "콘텐츠 생성 실패")
+            logger.error(f"Content generation failed: {error_msg}")
+            raise HTTPException(status_code=500, detail=error_msg)
+        
+        return JSONResponse(result)
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error(f"Content generation failed (ValueError): {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Content generation failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"콘텐츠 생성 실패: {str(e)}")
+
+@router.post("/agent/presentation/templates/{template_id}/build-from-data")
+async def build_ppt_from_data(
+    template_id: str,
+    request: BuildFromDataRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    사용자 편집 데이터로 PPT 생성 (Unified Agent 아키텍처)
+    
+    Agent가 templated_pptx_builder_tool을 사용하여 PPT 생성.
+    템플릿 스타일을 완전히 보존하면서 콘텐츠만 교체.
+    """
+    try:
+        # Convert Pydantic models to dict
+        slides_data = [s.dict() for s in request.slides]
+        
+        # user_id passed to help find user-specific templates
+        user_id = str(current_user.emp_no) if hasattr(current_user, 'emp_no') else str(current_user.id)
+        
+        logger.info(f"🏗️ PPT 빌드 요청 (Agent): template={template_id}, user={user_id}, slides={len(slides_data)}")
+        
+        # Agent 아키텍처로 전환: unified_presentation_agent 사용
+        result = await unified_presentation_agent.build_ppt_from_ui_data(
+            template_id=template_id,
+            slides_data=slides_data,
+            output_filename=request.output_filename,
+            user_id=user_id,
+        )
+        
+        if not result.get("success", False):
+            error_msg = result.get("error", "PPT 빌드 실패")
+            logger.error(f"PPT build failed: {error_msg}")
+            raise HTTPException(status_code=500, detail=error_msg)
+        
+        file_path = result.get("file_path")
+        file_name = result.get("file_name")
+        
+        # Generate download URL
+        download_url = f"/api/v1/agent/presentation/download/{file_name}"
+        
+        return {"file_url": download_url, "file_path": file_path, "file_name": file_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"PPT build failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+# ----------------------------------------------
+
+
 # ===== Generated file download =====
 @router.get("/agent/presentation/download/{filename}")
 async def download_presentation_file(
@@ -1870,10 +2005,19 @@ async def download_presentation_file(
         
         from app.core.config import settings
         upload_dir = settings.resolved_upload_dir
-        final_path = upload_dir / safe_name
+        
+        # 여러 경로에서 파일 검색 (기존 download_pptx 함수 로직 통합)
+        search_roots = [upload_dir, file_manager.pptx_dir]
+        final_path = None
+        for root in search_roots:
+            candidate = root / safe_name
+            if candidate.is_file():
+                final_path = candidate
+                break
+        
         logger.info(f"📥 파일 경로: '{final_path}'")
         
-        if not os.path.exists(final_path):
+        if not final_path or not os.path.exists(final_path):
             logger.error(f"📥 파일을 찾을 수 없음: '{final_path}'")
             logger.error(f"📥 업로드 디렉토리: '{upload_dir}'")
             # 디렉토리 내 파일 목록 확인
@@ -1901,6 +2045,122 @@ async def download_presentation_file(
         raise
     except Exception:
         raise HTTPException(status_code=500, detail="파일 다운로드 중 오류가 발생했습니다")
+
+
+# ===== PPT Preview URL Generation (S3 + Office Online Viewer) =====
+@router.get(
+    "/agent/presentation/preview-url/{filename}",
+    summary="PPT 미리보기 URL 생성 (Office Online Viewer용)",
+    description="""
+    생성된 PPT 파일을 S3에 업로드하고 Office Online Viewer에서 사용할 수 있는 URL을 반환합니다.
+    
+    **반환값:**
+    - `preview_url`: Office Online Viewer iframe용 URL
+    - `direct_url`: 직접 다운로드 URL (S3 presigned)
+    - `expires_in`: URL 만료 시간 (초)
+    """
+)
+async def get_presentation_preview_url(
+    filename: str,
+    request: Request,
+    token: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """PPT 파일을 S3에 업로드하고 Office Online Viewer URL 생성"""
+    import posixpath
+    from app.services.core.aws_service import S3Service
+    
+    # 인증 처리
+    user = None
+    try:
+        if token:
+            token_data = AuthUtils.verify_token(token)
+            user_service = AsyncUserService(db)
+            user = await user_service.get_user_by_emp_no(token_data.emp_no)
+        
+        if not user:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                header_token = auth_header.split(" ")[1]
+                token_data = AuthUtils.verify_token(header_token)
+                user_service = AsyncUserService(db)
+                user = await user_service.get_user_by_emp_no(token_data.emp_no)
+    except Exception as e:
+        logger.warning(f"📥 미리보기 URL 인증 실패: {e}")
+        
+    if not user:
+        raise HTTPException(status_code=401, detail="인증되지 않은 사용자입니다.")
+    
+    try:
+        # URL 디코딩
+        decoded_filename = urllib.parse.unquote(filename)
+        safe_name = os.path.basename(posixpath.normpath(decoded_filename))
+        
+        # 보안 검증
+        if ".." in decoded_filename or "/" in safe_name:
+            raise HTTPException(status_code=400, detail="잘못된 파일명입니다.")
+        
+        if not safe_name.lower().endswith(".pptx"):
+            raise HTTPException(status_code=400, detail="허용되지 않은 파일 형식입니다.")
+        
+        # 로컬 파일 경로 확인
+        upload_dir = settings.resolved_upload_dir
+        local_path = upload_dir / safe_name
+        
+        if not os.path.exists(local_path):
+            raise HTTPException(status_code=404, detail=f"파일을 찾을 수 없습니다: {safe_name}")
+        
+        # S3에 업로드
+        s3_service = S3Service()
+        s3_key = f"presentations/preview/{user.emp_no}/{safe_name}"
+        
+        with open(local_path, "rb") as f:
+            file_data = f.read()
+        
+        s3_service.s3_client.put_object(
+            Bucket=s3_service.bucket_name,
+            Key=s3_key,
+            Body=file_data,
+            ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            # ACL을 public-read로 설정하거나, presigned URL 사용
+        )
+        
+        logger.info(f"✅ PPT S3 업로드 완료: {s3_key}")
+        
+        # Presigned URL 생성 (1시간 유효)
+        expires_in = 3600
+        direct_url = s3_service.generate_presigned_url(
+            object_key=s3_key,
+            expires_in=expires_in,
+            response_content_type="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        )
+        
+        # Office Online Viewer URL 생성
+        # Microsoft Office Online Viewer: https://view.officeapps.live.com/op/embed.aspx?src=<encoded_url>
+        # Google Docs Viewer: https://docs.google.com/gview?url=<encoded_url>&embedded=true
+        encoded_direct_url = urllib.parse.quote(direct_url, safe='')
+        
+        # Office Online Viewer (Microsoft)
+        office_preview_url = f"https://view.officeapps.live.com/op/embed.aspx?src={encoded_direct_url}"
+        
+        # Google Docs Viewer (대안)
+        google_preview_url = f"https://docs.google.com/gview?url={encoded_direct_url}&embedded=true"
+        
+        return {
+            "success": True,
+            "filename": safe_name,
+            "preview_url": office_preview_url,  # Office Online 기본
+            "google_preview_url": google_preview_url,  # Google Docs 대안
+            "direct_url": direct_url,
+            "expires_in": expires_in,
+            "s3_key": s3_key
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 미리보기 URL 생성 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"미리보기 URL 생성 실패: {str(e)}")
 
 
 @router.post("/agent/presentation/migrate-templates", summary="기존 템플릿 마이그레이션")
@@ -2120,6 +2380,7 @@ async def build_presentation_unified(
                     context_text=structured_context,
                     template_id=req.template_id,
                     max_slides=req.max_slides,
+                    user_id=current_user.id  # 🆕 user_id 전달하여 user-specific 템플릿 접근
                 )
                 
                 # 결과 확인
@@ -2152,4 +2413,282 @@ async def build_presentation_unified(
     
     return StreamingResponse(stream(), media_type="text/event-stream")
 
+
+# ===== v2.0: Template Auto-Mapping API =====
+
+class AutoMappingRequest(BaseModel):
+    """자동 매핑 요청"""
+    template_id: str
+    outline: Dict[str, Any]  # AI 아웃라인 (DeckSpec 형태)
+
+
+@router.post(
+    "/agent/presentation/auto-mapping",
+    summary="🔄 AI 아웃라인 → 템플릿 자동 매핑",
+    description="""
+    AI가 생성한 아웃라인을 선택한 템플릿에 자동으로 매핑합니다.
+    
+    **기능:**
+    - 슬라이드 역할 기반 매핑 (title, toc, content, thanks)
+    - 요소별 상세 매핑 (제목, 본문, 불릿 등)
+    - 매핑 확신도 제공
+    - 사용자 수정을 위한 매핑 결과 반환
+    
+    **반환:**
+    - 슬라이드별 매핑 정보
+    - AI 추천 콘텐츠
+    - 경고 및 권장 사항
+    """
+)
+async def auto_map_outline_to_template(
+    req: AutoMappingRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """AI 아웃라인을 템플릿에 자동 매핑"""
+    try:
+        from app.services.presentation.template_auto_mapping_service import template_auto_mapping_service
+        from app.services.presentation.user_template_manager import UserTemplateManager
+        
+        logger.info(f"🔄 자동 매핑 요청: template_id={req.template_id}, user_id={current_user.id}")
+        
+        # 사용자별 템플릿 매니저 사용
+        user_template_manager = UserTemplateManager()
+        
+        # 템플릿 메타데이터 로드 (사용자별)
+        decoded_id = urllib.parse.unquote(req.template_id)
+        template_metadata = user_template_manager.get_template_metadata(current_user.id, decoded_id)
+        
+        if not template_metadata:
+            raise HTTPException(status_code=404, detail=f"템플릿을 찾을 수 없습니다: {decoded_id}")
+        
+        # 자동 매핑 수행
+        result = template_auto_mapping_service.auto_map_outline_to_template(
+            template_id=decoded_id,
+            template_metadata=template_metadata,
+            ai_outline=req.outline
+        )
+        
+        # 편집기 UI용 형식으로 변환
+        export_data = template_auto_mapping_service.export_mapping_for_editor(result)
+        
+        return {
+            "success": result.success,
+            "mapping": export_data,
+            "template_id": decoded_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 자동 매핑 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"자동 매핑 중 오류: {str(e)}")
+
+
+# ===== v2.0: PDF Preview API =====
+
+@router.post(
+    "/agent/presentation/templates/{template_id}/generate-preview",
+    summary="📄 템플릿 PDF 프리뷰 생성",
+    description="""
+    템플릿의 슬라이드별 PDF 프리뷰를 생성합니다.
+    
+    **기능:**
+    - PPTX → PDF 변환
+    - 슬라이드별 이미지 생성
+    - 썸네일 생성
+    - 캐시 관리
+    """
+)
+async def generate_template_preview(
+    template_id: str,
+    force_regenerate: bool = Query(False, description="기존 캐시 무시하고 재생성"),
+    current_user: User = Depends(get_current_user)
+):
+    """템플릿 PDF 프리뷰 생성"""
+    try:
+        from app.services.presentation.pdf_preview_generator import pdf_preview_generator
+        
+        decoded_id = urllib.parse.unquote(template_id)
+        logger.info(f"📄 프리뷰 생성 요청: template_id={decoded_id}")
+        
+        # 템플릿 경로 확인
+        template_path = template_manager.get_template_file_path(decoded_id)
+        if not template_path:
+            raise HTTPException(status_code=404, detail=f"템플릿을 찾을 수 없습니다: {decoded_id}")
+        
+        # 프리뷰 생성
+        result = pdf_preview_generator.generate_template_preview(
+            template_id=decoded_id,
+            template_path=template_path,
+            force_regenerate=force_regenerate
+        )
+        
+        if not result.success:
+            raise HTTPException(status_code=500, detail=result.error_message or "프리뷰 생성 실패")
+        
+        return {
+            "success": True,
+            "template_id": decoded_id,
+            "total_slides": result.total_slides,
+            "pdf_url": f"/api/v1/agent/presentation/templates/{decoded_id}/pdf",
+            "slides": [
+                {
+                    "slide_index": s.slide_index,
+                    "preview_url": f"/api/v1/agent/presentation/templates/{decoded_id}/preview/{s.slide_index}",
+                    "thumbnail_url": f"/api/v1/agent/presentation/templates/{decoded_id}/thumbnail/{s.slide_index}",
+                    "width": s.width,
+                    "height": s.height
+                }
+                for s in result.slides
+            ]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 프리뷰 생성 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"프리뷰 생성 중 오류: {str(e)}")
+
+
+@router.get(
+    "/agent/presentation/templates/{template_id}/previews",
+    summary="📋 템플릿 프리뷰 목록 조회"
+)
+async def list_template_previews(
+    template_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """템플릿의 모든 프리뷰 정보 조회"""
+    try:
+        from app.services.presentation.pdf_preview_generator import pdf_preview_generator
+        
+        decoded_id = urllib.parse.unquote(template_id)
+        return pdf_preview_generator.list_template_previews(decoded_id)
+        
+    except Exception as e:
+        logger.error(f"❌ 프리뷰 목록 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/agent/presentation/templates/{template_id}/preview/{slide_index}",
+    summary="🖼️ 특정 슬라이드 프리뷰 이미지"
+)
+async def get_slide_preview_image(
+    template_id: str,
+    slide_index: int,
+    current_user: User = Depends(get_current_user)
+):
+    """특정 슬라이드의 프리뷰 이미지 반환"""
+    try:
+        from app.services.presentation.pdf_preview_generator import pdf_preview_generator
+        
+        decoded_id = urllib.parse.unquote(template_id)
+        image_path = pdf_preview_generator.get_slide_preview_path(decoded_id, slide_index)
+        
+        if not image_path or not os.path.exists(image_path):
+            raise HTTPException(status_code=404, detail=f"슬라이드 {slide_index} 프리뷰를 찾을 수 없습니다")
+        
+        return FileResponse(
+            path=image_path,
+            media_type="image/png",
+            filename=f"{decoded_id}_slide_{slide_index}.png"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 슬라이드 프리뷰 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/agent/presentation/templates/{template_id}/pdf",
+    summary="📄 템플릿 PDF 파일"
+)
+async def get_template_pdf(
+    template_id: str,
+    token: Optional[str] = Query(None, description="인증 토큰 (iframe용)"),
+    authorization: Optional[str] = Header(None),
+):
+    """템플릿 PDF 파일 반환 (기존 /file 엔드포인트와 호환)"""
+    try:
+        decoded_id = urllib.parse.unquote(template_id)
+        pdf_path = template_manager.get_template_pdf_path(decoded_id)
+        
+        if not pdf_path or not os.path.exists(pdf_path):
+            raise HTTPException(status_code=404, detail="PDF 파일을 찾을 수 없습니다")
+        
+        def generate():
+            with open(pdf_path, "rb") as f:
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
+                    yield chunk
+        
+        encoded_filename = urllib.parse.quote(f"{decoded_id}.pdf")
+        return StreamingResponse(
+            generate(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ PDF 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ===== v2.0: Enhanced Metadata API =====
+
+@router.get(
+    "/agent/presentation/templates/{template_id}/metadata-v2",
+    summary="📊 템플릿 메타데이터 v2 (역할 정보 포함)"
+)
+async def get_template_metadata_v2(
+    template_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    v2.0 메타데이터 조회
+    - 슬라이드 역할 정보 (title, toc, content, thanks)
+    - 편집 가능/고정 요소 구분
+    - 요소별 역할 분류
+    """
+    try:
+        decoded_id = urllib.parse.unquote(template_id)
+        metadata = template_manager.get_template_metadata(decoded_id)
+        
+        if not metadata:
+            raise HTTPException(status_code=404, detail="메타데이터를 찾을 수 없습니다")
+        
+        # v2.0 형식인지 확인
+        version = metadata.get("version", "1.0")
+        
+        if version != "2.0":
+            # v1.0 메타데이터면 재생성 안내
+            return {
+                "success": True,
+                "template_id": decoded_id,
+                "metadata_version": version,
+                "metadata": metadata,
+                "needs_upgrade": True,
+                "upgrade_hint": "템플릿을 재등록하면 v2.0 메타데이터가 생성됩니다."
+            }
+        
+        return {
+            "success": True,
+            "template_id": decoded_id,
+            "metadata_version": version,
+            "metadata": metadata,
+            "needs_upgrade": False
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 메타데이터 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 

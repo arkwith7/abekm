@@ -30,10 +30,12 @@ from app.utils.prompt_loader import load_presentation_prompt
 from app.tools.presentation.outline_generation_tool import outline_generation_tool
 from app.tools.presentation.quick_pptx_builder_tool import quick_pptx_builder_tool
 from app.tools.presentation.template_analyzer_tool import template_analyzer_tool
+from app.tools.presentation.slide_type_matcher_tool import slide_type_matcher_tool
 from app.tools.presentation.content_mapping_tool import content_mapping_tool
 from app.tools.presentation.templated_pptx_builder_tool import templated_pptx_builder_tool
 from app.tools.presentation.visualization_tool import visualization_tool
 from app.tools.presentation.ppt_quality_validator_tool import ppt_quality_validator_tool
+from app.tools.presentation.template_ppt_comparator_tool import template_ppt_comparator_tool
 
 
 class PresentationMode(str, Enum):
@@ -77,6 +79,7 @@ class UnifiedPresentationAgent(BaseAgent):
             # 공통 도구
             "outline_generation_tool": outline_generation_tool,
             "ppt_quality_validator_tool": ppt_quality_validator_tool,
+            "template_ppt_comparator_tool": template_ppt_comparator_tool,
             "visualization_tool": visualization_tool,
             
             # Quick PPT 전용 도구
@@ -84,6 +87,7 @@ class UnifiedPresentationAgent(BaseAgent):
             
             # Template PPT 전용 도구
             "template_analyzer_tool": template_analyzer_tool,
+            "slide_type_matcher_tool": slide_type_matcher_tool,
             "content_mapping_tool": content_mapping_tool,
             "templated_pptx_builder_tool": templated_pptx_builder_tool,
         }
@@ -174,21 +178,30 @@ class UnifiedPresentationAgent(BaseAgent):
 마지막에 파일 생성이 완료되면:
 **Final Answer**: 결과 요약
 
-## 필수 워크플로우 (Template PPT - ReAct) - 4단계 순서대로 실행!
-1. outline_generation_tool 실행 → deck_spec 획득 (1단계)
-2. template_analyzer_tool 실행 → template_structure 획득 (2단계)
-3. content_mapping_tool 실행 → mappings 생성 (3단계)
-4. templated_pptx_builder_tool 실행 → PPTX 파일 생성 (4단계 - 반드시 실행!)
-5. 파일 생성 완료 후 Final Answer 출력
+## 필수 워크플로우 (Template PPT - ReAct) - 5단계 순서대로 실행!
+1. outline_generation_tool 실행 → deck_spec 획득 (콘텐츠 슬라이드 생성)
+2. template_analyzer_tool 실행 → template_structure & template_metadata 획득 (템플릿 분석)
+3. slide_type_matcher_tool 실행 → slide_matches 획득 (슬라이드 유형 매칭: title→title, content→content)
+4. content_mapping_tool 실행 → mappings 생성 (텍스트박스 콘텐츠 매핑)
+5. templated_pptx_builder_tool 실행 → PPTX 파일 생성 (반드시 실행!)
+6. 파일 생성 완료 후 Final Answer 출력
 
 ## 사용 가능한 도구
 - outline_generation_tool: 컨텍스트에서 아웃라인 생성
-- template_analyzer_tool: 템플릿 구조 분석
-- content_mapping_tool: 아웃라인과 템플릿 매핑
+- template_analyzer_tool: 템플릿 구조 분석 (슬라이드 역할 정보 포함)
+- slide_type_matcher_tool: AI 아웃라인 슬라이드를 템플릿 슬라이드에 유형별로 매칭 (title→title, toc→toc, content→content, thanks→thanks)
+- content_mapping_tool: 아웃라인 콘텐츠를 템플릿 텍스트박스에 매핑
 - templated_pptx_builder_tool: 최종 PPTX 파일 생성
 
+## 슬라이드 유형 매칭 중요성
+- AI가 4개 슬라이드를 생성하고 템플릿이 10개 슬라이드라면, slide_type_matcher_tool이:
+  - 제목 슬라이드 → 템플릿의 title 역할 슬라이드
+  - 목차 슬라이드 → 템플릿의 toc 역할 슬라이드
+  - 내용 슬라이드 → 템플릿의 content 역할 슬라이드
+  - 감사 슬라이드 → 템플릿의 thanks 역할 슬라이드
+  를 지능적으로 매칭합니다.
+
 ⚠️ 중요: 각 도구를 순서대로 호출하고, templated_pptx_builder_tool 호출 없이 Final Answer를 출력하지 마세요!"""
-            
             else:  # PLAN_EXECUTE
                 return """당신은 전문 템플릿 기반 프레젠테이션 생성 AI 에이전트입니다.
 
@@ -226,6 +239,7 @@ class UnifiedPresentationAgent(BaseAgent):
             return [
                 "outline_generation_tool",
                 "template_analyzer_tool",
+                "slide_type_matcher_tool",
                 "content_mapping_tool",
                 "templated_pptx_builder_tool",
                 "ppt_quality_validator_tool",
@@ -240,6 +254,7 @@ class UnifiedPresentationAgent(BaseAgent):
         context_text: str,
         template_id: Optional[str] = None,
         max_slides: int = 8,
+        user_id: Optional[int] = None,
         **kwargs: Any,
     ) -> Dict[str, Any]:
         """
@@ -252,6 +267,7 @@ class UnifiedPresentationAgent(BaseAgent):
             context_text: 컨텍스트 텍스트
             template_id: 템플릿 ID (template 모드에서만 사용)
             max_slides: 최대 슬라이드 수
+            user_id: 사용자 ID (user-specific 템플릿 접근용)
             **kwargs: 추가 파라미터
             
         Returns:
@@ -277,9 +293,12 @@ class UnifiedPresentationAgent(BaseAgent):
         # 실행 초기화
         self._init_execution()
         
+        # Store user_id for tool execution
+        self._user_id = user_id
+        
         logger.info(
             f"🚀 [{self.name}] 시작: mode={mode}, pattern={pattern}, "
-            f"topic='{topic[:50]}', max_slides={max_slides}"
+            f"topic='{topic[:50]}', max_slides={max_slides}, user_id={user_id}"
         )
         
         # 패턴에 따라 분기
@@ -325,6 +344,8 @@ class UnifiedPresentationAgent(BaseAgent):
         self._latest_deck_spec = None
         self._latest_mappings = None
         self._latest_template_structure = None
+        self._latest_template_metadata = None  # 전체 템플릿 메타데이터 (slides 포함)
+        self._latest_slide_matches = None  # slide_type_matcher_tool 결과
         
         # 시스템 프롬프트 로드
         system_prompt = self._load_system_prompt(mode, ExecutionPattern.REACT)
@@ -420,8 +441,14 @@ class UnifiedPresentationAgent(BaseAgent):
                     if mode == PresentationMode.TEMPLATE:
                         if action_name == "template_analyzer_tool" and template_id:
                             action_input["template_id"] = template_id
+                            # user_id 자동 주입
+                            if self._user_id:
+                                action_input["user_id"] = self._user_id
                         elif action_name == "templated_pptx_builder_tool" and template_id:
                             action_input["template_id"] = template_id
+                            # user_id 자동 주입
+                            if self._user_id:
+                                action_input["user_id"] = self._user_id
                     
                     # outline_generation_tool에 필수 파라미터 자동 주입
                     if action_name == "outline_generation_tool":
@@ -450,12 +477,29 @@ class UnifiedPresentationAgent(BaseAgent):
                         if ("mappings" not in action_input or not action_input.get("mappings")) and self._latest_mappings:
                             action_input["mappings"] = self._latest_mappings
                             logger.info(f"💉 [{self.name}] mappings 자동 주입 완료")
+                        # slide_matches 자동 주입 (선택적)
+                        if ("slide_matches" not in action_input or not action_input.get("slide_matches")) and self._latest_slide_matches:
+                            action_input["slide_matches"] = self._latest_slide_matches
+                            logger.info(f"💉 [{self.name}] slide_matches 자동 주입 완료")
                             
                     # template_structure 자동 주입 (Template 전용)
                     if action_name == "content_mapping_tool":
                         if ("template_structure" not in action_input or not action_input.get("template_structure")) and self._latest_template_structure:
                             action_input["template_structure"] = self._latest_template_structure
                             logger.info(f"💉 [{self.name}] template_structure 자동 주입 완료")
+                        # slide_matches 자동 주입
+                        if ("slide_matches" not in action_input or not action_input.get("slide_matches")) and self._latest_slide_matches:
+                            action_input["slide_matches"] = self._latest_slide_matches
+                            logger.info(f"💉 [{self.name}] slide_matches 자동 주입 완료 (content_mapping)")
+                    
+                    # slide_type_matcher_tool 자동 주입 (Template 전용)
+                    if action_name == "slide_type_matcher_tool":
+                        if ("outline" not in action_input or not action_input.get("outline")) and self._latest_deck_spec:
+                            action_input["outline"] = self._latest_deck_spec
+                            logger.info(f"💉 [{self.name}] outline 자동 주입 완료 (slide_type_matcher)")
+                        if ("template_metadata" not in action_input or not action_input.get("template_metadata")) and self._latest_template_metadata:
+                            action_input["template_metadata"] = self._latest_template_metadata
+                            logger.info(f"💉 [{self.name}] template_metadata 자동 주입 완료")
                     
                     self._log_step("ACTION", f"{action_name}", {"input": action_input})
                     
@@ -485,6 +529,19 @@ class UnifiedPresentationAgent(BaseAgent):
                             self._latest_mappings = observation["mappings"]
                         if "template_structure" in observation:
                             self._latest_template_structure = observation["template_structure"]
+                        # template_analyzer_tool에서 전체 메타데이터 캡처
+                        if action_name == "template_analyzer_tool":
+                            # template_metadata 캡처 (slide_type_matcher용)
+                            if observation.get("template_metadata"):
+                                self._latest_template_metadata = observation.get("template_metadata")
+                                logger.info(f"💉 [{self.name}] template_metadata 캡처 완료")
+                            elif observation.get("template_structure", {}).get("slides"):
+                                # template_structure 안에 slides가 있으면 그것을 사용
+                                self._latest_template_metadata = {"slides": observation["template_structure"]["slides"]}
+                                logger.info(f"💉 [{self.name}] template_structure.slides에서 template_metadata 캡처")
+                        # slide_type_matcher_tool 결과 캡처
+                        if "slide_matches" in observation:
+                            self._latest_slide_matches = observation["slide_matches"]
                     
                     self._log_step("OBSERVATION", json.dumps(observation, ensure_ascii=False)[:500], metadata=observation)
                     self._tools_used.append(action_name)
@@ -516,7 +573,9 @@ class UnifiedPresentationAgent(BaseAgent):
                     elif action_name == "outline_generation_tool" and mode == PresentationMode.TEMPLATE:
                         next_step_hint = "\n\n⚠️ 다음 단계: template_analyzer_tool을 호출하여 템플릿 구조를 분석하세요."
                     elif action_name == "template_analyzer_tool":
-                        next_step_hint = "\n\n⚠️ 다음 단계: content_mapping_tool을 호출하여 아웃라인과 템플릿을 매핑하세요."
+                        next_step_hint = "\n\n⚠️ 다음 단계: slide_type_matcher_tool을 호출하여 AI 슬라이드와 템플릿 슬라이드를 유형별로 매칭하세요."
+                    elif action_name == "slide_type_matcher_tool":
+                        next_step_hint = "\n\n⚠️ 다음 단계: content_mapping_tool을 호출하여 아웃라인 콘텐츠를 템플릿 텍스트박스에 매핑하세요."
                     elif action_name == "content_mapping_tool":
                         next_step_hint = "\n\n⚠️ 다음 단계: templated_pptx_builder_tool을 호출하여 최종 PPTX 파일을 생성하세요."
                     
@@ -799,9 +858,13 @@ class UnifiedPresentationAgent(BaseAgent):
             }
         
         elif tool_name == "template_analyzer_tool":
-            return {
+            result = {
                 "template_id": template_id,
             }
+            # user_id 주입
+            if self._user_id:
+                result["user_id"] = self._user_id
+            return result
         
         elif tool_name == "content_mapping_tool":
             outline_result = execution_results.get("outline_generation_tool", {})
@@ -814,11 +877,15 @@ class UnifiedPresentationAgent(BaseAgent):
         elif tool_name == "templated_pptx_builder_tool":
             outline_result = execution_results.get("outline_generation_tool", {})
             mapping_result = execution_results.get("content_mapping_tool", {})
-            return {
+            result = {
                 "deck_spec": outline_result.get("deck_spec", {}),
                 "template_id": template_id,
                 "mappings": mapping_result.get("mappings", []),
             }
+            # user_id 주입
+            if self._user_id:
+                result["user_id"] = self._user_id
+            return result
         
         elif tool_name == "ppt_quality_validator_tool":
             # 이전 단계에서 생성된 파일 경로 추출
@@ -918,6 +985,9 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             if "template_analyzer_tool" not in self._tools_used and template_id:
                 tool_to_run = "template_analyzer_tool"
                 action_input = {"template_id": template_id}
+                # user_id 주입
+                if self._user_id:
+                    action_input["user_id"] = self._user_id
             
             # 2. Content Mapping (아직 실행 안 됨, 선행 조건 만족)
             elif "content_mapping_tool" not in self._tools_used:
@@ -937,6 +1007,9 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
                         "mappings": self._latest_mappings,
                         "template_id": template_id
                     }
+                    # user_id 주입
+                    if self._user_id:
+                        action_input["user_id"] = self._user_id
 
         if not tool_to_run or not action_input:
             logger.info(
@@ -1006,6 +1079,795 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         )
 
         return True, tool_to_run, observation
+
+    # =========================================================================
+    # UI 편집 경로 지원 메서드 (Agent 아키텍처 통합)
+    # =========================================================================
+    
+    async def generate_content_for_template(
+        self,
+        template_id: str,
+        user_query: str,
+        context: str = "",
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        container_ids: Optional[List[str]] = None,
+        use_rag: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        UI 편집용 콘텐츠 생성 (Agent 통제 하에 실행).
+        
+        Agent가 다음 도구들을 순차적으로 실행:
+        1. template_analyzer_tool: 템플릿 구조 분석
+        2. outline_generation_tool: 콘텐츠 아웃라인 생성 (RAG 포함)
+        3. content_mapping_tool: 템플릿 요소에 콘텐츠 매핑
+        
+        Args:
+            template_id: 템플릿 ID
+            user_query: 사용자 입력 주제/질의
+            context: 기본 컨텍스트
+            user_id: 사용자 ID
+            session_id: 채팅 세션 ID (RAG용)
+            container_ids: RAG 검색 범위
+            use_rag: RAG 검색 활성화 여부
+            
+        Returns:
+            UI 편집 가능한 슬라이드 콘텐츠 구조
+        """
+        logger.info(
+            f"🎨 [{self.name}] 콘텐츠 생성 시작: template={template_id}, "
+            f"query='{user_query[:50]}', use_rag={use_rag}"
+        )
+        
+        self._init_execution()
+        self._user_id = int(user_id) if user_id else None
+        
+        try:
+            # Step 1: 템플릿 분석
+            logger.info(f"📋 Step 1: 템플릿 분석 - {template_id}")
+            template_result = await self.tools["template_analyzer_tool"]._arun(
+                template_id=template_id,
+                user_id=self._user_id,
+            )
+            
+            if not template_result.get("success", False):
+                raise ValueError(f"템플릿 분석 실패: {template_result.get('error', 'Unknown error')}")
+            
+            template_structure = template_result.get("template_structure", {})
+            template_metadata = template_result.get("template_metadata", {})
+            slides_info = template_metadata.get("slides", [])
+            
+            logger.info(f"  ✅ 템플릿 분석 완료: {len(slides_info)} 슬라이드")
+            
+            # Step 2: RAG 컨텍스트 수집 (use_rag=True인 경우)
+            enriched_context = context
+            if use_rag:
+                try:
+                    rag_context = await self._perform_rag_search(
+                        query=user_query,
+                        container_ids=container_ids,
+                        session_id=session_id,
+                    )
+                    if rag_context:
+                        enriched_context = f"{context}\n\n## RAG 검색 결과\n{rag_context}"
+                        logger.info(f"  📚 RAG 컨텍스트 수집: {len(rag_context)}자 추가")
+                except Exception as e:
+                    logger.warning(f"RAG 검색 실패 (계속 진행): {e}")
+            
+            # Step 3: 아웃라인 생성 (템플릿 구조 기반)
+            logger.info(f"📝 Step 2: 콘텐츠 아웃라인 생성")
+            outline_result = await self.tools["outline_generation_tool"]._arun(
+                topic=user_query,
+                context_text=enriched_context,
+                max_slides=len(slides_info),
+                template_structure=template_structure,
+            )
+            
+            if not outline_result.get("success", False):
+                raise ValueError(f"아웃라인 생성 실패: {outline_result.get('error', 'Unknown error')}")
+            
+            deck_spec = outline_result.get("deck_spec", {})
+            ai_slides = deck_spec.get("slides", [])
+            logger.info(f"  ✅ 아웃라인 생성 완료: {len(ai_slides)} 슬라이드")
+            
+            # Step 4: 슬라이드 유형 매칭
+            logger.info(f"🔗 Step 3: 슬라이드 유형 매칭")
+            match_result = await self.tools["slide_type_matcher_tool"]._arun(
+                deck_spec=deck_spec,
+                template_metadata=template_metadata,  # template_metadata 사용
+            )
+            
+            slide_matches = match_result.get("slide_matches", [])
+            logger.info(f"  ✅ 슬라이드 매칭 완료: {len(slide_matches)} 매칭")
+            
+            # Step 5: 콘텐츠 매핑
+            logger.info(f"📌 Step 4: 콘텐츠-템플릿 매핑")
+            mapping_result = await self.tools["content_mapping_tool"]._arun(
+                deck_spec=deck_spec,
+                template_structure=template_structure,  # template_structure 사용 (text_boxes 포함)
+                slide_matches=slide_matches,
+            )
+            
+            mappings = mapping_result.get("mappings", [])
+            logger.info(f"  ✅ 콘텐츠 매핑 완료: {len(mappings)} 매핑")
+            
+            # Step 6: UI 편집 가능한 형식으로 변환
+            # slides_info는 원본 메타데이터의 slides를 사용 (shapes 정보 포함)
+            original_metadata = await self._load_template_metadata_direct(template_id, user_id)
+            original_slides_info = original_metadata.get("slides", []) if original_metadata else slides_info
+            
+            ui_slides = self._convert_to_ui_format(
+                slides_info=original_slides_info,  # 원본 메타데이터 사용
+                ai_slides=ai_slides,
+                slide_matches=slide_matches,
+                mappings=mappings,
+            )
+            
+            logger.info(f"✅ [{self.name}] 콘텐츠 생성 완료: {len(ui_slides)} 슬라이드")
+            
+            return {
+                "success": True,
+                "slides": ui_slides,
+                "template_id": template_id,
+                "deck_spec": deck_spec,  # 원본 보존 (PPT 빌드용)
+                "slide_matches": slide_matches,
+                "mappings": mappings,
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ [{self.name}] 콘텐츠 생성 실패: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "slides": [],
+            }
+    
+    async def build_ppt_from_ui_data(
+        self,
+        template_id: str,
+        slides_data: List[Dict[str, Any]],
+        output_filename: str = "presentation",
+        user_id: Optional[str] = None,
+        deck_spec: Optional[Dict[str, Any]] = None,
+        slide_matches: Optional[List[Dict[str, Any]]] = None,
+        mappings: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        UI 편집 데이터로 PPT 생성 (Agent 통제 하에 실행).
+        
+        Agent가 templated_pptx_builder_tool을 사용하여 PPT 생성.
+        
+        Args:
+            template_id: 템플릿 ID
+            slides_data: UI에서 편집된 슬라이드 데이터
+            output_filename: 출력 파일명
+            user_id: 사용자 ID
+            deck_spec: 원본 deck_spec (generate_content_for_template에서 반환)
+            slide_matches: 슬라이드 매칭 정보
+            mappings: 콘텐츠 매핑 정보
+            
+        Returns:
+            PPT 파일 경로 및 정보
+        """
+        logger.info(
+            f"🏗️ [{self.name}] PPT 빌드 시작: template={template_id}, "
+            f"slides={len(slides_data)}, filename={output_filename}"
+        )
+        
+        self._init_execution()
+        self._user_id = int(user_id) if user_id else None
+        
+        try:
+            # UI 편집 데이터를 deck_spec 형식으로 변환
+            if deck_spec:
+                # 기존 deck_spec에 UI 편집 내용 반영
+                updated_deck_spec = self._apply_ui_edits_to_deck_spec(
+                    deck_spec=deck_spec,
+                    slides_data=slides_data,
+                )
+            else:
+                # deck_spec이 없으면 slides_data에서 생성
+                updated_deck_spec = self._create_deck_spec_from_ui_data(
+                    slides_data=slides_data,
+                    topic=output_filename,
+                )
+            
+            # 🆕 slides_data에서 text_box_mappings 생성 (핵심 수정)
+            if not mappings:
+                mappings = self._generate_mappings_from_slides_data(slides_data)
+                logger.info(f"📋 slides_data에서 {len(mappings)}개 매핑 생성")
+            
+            # templated_pptx_builder_tool 실행
+            build_result = await self.tools["templated_pptx_builder_tool"]._arun(
+                deck_spec=updated_deck_spec,
+                template_id=template_id,
+                mappings=mappings,
+                slide_matches=slide_matches,
+                file_basename=output_filename,
+                user_id=self._user_id,
+            )
+            
+            if not build_result.get("success", False):
+                raise ValueError(f"PPT 빌드 실패: {build_result.get('error', 'Unknown error')}")
+            
+            file_path = build_result.get("file_path")
+            file_name = build_result.get("file_name") or build_result.get("filename")
+            slide_count = build_result.get("slide_count", len(slides_data))
+            
+            logger.info(f"✅ [{self.name}] PPT 빌드 완료: {file_name}")
+            
+            # 🆕 자동 품질 검증 (Template PPT만)
+            quality_report = await self._validate_template_ppt_quality(
+                generated_path=file_path,
+                template_id=template_id,
+                user_id=self._user_id,
+            )
+            
+            return {
+                "success": True,
+                "file_path": file_path,
+                "file_name": file_name,
+                "slide_count": slide_count,
+                "quality_report": quality_report,  # 품질 검증 결과 추가
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ [{self.name}] PPT 빌드 실패: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+            }
+    
+    # =========================================================================
+    # Helper Methods for UI 편집 경로
+    # =========================================================================
+    
+    async def _validate_template_ppt_quality(
+        self,
+        generated_path: str,
+        template_id: str,
+        user_id: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        생성된 Template PPT의 품질 검증.
+        
+        Args:
+            generated_path: 생성된 PPT 파일 경로
+            template_id: 템플릿 ID
+            user_id: 사용자 ID
+            
+        Returns:
+            품질 검증 리포트 또는 None (검증 실패 시)
+        """
+        try:
+            from app.services.presentation.ppt_template_manager import template_manager
+            from app.services.presentation.user_template_manager import user_template_manager
+            
+            logger.info(f"🔍 [{self.name}] 품질 검증 시작: {template_id}")
+            
+            # 템플릿 파일 경로 찾기
+            template_path = None
+            metadata_path = None
+            
+            # 시스템 템플릿 확인
+            template_info = template_manager.get_template(template_id)
+            if template_info:
+                template_path = template_info.get("path")
+                metadata_path = template_info.get("metadata_path")
+            
+            # 사용자 템플릿 확인
+            if not template_path and user_id:
+                user_template_info = user_template_manager.get_template(str(user_id), template_id)
+                if user_template_info:
+                    template_path = user_template_info.get("path")
+                    metadata_path = user_template_info.get("metadata_path")
+            
+            if not template_path:
+                logger.warning(f"⚠️ 템플릿 파일을 찾을 수 없어 품질 검증 생략: {template_id}")
+                return None
+            
+            # template_ppt_comparator_tool 실행
+            comparison_result = await self.tools["template_ppt_comparator_tool"]._arun(
+                generated_pptx_path=generated_path,
+                template_pptx_path=template_path,
+                template_metadata_path=metadata_path,
+            )
+            
+            if not comparison_result.get("success"):
+                logger.warning(f"⚠️ 품질 검증 실패: {comparison_result.get('error')}")
+                return None
+            
+            report = comparison_result.get("report", {})
+            passed = comparison_result.get("passed", False)
+            quality_score = comparison_result.get("quality_score", 0.0)
+            
+            logger.info(
+                f"{'✅' if passed else '❌'} [{self.name}] 품질 검증 완료: "
+                f"점수={quality_score:.1f}/100, 결과={'PASS' if passed else 'FAIL'}"
+            )
+            
+            # 실패 시 경고 로그
+            if not passed:
+                critical_issues = report.get("critical_issues", [])
+                warnings = report.get("warnings", [])
+                
+                logger.warning(
+                    f"⚠️ [{self.name}] 품질 문제 발견:\n"
+                    f"  치명적 문제: {len(critical_issues)}개\n"
+                    f"  경고: {len(warnings)}개"
+                )
+                
+                for issue in critical_issues[:3]:  # 최대 3개만 로그
+                    logger.warning(f"  ❌ {issue}")
+            
+            return {
+                "passed": passed,
+                "quality_score": quality_score,
+                "critical_issues_count": len(report.get("critical_issues", [])),
+                "warnings_count": len(report.get("warnings", [])),
+                "summary": comparison_result.get("summary", ""),
+                "recommendations": report.get("recommendations", [])[:5],  # 최대 5개
+            }
+            
+        except Exception as e:
+            logger.warning(f"⚠️ [{self.name}] 품질 검증 중 오류 (무시하고 계속): {e}")
+            return None
+    
+    async def _load_template_metadata_direct(
+        self,
+        template_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """템플릿 메타데이터 직접 로드 (shapes 정보 포함)"""
+        try:
+            from app.services.presentation.ppt_template_manager import template_manager
+            from app.services.presentation.user_template_manager import user_template_manager
+            
+            # 시스템 템플릿에서 먼저 찾기
+            metadata = template_manager.get_template_metadata(template_id)
+            
+            if not metadata:
+                # 사용자 템플릿에서 찾기
+                if user_id:
+                    metadata = user_template_manager.get_template_metadata(user_id, template_id)
+                
+                if not metadata:
+                    owner_id = user_template_manager.find_template_owner(template_id)
+                    if owner_id:
+                        metadata = user_template_manager.get_template_metadata(owner_id, template_id)
+            
+            return metadata
+        except Exception as e:
+            logger.warning(f"템플릿 메타데이터 직접 로드 실패: {e}")
+            return None
+    
+    async def _perform_rag_search(
+        self,
+        query: str,
+        container_ids: Optional[List[str]] = None,
+        session_id: Optional[str] = None,
+    ) -> str:
+        """RAG 검색을 통한 관련 문서 컨텍스트 수집"""
+        try:
+            from app.services.chat.rag_search_service import rag_search_service, RAGSearchParams
+            from app.core.database import get_async_session_local
+            
+            async_session_local = get_async_session_local()
+            async with async_session_local() as session:
+                search_params = RAGSearchParams(
+                    query=query,
+                    container_ids=container_ids,
+                    limit=10,
+                    max_chunks=5,
+                    similarity_threshold=0.3,
+                )
+                
+                results = await rag_search_service.search_for_rag_context(
+                    session=session,
+                    search_params=search_params,
+                    session_id=session_id,
+                )
+                
+                if not results or not results.chunks:
+                    return ""
+                
+                chunks = results.chunks[:5]  # 상위 5개만
+                context_parts = []
+                for chunk in chunks:
+                    text = chunk.get("text", "")
+                    if text:
+                        context_parts.append(text)
+                
+                return "\n\n---\n\n".join(context_parts)
+                
+        except Exception as e:
+            logger.warning(f"RAG 검색 실패: {e}")
+            return ""
+    
+    def _convert_to_ui_format(
+        self,
+        slides_info: List[Dict[str, Any]],
+        ai_slides: List[Dict[str, Any]],
+        slide_matches: List[Dict[str, Any]],
+        mappings: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """AI 생성 콘텐츠를 UI 편집 가능한 형식으로 변환
+        
+        v3.0 개선:
+        - 모든 편집 가능 요소에 AI 콘텐츠 매핑
+        - numbered_card, icon_text, label 등 다양한 역할 지원
+        - 원본 텍스트 길이/구조에 맞춰 AI 콘텐츠 분배
+        
+        메타데이터 구조:
+        - slides_info[i]["index"]: 1-based 슬라이드 인덱스
+        - slides_info[i]["editable_elements"]: shape 이름 리스트 (문자열)
+        - slides_info[i]["shapes"]: 실제 shape 정보 배열
+        - slides_info[i]["elements"]: 추출된 요소 배열 (element_role 포함)
+        """
+        ui_slides = []
+        
+        # slide_matches를 template_index -> ai_index 매핑으로 변환
+        template_to_ai = {}
+        for match in slide_matches:
+            ai_idx = match.get("ai_slide_index", match.get("outline_index", 0))
+            template_idx = match.get("template_slide_index", match.get("template_index", 0))
+            
+            # template_index가 1-based면 0-based로 변환
+            if template_idx >= 1:
+                template_to_ai[template_idx - 1] = ai_idx
+            else:
+                template_to_ai[template_idx] = ai_idx
+        
+        logger.debug(f"🔗 Template→AI 매핑: {template_to_ai}")
+        
+        # 템플릿 슬라이드 순서대로 처리
+        for list_idx, slide_info in enumerate(slides_info):
+            slide_role = slide_info.get("role", "content")
+            meta_index = slide_info.get("index", list_idx + 1)  # 메타데이터의 index (1-based)
+            
+            # editable_elements는 shape 이름 리스트 (표준화된 ID: textbox-X-X, shape-X-X)
+            editable_element_names = slide_info.get("editable_elements", [])
+            shapes = slide_info.get("shapes", [])
+            elements_meta = slide_info.get("elements", [])  # v3.0 요소 메타데이터
+            
+            # shape 이름으로 shape 정보 매핑 (원본 PPT 이름)
+            shapes_by_name = {s.get("name"): s for s in shapes}
+            # elements 메타데이터에서 element_role 매핑 (표준화된 ID)
+            elements_by_id = {e.get("id"): e for e in elements_meta}
+            
+            # 🔧 수정: elements_meta를 우선 사용 (shape-X-X 형태의 표준화된 ID 포함)
+            # editable_elements에 있는 ID가 elements_meta에 있으면 그 정보 사용
+            # 없으면 shapes_by_name에서 찾기 시도
+            
+            # 해당 템플릿 슬라이드에 매칭된 AI 슬라이드 찾기
+            matched_ai_idx = template_to_ai.get(list_idx)
+            
+            # AI 콘텐츠 가져오기
+            ai_content = {}
+            if matched_ai_idx is not None and matched_ai_idx < len(ai_slides):
+                ai_content = ai_slides[matched_ai_idx]
+            
+            logger.debug(f"📄 Slide {meta_index}: role={slide_role}, matched_ai={matched_ai_idx}, "
+                        f"editable={len(editable_element_names)}, elements_meta={len(elements_meta)}, "
+                        f"ai_content_keys={list(ai_content.keys())}")
+            
+            # AI 콘텐츠 분배 준비
+            ai_title = ai_content.get("title", "")
+            ai_key_message = ai_content.get("key_message", "")
+            ai_bullets = ai_content.get("bullets", [])
+            ai_speaker_notes = ai_content.get("speaker_notes", "")
+            
+            # 불릿 인덱스 관리 (여러 요소에 분배)
+            bullet_idx = 0
+            
+            # UI 요소 생성
+            elements = []
+            title_applied = False
+            key_message_applied = False
+            
+            for elem_name in editable_element_names:
+                if not isinstance(elem_name, str):
+                    continue
+                
+                # 🔧 수정: element_meta를 우선 사용 (shape-X-X 형태의 표준화된 ID에 대응)
+                element_meta = elements_by_id.get(elem_name, {})
+                shape_info = shapes_by_name.get(elem_name, {})
+                
+                # elements_meta에 정보가 있으면 우선 사용, 없으면 shapes에서 찾기
+                if not element_meta and not shape_info:
+                    logger.warning(f"⚠️ Element '{elem_name}' not found in elements_meta or shapes")
+                    continue
+                
+                # 텍스트 정보 추출: element_meta의 content 우선 사용
+                original_text = ""
+                if element_meta:
+                    original_text = element_meta.get("content", "")
+                
+                # element_meta에 content가 없으면 shape_info에서 찾기
+                if not original_text and shape_info:
+                    text_info = shape_info.get("text", {})
+                    if isinstance(text_info, dict):
+                        original_text = text_info.get("raw", "")
+                    else:
+                        original_text = str(text_info) if text_info else ""
+                
+                # element_role 결정 (element_meta 우선, 없으면 shape_info)
+                elem_role = element_meta.get("element_role", "") or shape_info.get("element_role", "")
+                
+                if not elem_role:
+                    # 위치 기반 추론
+                    top_px = shape_info.get("top_px", 0) or element_meta.get("top_px", 0) or 0
+                    
+                    if top_px < 200 and not title_applied:
+                        elem_role = "slide_title"
+                    elif top_px < 300:
+                        elem_role = "key_message"
+                    else:
+                        elem_role = "body_content"
+                
+                # AI 콘텐츠에서 해당 역할의 텍스트 찾기
+                new_text = original_text  # 기본값: 원본 유지
+                
+                # === 역할별 AI 콘텐츠 매핑 ===
+                
+                # 1. 제목 역할
+                if elem_role in ["slide_title", "title", "main_title"] and not title_applied:
+                    if ai_title:
+                        new_text = ai_title
+                        title_applied = True
+                
+                # 2. 키 메시지 / 부제목 역할
+                elif elem_role in ["key_message", "subtitle", "caption"]:
+                    if ai_key_message and not key_message_applied:
+                        new_text = ai_key_message
+                        key_message_applied = True
+                    elif ai_bullets and bullet_idx < len(ai_bullets):
+                        # 키 메시지가 없으면 불릿 사용
+                        new_text = ai_bullets[bullet_idx]
+                        bullet_idx += 1
+                
+                # 3. 번호 카드 역할 (01, 02, 03 형태)
+                elif elem_role in ["numbered_card", "card"]:
+                    if ai_bullets and bullet_idx < len(ai_bullets):
+                        # 원본 텍스트의 번호 형식 유지
+                        original_lines = original_text.split('\n')
+                        if original_lines and original_lines[0].strip().isdigit():
+                            # 번호 유지, 내용만 교체
+                            number_part = original_lines[0].strip()
+                            new_text = f"{number_part}\n{ai_bullets[bullet_idx]}"
+                        else:
+                            new_text = ai_bullets[bullet_idx]
+                        bullet_idx += 1
+                
+                # 4. 아이콘+텍스트 역할
+                elif elem_role in ["icon_text", "icon_box"]:
+                    if ai_bullets and bullet_idx < len(ai_bullets):
+                        # 원본의 아이콘 이모지 유지
+                        import re
+                        emoji_match = re.match(r'^([\U0001F300-\U0001F9FF\u2600-\u26FF\u2700-\u27BF]+)', original_text)
+                        if emoji_match:
+                            icon = emoji_match.group(1)
+                            new_text = f"{icon}\n{ai_bullets[bullet_idx]}"
+                        else:
+                            new_text = ai_bullets[bullet_idx]
+                        bullet_idx += 1
+                
+                # 5. 불릿/목록 항목 역할
+                elif elem_role in ["bullet_item", "list_item", "toc_item"]:
+                    if ai_bullets and bullet_idx < len(ai_bullets):
+                        new_text = f"• {ai_bullets[bullet_idx]}"
+                        bullet_idx += 1
+                
+                # 6. 본문 콘텐츠 역할
+                elif elem_role in ["body_content", "content", "content_item"]:
+                    if ai_bullets and bullet_idx < len(ai_bullets):
+                        # 남은 불릿 모두 합치기
+                        remaining_bullets = ai_bullets[bullet_idx:]
+                        if remaining_bullets:
+                            new_text = "\n".join(f"• {b}" for b in remaining_bullets)
+                            bullet_idx = len(ai_bullets)  # 모두 사용됨
+                    elif ai_key_message and not key_message_applied:
+                        new_text = ai_key_message
+                        key_message_applied = True
+                
+                # 7. 라벨 역할 (짧은 텍스트)
+                elif elem_role == "label":
+                    # 라벨은 보통 짧은 텍스트, AI 콘텐츠에서 적절한 것 선택
+                    if ai_bullets and bullet_idx < len(ai_bullets):
+                        # 짧게 자르기
+                        bullet_text = ai_bullets[bullet_idx]
+                        new_text = bullet_text[:30] if len(bullet_text) > 30 else bullet_text
+                        bullet_idx += 1
+                
+                # 8. 감사 슬라이드 역할
+                elif elem_role in ["thanks_message", "contact_info"]:
+                    # 감사 슬라이드는 원본 유지 (기본 템플릿 텍스트)
+                    pass
+                
+                # 9. 기타 역할 (남은 불릿으로 채우기)
+                else:
+                    if ai_bullets and bullet_idx < len(ai_bullets):
+                        new_text = ai_bullets[bullet_idx]
+                        bullet_idx += 1
+                
+                elements.append({
+                    "id": elem_name,
+                    "text": new_text,
+                    "role": elem_role,
+                    "original_text": original_text,
+                })
+            
+            ui_slides.append({
+                "index": meta_index,  # 메타데이터의 1-based index 유지
+                "role": slide_role,
+                "elements": elements,
+                "note": ai_speaker_notes,
+            })
+        
+        return ui_slides
+    
+    def _apply_ui_edits_to_deck_spec(
+        self,
+        deck_spec: Dict[str, Any],
+        slides_data: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """UI 편집 내용을 deck_spec에 반영"""
+        updated_spec = deck_spec.copy()
+        updated_slides = updated_spec.get("slides", [])
+        
+        # UI 슬라이드 데이터를 index로 매핑
+        ui_by_index = {s.get("index"): s for s in slides_data}
+        
+        for i, slide in enumerate(updated_slides):
+            slide_index = i + 1  # 1-based
+            ui_slide = ui_by_index.get(slide_index)
+            
+            if ui_slide:
+                elements = ui_slide.get("elements", [])
+                for elem in elements:
+                    role = elem.get("role", "")
+                    text = elem.get("text", "")
+                    
+                    if role in ["slide_title", "title"]:
+                        slide["title"] = text
+                    elif role in ["key_message", "subtitle"]:
+                        slide["key_message"] = text
+                    elif role in ["body_content", "content"]:
+                        # 불릿 형식에서 리스트로 변환
+                        if text:
+                            lines = [
+                                line.lstrip("•-").strip()
+                                for line in text.split("\n")
+                                if line.strip()
+                            ]
+                            slide["bullets"] = lines
+        
+        updated_spec["slides"] = updated_slides
+        return updated_spec
+    
+    def _create_deck_spec_from_ui_data(
+        self,
+        slides_data: List[Dict[str, Any]],
+        topic: str,
+    ) -> Dict[str, Any]:
+        """UI 데이터에서 deck_spec 생성"""
+        slides = []
+        
+        for slide_data in slides_data:
+            slide = {
+                "title": "",
+                "key_message": "",
+                "bullets": [],
+                "layout": "content",
+            }
+            
+            for elem in slide_data.get("elements", []):
+                role = elem.get("role", "")
+                text = elem.get("text", "")
+                
+                if role in ["slide_title", "title"]:
+                    slide["title"] = text
+                elif role in ["key_message", "subtitle"]:
+                    slide["key_message"] = text
+                elif role in ["body_content", "content"]:
+                    if text:
+                        lines = [
+                            line.lstrip("•-").strip()
+                            for line in text.split("\n")
+                            if line.strip()
+                        ]
+                        slide["bullets"] = lines
+            
+            slides.append(slide)
+        
+        return {
+            "topic": topic,
+            "slides": slides,
+            "max_slides": len(slides),
+        }
+    
+    def _generate_mappings_from_slides_data(
+        self,
+        slides_data: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """UI 편집 데이터(slides_data)에서 text_box_mappings 생성
+        
+        slides_data 구조:
+        [
+            {
+                "index": 1,  # 1-based
+                "role": "title",
+                "elements": [
+                    {"id": "textbox-0-0", "text": "제목", "role": "slide_title"},
+                    {"id": "textbox-0-1", "text": "부제목", "role": "key_message"},
+                    {"id": "shape-0-2", "text": "도형 내 텍스트", "role": "body"},
+                    ...
+                ]
+            },
+            ...
+        ]
+        
+        Returns:
+            text_box_mappings 형식:
+            [
+                {
+                    "slideIndex": 0,  # 0-based
+                    "elementId": "textbox-0-0",
+                    "objectType": "textbox",
+                    "action": "replace_content",
+                    "newContent": "새 내용",
+                    "isEnabled": True
+                },
+                {
+                    "slideIndex": 0,
+                    "elementId": "shape-0-2",
+                    "objectType": "shape",  # shape-X-X 요소는 shape 타입
+                    "action": "replace_content",
+                    "newContent": "새 내용",
+                    "isEnabled": True
+                },
+                ...
+            ]
+        """
+        mappings = []
+        
+        for slide_data in slides_data:
+            slide_index = slide_data.get("index", 1)
+            # UI index는 1-based, 내부 처리는 0-based
+            zero_based_idx = slide_index - 1 if slide_index >= 1 else slide_index
+            
+            for elem in slide_data.get("elements", []):
+                elem_id = elem.get("id", "")
+                text = elem.get("text", "")
+                
+                if not elem_id or not text:
+                    continue
+                
+                # element ID에서 objectType 추론
+                # 형식: textbox-X-X, shape-X-X, table-X-X, image-X-X 등
+                object_type = "textbox"  # 기본값
+                if elem_id.startswith("shape-"):
+                    object_type = "shape"
+                elif elem_id.startswith("table-"):
+                    object_type = "table"
+                elif elem_id.startswith("image-"):
+                    object_type = "image"
+                elif elem_id.startswith("chart-"):
+                    object_type = "chart"
+                elif elem_id.startswith("textbox-"):
+                    object_type = "textbox"
+                
+                mappings.append({
+                    "slideIndex": zero_based_idx,
+                    "elementId": elem_id,
+                    "objectType": object_type,
+                    "action": "replace_content",
+                    "newContent": text,
+                    "isEnabled": True,
+                })
+        
+        logger.debug(f"📋 생성된 매핑: {len(mappings)}개 (textbox: {sum(1 for m in mappings if m['objectType']=='textbox')}, shape: {sum(1 for m in mappings if m['objectType']=='shape')}, 기타: {sum(1 for m in mappings if m['objectType'] not in ['textbox', 'shape'])})")
+        return mappings
 
 
 # Singleton instance

@@ -95,6 +95,77 @@ class TemplatedPPTGeneratorService:
         logger.info(f"🧪 토픽 파일명 정규화: original='{original[:60]}', normalized='{safe}'")
         return safe
 
+    async def generate_pptx_from_data(
+        self,
+        template_id: str,
+        slides_data: List[Dict[str, Any]],
+        output_filename: str = "generated_presentation",
+        user_id: Optional[str] = None
+    ) -> str:
+        """
+        사용자가 편집한 데이터(slides_data)를 기반으로 PPT를 생성합니다.
+        (Template-First Approach)
+        """
+        # 1. 템플릿 로드
+        template_path = self.template_manager.get_template_path(template_id)
+        
+        # 시스템 템플릿에서 못 찾은 경우, 사용자 템플릿 검색
+        if not template_path or not os.path.exists(template_path):
+            try:
+                from app.services.presentation.user_template_manager import user_template_manager
+                
+                # 1. user_id가 있으면 해당 사용자의 템플릿 확인
+                if user_id:
+                    template_path = user_template_manager.get_template_path(user_id, template_id)
+                
+                # 2. 없으면 전체 사용자 템플릿에서 검색 (소유자 찾기)
+                if not template_path:
+                    owner_id = user_template_manager.find_template_owner(template_id)
+                    if owner_id:
+                        template_path = user_template_manager.get_template_path(owner_id, template_id)
+            except Exception as e:
+                logger.warning(f"User template lookup failed: {e}")
+
+        if not template_path or not os.path.exists(template_path):
+            raise ValueError(f"Template file not found: {template_id}")
+            
+        prs = Presentation(template_path)
+        
+        # 2. 데이터 적용
+        for slide_data in slides_data:
+            slide_index = slide_data.get("index", 0)
+            # 1-based index to 0-based
+            if slide_index < 1 or slide_index > len(prs.slides):
+                continue
+                
+            slide = prs.slides[slide_index - 1]
+            elements = slide_data.get("elements", [])
+            
+            for element in elements:
+                el_id = element.get("id")
+                text = element.get("text")
+                
+                if text is None: # Skip if text is None (keep original or empty)
+                    continue
+
+                # Find shape by name (id)
+                for shape in slide.shapes:
+                    if shape.name == el_id:
+                        if hasattr(shape, "text_frame"):
+                            # 텍스트 교체 (서식 유지를 위해 run 단위 교체 시도 가능하나, 일단 전체 교체)
+                            shape.text_frame.text = text
+                        break
+                        
+        # 3. 저장
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_filename = self._normalize_topic_for_filename(output_filename)
+        final_filename = f"{safe_filename}_{timestamp}.pptx"
+        output_path = self.upload_dir / final_filename
+        prs.save(output_path)
+        
+        logger.info(f"✅ PPT Generated from data: {output_path}")
+        return str(output_path)
+
     def _load_prompt(self) -> str:
         """프롬프트 파일 로드"""
         try:
@@ -549,27 +620,48 @@ class TemplatedPPTGeneratorService:
                                                  user_template_id: Optional[str] = None,
                                                  text_box_mappings: Optional[List[Dict[str, Any]]] = None,
                                                  content_segments: Optional[List[Dict[str, Any]]] = None,
-                                                 slide_management: Optional[List[Dict[str, Any]]] = None) -> str:
-        """슬라이드 관리가 포함된 Enhanced PPT 빌드 (enhanced 서비스와 호환)"""
+                                                 slide_management: Optional[List[Dict[str, Any]]] = None,
+                                                 used_template_indices: Optional[List[int]] = None) -> str:
+        """슬라이드 관리가 포함된 Enhanced PPT 빌드 (enhanced 서비스와 호환)
+        
+        Args:
+            spec: DeckSpec - AI 생성 콘텐츠 슬라이드들
+            file_basename: 출력 파일명
+            template_style: 템플릿 스타일
+            include_charts: 차트 포함 여부
+            custom_template_path: 커스텀 템플릿 경로
+            user_template_id: 사용자 템플릿 ID
+            text_box_mappings: 텍스트박스 매핑 정보
+            content_segments: 콘텐츠 세그먼트
+            slide_management: 슬라이드 관리 정보
+            used_template_indices: 🆕 사용할 템플릿 슬라이드 인덱스 (slide_type_matcher 결과)
+        """
         
         logger.info(f"🏗️ Enhanced PPT 빌드 시작: {len(spec.slides)}개 슬라이드")
         logger.info(f"📋 매핑 정보: text_box_mappings={len(text_box_mappings or [])}, content_segments={len(content_segments or [])}, slide_management={len(slide_management or [])}")
+        if used_template_indices:
+            logger.info(f"📋 사용할 템플릿 슬라이드: {used_template_indices}")
         
         try:
             # 커스텀 템플릿 경로가 있으면 템플릿 기반 빌드 사용
             if custom_template_path and os.path.exists(custom_template_path):
                 logger.info(f"📄 커스텀 템플릿 사용: {custom_template_path}")
                 
-                # 매핑이 있으면 Enhanced Object Processor를 사용해서 매핑 적용
-                if text_box_mappings or content_segments or slide_management:
-                    logger.info(f"🎯 매핑 기반 템플릿 빌드 실행")
+                # 🆕 매핑 또는 used_template_indices가 있으면 _build_with_mappings 사용
+                # (used_template_indices가 있으면 Strategy C: 슬라이드 복제/삭제 필요)
+                has_mappings = bool(text_box_mappings) or bool(content_segments) or bool(slide_management)
+                has_template_indices = bool(used_template_indices)
+                
+                if has_mappings or has_template_indices:
+                    logger.info(f"🎯 매핑 기반 템플릿 빌드 실행 (mappings={has_mappings}, indices={has_template_indices})")
                     return self._build_with_mappings(
                         spec=spec,
                         template_path=Path(custom_template_path),
                         file_basename=file_basename,
                         text_box_mappings=text_box_mappings,
                         content_segments=content_segments,
-                        slide_management=slide_management
+                        slide_management=slide_management,
+                        used_template_indices=used_template_indices,
                     )
                 else:
                     # 매핑 없으면 기본 템플릿 빌드
@@ -647,8 +739,26 @@ class TemplatedPPTGeneratorService:
     def _build_with_mappings(self, spec: DeckSpec, template_path: Path, file_basename: Optional[str] = None,
                             text_box_mappings: Optional[List[Dict[str, Any]]] = None,
                             content_segments: Optional[List[Dict[str, Any]]] = None,
-                            slide_management: Optional[List[Dict[str, Any]]] = None) -> str:
-        """매핑을 적용한 템플릿 기반 PPT 빌드"""
+                            slide_management: Optional[List[Dict[str, Any]]] = None,
+                            template_metadata: Optional[Dict[str, Any]] = None,
+                            used_template_indices: Optional[List[int]] = None) -> str:
+        """매핑을 적용한 템플릿 기반 PPT 빌드
+        
+        🆕 전략 C: AI 슬라이드가 템플릿보다 많으면 content 슬라이드 복제
+        - AI 슬라이드의 유형(title, toc, content, thanks)과 
+        - 템플릿 슬라이드의 role(title, toc, content, section, thanks)을 매칭
+        - 초과 AI 슬라이드는 content 레이아웃을 복제하여 추가
+        
+        Args:
+            spec: AI 생성 DeckSpec
+            template_path: 템플릿 파일 경로
+            file_basename: 출력 파일명
+            text_box_mappings: 텍스트박스 매핑 (slideIndex가 template index임)
+            content_segments: 콘텐츠 세그먼트
+            slide_management: 슬라이드 관리 정보
+            template_metadata: 템플릿 메타데이터
+            used_template_indices: 사용할 템플릿 슬라이드 인덱스 목록
+        """
         
         logger.info(f"🎯 매핑 기반 PPT 빌드 시작")
         
@@ -663,48 +773,131 @@ class TemplatedPPTGeneratorService:
             
             # 템플릿 로드
             prs = Presentation(str(template_path))
-            logger.info(f"📋 템플릿 로드 완료: {len(prs.slide_layouts)}개 레이아웃")
+            template_slide_count = len(prs.slides)
+            ai_slide_count = len(spec.slides)
+            logger.info(f"📋 템플릿 로드 완료: {template_slide_count}개 슬라이드, AI 슬라이드: {ai_slide_count}개")
             
-            # Enhanced Object Processor를 사용해서 매핑 적용
-            if hasattr(self, 'object_processor'):
-                logger.info(f"🔧 Enhanced Object Processor로 매핑 적용")
+            # 🆕 전략 C: AI 슬라이드가 템플릿보다 많은 경우 처리
+            if ai_slide_count > template_slide_count and not used_template_indices:
+                logger.info(f"📋 AI 슬라이드({ai_slide_count}) > 템플릿({template_slide_count}) - 슬라이드 복제 필요")
                 
-                # 슬라이드 관리 정보가 있으면 적용
-                slides_to_process = spec.slides
-                if slide_management:
-                    logger.info(f"📋 슬라이드 관리 적용: {len(slide_management)}개 슬라이드")
-                    # 슬라이드 순서나 가시성 조정 등을 여기서 처리할 수 있음
+                # content 타입 슬라이드 찾기 (복제 대상)
+                content_slide_idx = self._find_content_slide_index(prs, template_metadata)
                 
-                # 각 슬라이드에 대해 매핑 적용
-                for i, slide_spec in enumerate(slides_to_process):
-                    if i < len(prs.slides):
-                        slide = prs.slides[i]
+                if content_slide_idx is not None:
+                    # 추가로 필요한 슬라이드 수
+                    slides_to_add = ai_slide_count - template_slide_count
+                    logger.info(f"📋 content 슬라이드(idx={content_slide_idx}) {slides_to_add}개 복제")
+                    
+                    # 슬라이드 복제 (마지막 슬라이드 앞에 삽입)
+                    for i in range(slides_to_add):
+                        self._duplicate_slide(prs, content_slide_idx)
+                        logger.info(f"✅ 슬라이드 복제 완료: {i+1}/{slides_to_add}")
+                    
+                    template_slide_count = len(prs.slides)
+                    logger.info(f"📋 복제 후 슬라이드 수: {template_slide_count}개")
+                else:
+                    logger.warning(f"⚠️ content 슬라이드를 찾을 수 없음 - 기본 레이아웃으로 추가")
+                    # 기본 레이아웃으로 슬라이드 추가
+                    slides_to_add = ai_slide_count - template_slide_count
+                    for i in range(slides_to_add):
+                        self._add_blank_content_slide(prs)
+                    template_slide_count = len(prs.slides)
+            
+            # used_template_indices가 제공되면 해당 슬라이드만 사용
+            if used_template_indices:
+                logger.info(f"📋 사용할 템플릿 슬라이드: {used_template_indices}")
+                
+                # 🆕 AI 슬라이드가 템플릿보다 많은 경우, 슬라이드 복제 필요
+                # used_template_indices는 AI 슬라이드 수만큼 있지만,
+                # 실제 템플릿 슬라이드 수보다 많을 수 있음 (같은 인덱스 재사용)
+                unique_indices = set(used_template_indices)
+                if ai_slide_count > template_slide_count:
+                    # 복제할 슬라이드: content 타입 중 가장 많이 사용된 인덱스
+                    from collections import Counter
+                    idx_counts = Counter(used_template_indices)
+                    # content 슬라이드 찾기 (title=0, toc=1, thanks=마지막 제외)
+                    content_indices = [idx for idx in idx_counts.keys() if idx not in [0, 1, template_slide_count - 1]]
+                    if content_indices:
+                        content_slide_template_idx = max(content_indices, key=lambda x: idx_counts[x])
                     else:
-                        # 새 슬라이드 추가
-                        layout_idx = min(1, len(prs.slide_layouts) - 1)
-                        slide_layout = prs.slide_layouts[layout_idx]
-                        slide = prs.slides.add_slide(slide_layout)
+                        content_slide_template_idx = self._find_content_slide_in_indices(list(unique_indices), template_metadata)
                     
-                    # 🔧 AI 생성 콘텐츠를 먼저 적용
-                    self._apply_ai_content_to_slide(slide, slide_spec, i)
+                    if content_slide_template_idx is not None:
+                        slides_to_add = ai_slide_count - template_slide_count
+                        logger.info(f"📋 AI({ai_slide_count}) > 템플릿({template_slide_count}): {slides_to_add}개 복제 필요 (template idx: {content_slide_template_idx})")
+                        
+                        # 실제 슬라이드 복제
+                        for i in range(slides_to_add):
+                            self._duplicate_slide(prs, content_slide_template_idx)
+                            logger.info(f"✅ 슬라이드 복제: {i+1}/{slides_to_add}")
+                        
+                        template_slide_count = len(prs.slides)
+                        logger.info(f"📋 복제 후 슬라이드 수: {template_slide_count}개")
+                
+                # 🆕 사용하지 않는 템플릿 슬라이드 삭제 로직 비활성화
+                # (AI > 템플릿인 경우 모든 템플릿 슬라이드 사용)
+                # AI < 템플릿인 경우에만 삭제 필요
+                if ai_slide_count < template_slide_count:
+                    slides_to_delete = [
+                        i for i in range(template_slide_count) 
+                        if i not in unique_indices
+                    ]
+                    slides_to_delete.sort(reverse=True)
                     
-                    # Enhanced Object Processor로 매핑 적용
-                    # 슬라이드별 매핑 준비
-                    slide_mappings = []
-                    for mapping in (text_box_mappings or []):
-                        if mapping.get('slideIndex', 0) == i:
-                            slide_mappings.append(mapping)
+                    if slides_to_delete:
+                        logger.info(f"🗑️ 삭제할 슬라이드: {slides_to_delete}")
+                        
+                        for slide_idx in slides_to_delete:
+                            if slide_idx < len(prs.slides):
+                                try:
+                                    rId = prs.slides._sldIdLst[slide_idx].rId
+                                    prs.part.drop_rel(rId)
+                                    del prs.slides._sldIdLst[slide_idx]
+                                    logger.info(f"🗑️ 슬라이드 {slide_idx} 삭제 완료")
+                                except Exception as del_e:
+                                    logger.warning(f"⚠️ 슬라이드 {slide_idx} 삭제 실패: {del_e}")
+                        
+                        logger.info(f"📋 삭제 후 슬라이드 수: {len(prs.slides)}개")
                     
-                    if slide_mappings:
-                        self.object_processor.apply_object_mappings(
-                            prs, slide_mappings, content_segments
-                        )
-                        logger.info(f"✅ 슬라이드 {i+1} 매핑 적용 완료: '{slide_spec.title}' ({len(slide_mappings)}개 매핑)")
-                    else:
-                        logger.info(f"✅ 슬라이드 {i+1} AI 콘텐츠 적용 완료: '{slide_spec.title}' ({len(slide_spec.bullets)}개 bullets)")
+                    # 매핑의 slideIndex를 새 인덱스로 재조정
+                    if text_box_mappings:
+                        # 원본 template_index -> 삭제 후 새 index 매핑
+                        old_to_new_idx = {}
+                        new_idx = 0
+                        for old_idx in range(template_slide_count):
+                            if old_idx not in slides_to_delete:
+                                old_to_new_idx[old_idx] = new_idx
+                                new_idx += 1
+                        
+                        logger.info(f"📋 인덱스 매핑: {old_to_new_idx}")
+                        
+                        # 매핑 업데이트
+                        updated_mappings = []
+                        for mapping in text_box_mappings:
+                            old_slide_idx = mapping.get('slideIndex', 0)
+                            if old_slide_idx in old_to_new_idx:
+                                new_mapping = {**mapping, 'slideIndex': old_to_new_idx[old_slide_idx]}
+                                updated_mappings.append(new_mapping)
+                            else:
+                                # 삭제된 슬라이드에 대한 매핑은 제외
+                                logger.warning(f"⚠️ 삭제된 슬라이드({old_slide_idx})에 대한 매핑 제외")
+                        
+                        text_box_mappings = updated_mappings
+                        logger.info(f"📋 업데이트된 매핑 수: {len(text_box_mappings)}개")
+            
+            # Enhanced Object Processor로 매핑 적용
+            if hasattr(self, 'object_processor') and text_box_mappings:
+                logger.info(f"🔧 Enhanced Object Processor로 {len(text_box_mappings)}개 매핑 적용")
+                self.object_processor.apply_object_mappings(prs, text_box_mappings, content_segments)
             else:
-                logger.warning(f"⚠️ Enhanced Object Processor가 없어 기본 빌드로 폴백")
-                return self.build_templated_pptx(spec, template_path, file_basename, text_box_mappings, content_segments)
+                logger.info(f"📄 매핑 없음 또는 Object Processor 없음 - AI 콘텐츠만 적용")
+                
+                # 매핑이 없으면 AI 콘텐츠를 순차적으로 적용
+                for ai_idx, slide_spec in enumerate(spec.slides):
+                    if ai_idx < len(prs.slides):
+                        slide = prs.slides[ai_idx]
+                        self._apply_ai_content_to_slide(slide, slide_spec, ai_idx)
             
             # 파일 저장
             prs.save(str(output_path))
@@ -715,48 +908,448 @@ class TemplatedPPTGeneratorService:
             logger.error(f"매핑 기반 PPT 빌드 실패: {e}")
             raise
 
-    def _apply_ai_content_to_slide(self, slide, slide_spec, slide_index: int):
-        """AI가 생성한 콘텐츠를 슬라이드에 적용"""
+    def _copy_font_style(self, src_font, dst_font):
+        """폰트 스타일 복사 (완전한 스타일 보존)"""
         try:
-            # 제목 적용
-            if hasattr(slide, 'shapes') and slide.shapes.title:
-                slide.shapes.title.text = slide_spec.title
-                logger.debug(f"제목 적용: '{slide_spec.title}'")
+            # 폰트 이름
+            if src_font.name: 
+                dst_font.name = src_font.name
+            # 폰트 크기
+            if src_font.size: 
+                dst_font.size = src_font.size
+            # 굵기
+            if src_font.bold is not None: 
+                dst_font.bold = src_font.bold
+            # 기울임
+            if src_font.italic is not None: 
+                dst_font.italic = src_font.italic
+            # 밑줄
+            if src_font.underline is not None: 
+                dst_font.underline = src_font.underline
             
-            # 콘텐츠 적용 - 텍스트 박스나 콘텐츠 placeholder 찾기
-            content_applied = False
-            
-            # bullets가 있으면 bullet points로 적용
-            if slide_spec.bullets:
-                bullet_text = "\n".join([f"• {bullet}" for bullet in slide_spec.bullets])
-                
-                # placeholder나 텍스트 박스를 찾아서 콘텐츠 적용
-                for shape in slide.shapes:
-                    if hasattr(shape, 'text_frame') and shape.text_frame:
-                        # 빈 텍스트 박스이거나 placeholder인 경우
-                        if (not shape.text_frame.text.strip() or 
-                            hasattr(shape, 'placeholder_format')):
-                            shape.text_frame.text = bullet_text
-                            content_applied = True
-                            logger.debug(f"bullets 적용: {len(slide_spec.bullets)}개")
-                            break
-            
-            # bullets가 없고 key_message가 있으면 적용
-            elif hasattr(slide_spec, 'key_message') and slide_spec.key_message:
-                for shape in slide.shapes:
-                    if hasattr(shape, 'text_frame') and shape.text_frame:
-                        if (not shape.text_frame.text.strip() or 
-                            hasattr(shape, 'placeholder_format')):
-                            shape.text_frame.text = slide_spec.key_message
-                            content_applied = True
-                            logger.debug(f"key_message 적용: '{slide_spec.key_message[:50]}...'")
-                            break
-            
-            if not content_applied:
-                logger.debug(f"슬라이드 {slide_index + 1}: 콘텐츠 적용할 텍스트 박스를 찾지 못함")
+            # 색상 복사 (상세)
+            try:
+                if hasattr(src_font, 'color') and src_font.color:
+                    src_color = src_font.color
+                    # RGB 색상
+                    if hasattr(src_color, 'type'):
+                        if src_color.type == 1:  # RGB
+                            if src_color.rgb:
+                                dst_font.color.rgb = src_color.rgb
+                        elif src_color.type == 2:  # THEME
+                            if hasattr(src_color, 'theme_color') and src_color.theme_color:
+                                dst_font.color.theme_color = src_color.theme_color
+                            if hasattr(src_color, 'brightness') and src_color.brightness is not None:
+                                dst_font.color.brightness = src_color.brightness
+                    elif hasattr(src_color, 'rgb') and src_color.rgb:
+                        # type 속성이 없는 경우 직접 RGB 복사
+                        dst_font.color.rgb = src_color.rgb
+            except Exception as color_err:
+                logger.debug(f"색상 복사 중 오류 (무시됨): {color_err}")
                 
         except Exception as e:
-            logger.error(f"슬라이드 {slide_index + 1} 콘텐츠 적용 실패: {e}")
+            logger.warning(f"폰트 스타일 복사 중 오류: {e}")
+
+    def _copy_paragraph_style(self, src_para, dst_para):
+        """문단 스타일 복사 (정렬, 레벨, 간격 등)"""
+        try:
+            # 정렬
+            if src_para.alignment is not None:
+                dst_para.alignment = src_para.alignment
+            # 레벨 (들여쓰기)
+            if hasattr(src_para, 'level') and src_para.level is not None:
+                dst_para.level = src_para.level
+            # 줄 간격
+            if hasattr(src_para, 'line_spacing') and src_para.line_spacing:
+                dst_para.line_spacing = src_para.line_spacing
+            # 공백
+            if hasattr(src_para, 'space_before') and src_para.space_before:
+                dst_para.space_before = src_para.space_before
+            if hasattr(src_para, 'space_after') and src_para.space_after:
+                dst_para.space_after = src_para.space_after
+        except Exception as e:
+            logger.debug(f"문단 스타일 복사 중 오류 (무시됨): {e}")
+
+    def _replace_text_preserving_style(self, shape, new_text):
+        """스타일을 유지하면서 텍스트 교체"""
+        try:
+            tf = shape.text_frame
+            if not tf.paragraphs:
+                tf.text = new_text
+                return
+
+            # 첫 번째 문단 사용
+            p = tf.paragraphs[0]
+            
+            # 첫 번째 run의 스타일 유지
+            if p.runs:
+                # 첫 번째 run에 텍스트 설정
+                p.runs[0].text = new_text
+                # 나머지 run의 텍스트 제거 (스타일은 유지되지만 내용은 비움)
+                for i in range(1, len(p.runs)):
+                    p.runs[i].text = ""
+            else:
+                p.text = new_text
+                
+            # 나머지 문단 제거 (내용 비우기)
+            # python-pptx에서 문단 삭제가 까다로우므로 텍스트만 비움
+            for i in range(1, len(tf.paragraphs)):
+                tf.paragraphs[i].clear()
+                
+        except Exception as e:
+            logger.warning(f"텍스트 교체 중 오류: {e}")
+            # 폴백
+            shape.text_frame.text = new_text
+
+    def _apply_content_preserving_style(self, shape, bullets):
+        """스타일을 유지하면서 콘텐츠(불릿) 적용 (개선된 버전)
+        
+        템플릿의 기존 폰트, 크기, 색상, 문단 스타일을 완전히 보존합니다.
+        """
+        try:
+            tf = shape.text_frame
+            if not tf.paragraphs:
+                tf.text = "\n".join(bullets)
+                return
+
+            # 첫 번째 문단의 스타일 참조
+            ref_p = tf.paragraphs[0]
+            ref_run = ref_p.runs[0] if ref_p.runs else None
+            
+            # 원본 문단 정렬 저장
+            original_alignment = ref_p.alignment
+            original_level = ref_p.level if hasattr(ref_p, 'level') else 0
+            
+            # 기존 문단들 내용 비우기 (첫 번째 제외)
+            for i in range(1, len(tf.paragraphs)):
+                tf.paragraphs[i].clear()
+                
+            # 불릿 내용 적용
+            if bullets:
+                first_bullet = bullets[0]
+                # 첫 번째 문단 업데이트
+                if ref_run:
+                    ref_run.text = f"• {first_bullet}" if not first_bullet.startswith("•") else first_bullet
+                    for i in range(1, len(ref_p.runs)):
+                        ref_p.runs[i].text = ""
+                else:
+                    ref_p.text = f"• {first_bullet}" if not first_bullet.startswith("•") else first_bullet
+                    
+                # 나머지 불릿 추가
+                for b in bullets[1:]:
+                    text = f"• {b}" if not b.startswith("•") else b
+                    new_p = tf.add_paragraph()
+                    new_p.text = text
+                    
+                    # 문단 스타일 복사 (정렬, 레벨)
+                    self._copy_paragraph_style(ref_p, new_p)
+                    
+                    # 레벨 설정 (bullet level)
+                    if original_level is not None:
+                        try:
+                            new_p.level = original_level
+                        except:
+                            new_p.level = 1
+                    else:
+                        new_p.level = 1
+                    
+                    # 폰트 스타일 복사 시도
+                    if ref_run and new_p.runs:
+                        self._copy_font_style(ref_run.font, new_p.runs[0].font)
+            else:
+                # 내용이 없으면 첫 번째 문단도 비움
+                if ref_run:
+                    ref_run.text = ""
+                else:
+                    ref_p.text = ""
+                    
+        except Exception as e:
+            logger.warning(f"콘텐츠 적용 중 오류: {e}")
+            # 폴백
+            shape.text_frame.text = "\n".join(bullets)
+
+    def _replace_table_cell_text_preserving_style(self, cell, new_text: str):
+        """테이블 셀의 텍스트를 스타일 보존하면서 교체
+        
+        Args:
+            cell: 테이블 셀 (_Cell 객체)
+            new_text: 새로운 텍스트
+        """
+        try:
+            tf = cell.text_frame
+            if not tf.paragraphs:
+                tf.text = new_text
+                return
+            
+            # 첫 번째 문단 사용
+            p = tf.paragraphs[0]
+            
+            # 첫 번째 run의 스타일 유지
+            if p.runs:
+                # 첫 번째 run에 텍스트 설정
+                p.runs[0].text = new_text
+                # 나머지 run의 텍스트 제거
+                for i in range(1, len(p.runs)):
+                    p.runs[i].text = ""
+            else:
+                p.text = new_text
+            
+            # 나머지 문단 비우기
+            for i in range(1, len(tf.paragraphs)):
+                tf.paragraphs[i].clear()
+                
+        except Exception as e:
+            logger.debug(f"테이블 셀 텍스트 교체 중 오류: {e}")
+            try:
+                cell.text = new_text
+            except:
+                pass
+
+    def _apply_content_to_table_preserving_style(self, table, table_data: List[List[str]]):
+        """테이블에 데이터를 스타일 보존하면서 적용
+        
+        Args:
+            table: Table 객체
+            table_data: 2D 리스트 형태의 테이블 데이터 [[row1_col1, row1_col2], [row2_col1, row2_col2], ...]
+        """
+        try:
+            for row_idx, row_data in enumerate(table_data):
+                if row_idx >= len(table.rows):
+                    break
+                for col_idx, cell_text in enumerate(row_data):
+                    if col_idx >= len(table.columns):
+                        break
+                    cell = table.cell(row_idx, col_idx)
+                    self._replace_table_cell_text_preserving_style(cell, cell_text)
+                    
+            logger.debug(f"테이블 데이터 적용 완료: {len(table_data)}행")
+        except Exception as e:
+            logger.warning(f"테이블 데이터 적용 중 오류: {e}")
+
+    def _get_all_text_shapes(self, slide):
+        """슬라이드 내의 모든 텍스트 가능 객체를 재귀적으로 수집 (그룹 포함)"""
+        text_shapes = []
+        
+        def _collect_text_shapes(shapes):
+            for shape in shapes:
+                # 그룹인 경우 재귀 호출
+                if shape.shape_type == MSO_SHAPE.GROUP:
+                    _collect_text_shapes(shape.shapes)
+                    continue
+                
+                # 텍스트 프레임이 있는 경우
+                if hasattr(shape, 'text_frame') and shape.text_frame:
+                    text_shapes.append(shape)
+                            
+        _collect_text_shapes(slide.shapes)
+        return text_shapes
+
+    def _apply_ai_content_to_slide(self, slide, slide_spec, slide_index: int):
+        """AI가 생성한 콘텐츠를 슬라이드에 적용 (스타일 보존 개선)
+        
+        템플릿 슬라이드의 기존 텍스트 스타일(폰트, 색상, 크기)을 유지하면서 내용을 교체합니다.
+        """
+        try:
+            logger.info(f"🔄 슬라이드 {slide_index + 1}에 AI 콘텐츠 적용: '{slide_spec.title}'")
+            
+            # 텍스트박스 수집 (재귀적 탐색으로 변경)
+            all_shapes = self._get_all_text_shapes(slide)
+            
+            text_shapes = []
+            for shape in all_shapes:
+                try:
+                    # 그룹 내부 shape는 top/left가 그룹 기준일 수 있으나, 
+                    # python-pptx에서는 절대 좌표를 제공하는 경우가 많음.
+                    top = shape.top if hasattr(shape, 'top') else 0
+                    area = shape.width * shape.height if hasattr(shape, 'width') else 0
+                except:
+                    top = 0
+                    area = 0
+                
+                # 로고나 저작권 문구 등 보존해야 할 패턴 확인
+                text = shape.text_frame.text
+                # PRESERVE_PATTERNS를 매우 보수적으로 설정 (사용자 요청: 템플릿 텍스트는 모두 클리어)
+                # "company", "date", "page" 등 일반적인 단어는 제거하여 오탐 방지
+                PRESERVE_PATTERNS = ["<logo>", "<copyright>", "confidential", "all rights reserved"]
+                should_preserve = any(p in text.lower() for p in PRESERVE_PATTERNS)
+                
+                if not should_preserve:
+                    text_shapes.append({
+                        'shape': shape,
+                        'top': top,
+                        'area': area,
+                        'original_text': text.strip()[:30]
+                    })
+            
+            # 위치(top)로 정렬 - 위쪽이 제목, 아래쪽이 콘텐츠
+            text_shapes.sort(key=lambda x: x['top'])
+            
+            logger.info(f"  📋 편집 대상 텍스트박스 {len(text_shapes)}개 발견")
+            
+            title_applied = False
+            content_applied = False
+            
+            # Step 1: 제목 적용 (첫 번째 텍스트박스)
+            if len(text_shapes) > 0:
+                title_shape = text_shapes[0]['shape']
+                self._replace_text_preserving_style(title_shape, slide_spec.title)
+                title_applied = True
+                logger.info(f"  ✅ 제목 적용: '{slide_spec.title}'")
+            
+            # Step 2: 콘텐츠 적용 (두 번째 텍스트박스)
+            content_items = []
+            if slide_spec.bullets:
+                content_items = slide_spec.bullets
+            elif hasattr(slide_spec, 'key_message') and slide_spec.key_message:
+                content_items = [slide_spec.key_message]
+            
+            if len(text_shapes) > 1:
+                content_shape = text_shapes[1]['shape']
+                if content_items:
+                    self._apply_content_preserving_style(content_shape, content_items)
+                    content_applied = True
+                    logger.info(f"  ✅ 콘텐츠 적용: {len(content_items)}개 항목")
+                else:
+                    # 콘텐츠가 없으면 해당 텍스트박스 비우기 (스타일 보존하며 내용 삭제)
+                    logger.debug(f"  🗑️ 콘텐츠 없음, 텍스트박스 비우기: '{text_shapes[1]['original_text']}...'")
+                    self._replace_text_preserving_style(content_shape, "")
+            
+            # Step 3: 나머지 텍스트박스 비우기 (사용하지 않는 영역)
+            for i in range(2, len(text_shapes)):
+                unused_shape = text_shapes[i]['shape']
+                logger.debug(f"  🗑️ 미사용 텍스트박스 비우기: '{text_shapes[i]['original_text']}...'")
+                # 스타일 보존하며 내용 삭제 (빈 문자열 적용)
+                self._replace_text_preserving_style(unused_shape, "")
+            
+            # 로깅
+            if not title_applied:
+                logger.warning(f"  ⚠️ 슬라이드 {slide_index + 1}: 제목 적용할 텍스트박스를 찾지 못함")
+            if content_items and not content_applied:
+                # 콘텐츠가 있는데 적용할 박스가 없는 경우만 경고
+                if len(text_shapes) <= 1:
+                    logger.warning(f"  ⚠️ 슬라이드 {slide_index + 1}: 콘텐츠 적용할 텍스트박스를 찾지 못함 (박스 부족)")
+                
+        except Exception as e:
+            logger.error(f"슬라이드 {slide_index + 1} 콘텐츠 적용 실패: {e}", exc_info=True)
+
+    def _find_content_slide_index(self, prs: Presentation, template_metadata: Optional[Dict[str, Any]] = None) -> Optional[int]:
+        """템플릿에서 content 타입 슬라이드 인덱스 찾기
+        
+        우선순위:
+        1. template_metadata에서 role='content'인 슬라이드
+        2. 레이아웃 이름에 'content', 'body' 포함된 슬라이드
+        3. 가장 많은 텍스트박스를 가진 슬라이드 (title, thanks 제외)
+        """
+        try:
+            # 1. template_metadata에서 찾기
+            if template_metadata and 'slides' in template_metadata:
+                for slide_info in template_metadata['slides']:
+                    if slide_info.get('role') == 'content':
+                        idx = slide_info.get('index', 0)
+                        logger.info(f"📋 메타데이터에서 content 슬라이드 발견: index={idx}")
+                        return idx
+            
+            # 2. 레이아웃 이름으로 찾기
+            for idx, slide in enumerate(prs.slides):
+                layout_name = slide.slide_layout.name.lower() if slide.slide_layout else ''
+                if 'content' in layout_name or 'body' in layout_name:
+                    logger.info(f"📋 레이아웃 이름으로 content 슬라이드 발견: index={idx}, layout='{layout_name}'")
+                    return idx
+            
+            # 3. 텍스트박스 수로 찾기 (첫/마지막 슬라이드 제외)
+            max_textbox_count = 0
+            best_idx = None
+            
+            for idx, slide in enumerate(prs.slides):
+                # 첫 번째(title)와 마지막(thanks) 슬라이드 제외
+                if idx == 0 or idx == len(prs.slides) - 1:
+                    continue
+                
+                textbox_count = sum(1 for shape in slide.shapes if hasattr(shape, 'text_frame'))
+                if textbox_count > max_textbox_count:
+                    max_textbox_count = textbox_count
+                    best_idx = idx
+            
+            if best_idx is not None:
+                logger.info(f"📋 텍스트박스 수로 content 슬라이드 발견: index={best_idx}, textbox_count={max_textbox_count}")
+                return best_idx
+            
+            # 폴백: 두 번째 슬라이드 (index 1)
+            if len(prs.slides) > 2:
+                logger.info(f"📋 폴백: 두 번째 슬라이드(index=1)를 content로 사용")
+                return 1
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"content 슬라이드 찾기 실패: {e}")
+            return None
+
+    def _find_content_slide_in_indices(self, used_indices: List[int], template_metadata: Optional[Dict[str, Any]] = None) -> Optional[int]:
+        """used_template_indices 중에서 content 타입 슬라이드 찾기"""
+        try:
+            if template_metadata and 'slides' in template_metadata:
+                for slide_info in template_metadata['slides']:
+                    idx = slide_info.get('index', 0)
+                    if idx in used_indices and slide_info.get('role') == 'content':
+                        logger.info(f"📋 used_indices에서 content 슬라이드 발견: index={idx}")
+                        return idx
+            
+            # 메타데이터 없으면 첫 번째/마지막 제외한 인덱스 중 하나 반환
+            for idx in used_indices:
+                if idx != 0 and idx != max(used_indices):
+                    return idx
+            
+            # 폴백: 첫 번째 인덱스 제외한 아무거나
+            return used_indices[1] if len(used_indices) > 1 else used_indices[0]
+            
+        except Exception as e:
+            logger.error(f"used_indices에서 content 슬라이드 찾기 실패: {e}")
+            return used_indices[0] if used_indices else None
+
+    def _duplicate_slide(self, prs: Presentation, source_idx: int) -> bool:
+        """슬라이드 복제 (마지막 위치에 추가)
+        
+        python-pptx는 직접적인 슬라이드 복제를 지원하지 않으므로,
+        소스 슬라이드의 레이아웃으로 새 슬라이드를 생성하고 내용을 복사합니다.
+        """
+        try:
+            if source_idx >= len(prs.slides):
+                logger.warning(f"⚠️ 잘못된 소스 인덱스: {source_idx}")
+                return False
+            
+            source_slide = prs.slides[source_idx]
+            
+            # 같은 레이아웃으로 새 슬라이드 추가
+            new_slide = prs.slides.add_slide(source_slide.slide_layout)
+            
+            # 소스 슬라이드의 shape들을 복사 (단순화된 복사)
+            # 참고: 완벽한 복제는 복잡하므로, 레이아웃만 복제하고 내용은 AI가 채움
+            logger.info(f"✅ 슬라이드 복제 완료: source={source_idx}, new_idx={len(prs.slides)-1}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"슬라이드 복제 실패: {e}")
+            return False
+
+    def _add_blank_content_slide(self, prs: Presentation) -> bool:
+        """빈 content 슬라이드 추가 (레이아웃 1번 사용)"""
+        try:
+            # 일반적으로 레이아웃 1은 'Title and Content'
+            if len(prs.slide_layouts) > 1:
+                layout = prs.slide_layouts[1]
+            else:
+                layout = prs.slide_layouts[0]
+            
+            prs.slides.add_slide(layout)
+            logger.info(f"✅ 빈 content 슬라이드 추가 완료: new_idx={len(prs.slides)-1}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"빈 슬라이드 추가 실패: {e}")
+            return False
 
 
 # 전역 인스턴스
