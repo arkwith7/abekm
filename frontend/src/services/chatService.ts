@@ -1,9 +1,10 @@
 import axios from 'axios';
 import { authService } from './authService';
+import { getApiUrl } from '../utils/apiConfig';
 
 // axios 인스턴스 생성 (JWT 토큰 자동 포함)
 const api = axios.create({
-  baseURL: '', // 프록시 사용으로 빈 문자열
+  baseURL: getApiUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

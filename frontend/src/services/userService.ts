@@ -5,6 +5,15 @@ import { KnowledgeContainer } from '../pages/user/my-knowledge/components/Knowle
 import { AIChat, Document, Recommendation, SearchResult, UploadProgress, UserActivity } from '../types/user.types';
 import { redirectToLogin } from '../utils/navigation';
 import { clearAllAuthStorage, getAccessToken } from '../utils/tokenStorage';
+import { getApiUrl } from '../utils/apiConfig';
+
+// axios 인스턴스 생성 (baseURL 설정)
+const api = axios.create({
+  baseURL: getApiUrl(),
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
 
 // 세션 만료 상태 추적 (중복 처리 방지)
 let isLoggingOut = false;
@@ -237,7 +246,7 @@ export const searchDocuments = async (query: string, filters?: any): Promise<Sea
       return inflight;
     }
 
-    const requestPromise = axios.post(`/api/v1/search`, payload)
+    const requestPromise = api.post(`/api/v1/search`, payload)
       .then((response) => {
         setCachedResponse(documentSearchCache, cacheKey, response.data);
         return response.data;
@@ -292,7 +301,7 @@ export const hybridSearch = async (
       return inflight;
     }
 
-    const requestPromise = axios.post(`/api/v1/search/hybrid`, payload)
+    const requestPromise = api.post(`/api/v1/search/hybrid`, payload)
       .then((response) => {
         setCachedResponse(hybridSearchCache, cacheKey, response.data);
         return response.data;
@@ -316,7 +325,7 @@ export const hybridSearch = async (
 // 검색 제안 (자동완성)
 export const getSearchSuggestions = async (partialQuery: string): Promise<string[]> => {
   try {
-    const response = await axios.get(`/api/v1/search/suggestions`, {
+    const response = await api.get(`/api/v1/search/suggestions`, {
       params: { partial_query: partialQuery }
     });
     return response.data.suggestions || [];
@@ -328,7 +337,7 @@ export const getSearchSuggestions = async (partialQuery: string): Promise<string
 
 // 문서 관련
 export const getDocument = async (id: string): Promise<Document> => {
-  const response = await axios.get(`/api/v1/documents/${id}`);
+  const response = await api.get(`/api/v1/documents/${id}`);
   return response.data;
 };
 
@@ -365,7 +374,7 @@ export const getDocumentChunks = async (
     }
 
     const url = `/api/v1/documents/${fileBssInfoSno}/chunks${params.toString() ? `?${params.toString()}` : ''}`;
-    const response = await axios.get(url);
+    const response = await api.get(url);
     return response.data;
   } catch (error) {
     console.error('📋 문서 청크 조회 실패:', error);
@@ -392,7 +401,7 @@ export const getMyDocuments = async (options?: {
     if (options?.limit !== undefined) params.append('limit', options.limit.toString());
     if (options?.container_id) params.append('container_id', options.container_id);
 
-    const response = await axios.get(`/api/v1/documents?${params.toString()}`);
+    const response = await api.get(`/api/v1/documents?${params.toString()}`);
     console.log('📄 getMyDocuments API 응답:', response.data);
 
     // API 응답 구조 확인
@@ -466,7 +475,7 @@ export const getMyDocuments = async (options?: {
 // 지식 컨테이너 가져오기
 export const getMyContainers = async (): Promise<KnowledgeContainer[]> => {
   try {
-    const response = await axios.get(`/api/v1/documents/containers`);
+    const response = await api.get(`/api/v1/documents/containers`);
     console.log('Full API Response for containers:', response.data);
 
     // API 응답 구조 확인 후 적절히 처리
@@ -633,7 +642,7 @@ export const uploadDocument = async (
     formData.append('tags', JSON.stringify(metadata.tags || []));
   }
 
-  const response = await axios.post(`/api/v1/documents/upload`, formData, {
+  const response = await api.post(`/api/v1/documents/upload`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -653,7 +662,7 @@ export const uploadDocument = async (
 
 export const downloadDocument = async (documentId: string, documentTitle?: string, documentExtension?: string): Promise<void> => {
   console.info('📥 [downloadDocument] 시작 - documentId:', documentId, 'title:', documentTitle, 'ext:', documentExtension);
-  const response = await axios.get(`/api/v1/documents/${documentId}/download`, {
+  const response = await api.get(`/api/v1/documents/${documentId}/download`, {
     responseType: 'blob',
   });
 
@@ -719,7 +728,7 @@ export const downloadDocument = async (documentId: string, documentTitle?: strin
 };
 
 export const deleteDocument = async (documentId: string): Promise<void> => {
-  await axios.delete(`/api/v1/documents/${documentId}`);
+  await api.delete(`/api/v1/documents/${documentId}`);
 };
 
 // Generic downloader by URL (e.g., chat-generated PPT). Mirrors downloadDocument logic.
@@ -746,7 +755,7 @@ export const downloadByUrl = async (url: string, fallbackTitle?: string, fallbac
   }
 
   const authToken = localStorage.getItem('ABEKM_token');
-  const response = await axios.get(fullUrl, {
+  const response = await api.get(fullUrl, {
     responseType: 'blob',
     headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined
   });
@@ -811,7 +820,7 @@ export const downloadByUrl = async (url: string, fallbackTitle?: string, fallbac
 
 // AI 채팅 관련
 export const sendChatMessage = async (question: string): Promise<AIChat> => {
-  const response = await axios.post(`/api/v1/chat`, {
+  const response = await api.post(`/api/v1/chat`, {
     question
   });
   return response.data;
@@ -837,7 +846,7 @@ export const uploadChatAttachments = async (files: File[]): Promise<UploadedChat
     formData.append('files', file, file.name);
   });
 
-  const response = await axios.post(`/api/v1/chat/assets`, formData, {
+  const response = await api.post(`/api/v1/chat/assets`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
@@ -859,7 +868,7 @@ export const transcribeChatAudio = async (blob: Blob, language: string = 'ko-KR'
   formData.append('file', blob, `voice-${Date.now()}.webm`);
   formData.append('language', language);
 
-  const response = await axios.post(`/api/v1/chat/transcribe`, formData, {
+  const response = await api.post(`/api/v1/chat/transcribe`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
@@ -882,7 +891,7 @@ export const sendRagChatMessage = async (
     voice_asset_id?: string;
   } = {}
 ) => {
-  const response = await axios.post(`/api/v1/chat`, {
+  const response = await api.post(`/api/v1/chat`, {
     message,
     ...options
   });
@@ -1050,31 +1059,31 @@ export const sendRagChatMessageWithImages = async (
 };
 
 export const getChatHistory = async (): Promise<AIChat[]> => {
-  const response = await axios.get(`/api/v1/users/me/chat-history`);
+  const response = await api.get(`/api/v1/users/me/chat-history`);
   return response.data;
 };
 
 export const submitChatFeedback = async (chatId: string, feedback: 'positive' | 'negative'): Promise<void> => {
-  await axios.post(`/api/v1/chat/${chatId}/feedback`, {
+  await api.post(`/api/v1/chat/${chatId}/feedback`, {
     feedback
   });
 };
 
 // 사용자 활동 통계
 export const getUserActivity = async (): Promise<UserActivity> => {
-  const response = await axios.get(`/api/v1/users/me/activity`);
+  const response = await api.get(`/api/v1/users/me/activity`);
   return response.data;
 };
 
 // 추천 시스템
 export const getRecommendations = async (): Promise<Recommendation[]> => {
-  const response = await axios.get(`/api/v1/users/me/recommendations`);
+  const response = await api.get(`/api/v1/users/me/recommendations`);
   return response.data;
 };
 
 // 최근 문서
 export const getRecentDocuments = async (limit: number = 10): Promise<Document[]> => {
-  const response = await axios.get(`/api/v1/documents/recent`, {
+  const response = await api.get(`/api/v1/documents/recent`, {
     params: { limit }
   });
   return response.data;
@@ -1082,7 +1091,7 @@ export const getRecentDocuments = async (limit: number = 10): Promise<Document[]
 
 // 인기 문서
 export const getPopularDocuments = async (limit: number = 10): Promise<Document[]> => {
-  const response = await axios.get(`/api/v1/documents/popular`, {
+  const response = await api.get(`/api/v1/documents/popular`, {
     params: { limit }
   });
   return response.data;
@@ -1090,39 +1099,39 @@ export const getPopularDocuments = async (limit: number = 10): Promise<Document[
 
 // 문서 좋아요
 export const likeDocument = async (documentId: string): Promise<void> => {
-  await axios.post(`/api/v1/documents/${documentId}/like`);
+  await api.post(`/api/v1/documents/${documentId}/like`);
 };
 
 export const unlikeDocument = async (documentId: string): Promise<void> => {
-  await axios.delete(`/api/v1/documents/${documentId}/like`);
+  await api.delete(`/api/v1/documents/${documentId}/like`);
 };
 
 // 컨테이너 관련
 export const getUserAccessibleContainers = async (): Promise<any> => {
-  const response = await axios.get(`/api/v1/containers/user-accessible`);
+  const response = await api.get(`/api/v1/containers/user-accessible`);
   return response.data;
 };
 
 // 전체 컨테이너 트리 조회 (권한 정보 포함)
 export const getFullContainerHierarchy = async (): Promise<any> => {
-  const response = await axios.get(`/api/v1/containers/full-hierarchy`);
+  const response = await api.get(`/api/v1/containers/full-hierarchy`);
   return response.data;
 };
 
 export const getContainerPermissions = async (containerId: string): Promise<any> => {
-  const response = await axios.get(`/api/v1/containers/${containerId}/permissions`);
+  const response = await api.get(`/api/v1/containers/${containerId}/permissions`);
   return response.data;
 };
 
 // 사용자별 권한이 있는 지식컨테이너 트리 구조 가져오기
 export const getUserKnowledgeContainers = async (): Promise<any> => {
-  const response = await axios.get(`/api/v1/documents/containers`);
+  const response = await api.get(`/api/v1/documents/containers`);
   return response.data;
 };
 
 // 특정 컨테이너의 권한 정보 가져오기
 export const getContainerUserPermission = async (containerId: string): Promise<any> => {
-  const response = await axios.get(`/api/v1/user/containers/${containerId}/permission`);
+  const response = await api.get(`/api/v1/user/containers/${containerId}/permission`);
   return response.data;
 };
 
@@ -1132,13 +1141,13 @@ export const createUserContainer = async (data: {
   parent_container_id?: string;
   description?: string;
 }): Promise<any> => {
-  const response = await axios.post(`/api/v1/containers/user/create`, data);
+  const response = await api.post(`/api/v1/containers/user/create`, data);
   return response.data;
 };
 
 // 🗑️ 사용자 컨테이너 삭제
 export const deleteUserContainer = async (containerId: string): Promise<any> => {
-  const response = await axios.delete(`/api/v1/containers/user/${containerId}`);
+  const response = await api.delete(`/api/v1/containers/user/${containerId}`);
   return response.data;
 };
 

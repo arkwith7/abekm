@@ -12,7 +12,7 @@ from .template_ppt_comparator_tool import (
     ComparisonReport,
 )
 from .outline_generation_tool import outline_generation_tool
-from .quick_pptx_builder_tool import quick_pptx_builder_tool
+# from .quick_pptx_builder_tool import quick_pptx_builder_tool  # Deprecated or moved
 from .template_analyzer_tool import template_analyzer_tool
 from .slide_type_matcher_tool import slide_type_matcher_tool
 from .content_mapping_tool import content_mapping_tool
@@ -28,7 +28,7 @@ __all__ = [
     "template_ppt_comparator_tool",
     "ComparisonReport",
     "outline_generation_tool",
-    "quick_pptx_builder_tool",
+    # "quick_pptx_builder_tool",  # Deprecated
     "template_analyzer_tool",
     "slide_type_matcher_tool",
     "content_mapping_tool",

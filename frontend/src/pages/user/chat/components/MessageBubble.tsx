@@ -552,18 +552,10 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
                         <HTMLCard html={content} title="HTML 미리보기" />
                       </div>
                     ) : (
+                      <div className="text-gray-900 leading-snug text-sm max-w-none">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkBreaks]}
                         skipHtml={true}
-                        className="text-gray-900 leading-snug text-sm max-w-none"
-                        transformLinkUri={(href, children, title) => {
-                          // doc-open 스킴은 그대로 유지
-                          if (href?.startsWith('doc-open://')) {
-                            return href;
-                          }
-                          // 다른 링크들은 기본 처리
-                          return href || '';
-                        }}
                         components={{
                           // 커스텀 스타일링 - 시각적 강조 개선
                           p: ({ children }) => (
@@ -766,6 +758,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
                       >
                         {formattedAiContent}
                       </ReactMarkdown>
+                      </div>
                     )}
                     {renderAttachments(true)}
                     {/* 🆕 특허 분석 결과 */}

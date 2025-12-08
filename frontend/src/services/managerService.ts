@@ -33,8 +33,9 @@ import {
   getPendingPermissionRequests as fetchPendingPermissionRequests,
   rejectPermissionRequest as rejectPermissionRequestApi
 } from './permissionRequestService';
+import { getApiUrl } from '../utils/apiConfig';
 
-const API_BASE_URL = '/api/v1';
+const API_BASE_URL = `${getApiUrl()}/api/v1`;
 
 const mapPermissionRequestDto = (dto: PermissionRequestDTO): ManagerPermissionRequest => {
   // Backend의 새 스키마 필드 우선 사용

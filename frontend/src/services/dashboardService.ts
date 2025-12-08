@@ -9,8 +9,9 @@ import {
   RecentActivitiesResponse,
   RecentDocumentsResponse
 } from '../types/dashboard.types';
+import { getApiUrl } from '../utils/apiConfig';
 
-const API_BASE_URL = '/api/v1/dashboard';
+const API_BASE_URL = `${getApiUrl()}/api/v1/dashboard`;
 
 /**
  * 대시보드 요약 정보 조회

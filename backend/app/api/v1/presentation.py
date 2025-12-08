@@ -17,7 +17,7 @@ from sqlalchemy import select
 from app.models import User
 from app.models.chat import RedisChatManager, get_redis_client, TbChatHistory, RedisChatMessage, MessageType
 from app.core.config import settings
-from app.services.presentation.quick_ppt_generator_service import quick_ppt_service
+# from app.services.presentation.quick_ppt_generator_service import quick_ppt_service  # Deprecated
 from app.services.presentation.templated_ppt_generator_service import templated_ppt_service
 from app.services.presentation.ppt_template_manager import template_manager
 from app.services.presentation.template_migration_service import template_migration_service

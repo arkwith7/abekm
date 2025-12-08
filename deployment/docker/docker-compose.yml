@@ -2,8 +2,8 @@ services:
   # 데이터베이스 서비스
   postgres:
     build:
-      context: ./postgres
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: postgres/Dockerfile
     image: abkms-postgres
     container_name: abkms-postgres
     environment:
@@ -159,8 +159,8 @@ services:
     image: dpage/pgadmin4:latest
     container_name: abkms-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@wkms.com
-      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@wkms.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin123}
     ports:
       - "5050:80"
     depends_on:

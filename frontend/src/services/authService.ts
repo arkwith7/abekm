@@ -13,6 +13,7 @@ import {
   setUserInfo
 } from '../utils/tokenStorage';
 import { resetSessionState } from './userService';
+import { getApiUrl } from '../utils/apiConfig';
 
 export interface LoginRequest {
   employeeId: string;
@@ -49,7 +50,8 @@ export const authService = {
         password: credentials.password
       };
 
-      const response = await axios.post(`/api/v1/auth/login`, loginData, {
+      const apiBaseUrl = getApiUrl();
+      const response = await axios.post(`${apiBaseUrl}/api/v1/auth/login`, loginData, {
         headers: {
           'Content-Type': 'application/json'
         },

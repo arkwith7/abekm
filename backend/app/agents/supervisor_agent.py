@@ -27,16 +27,23 @@ class AgentState(TypedDict):
     next: str
     shared_context: Dict[str, Any]
 
-# Supervisor LLM
-api_key = settings.openai_api_key
-if not api_key:
-    logger.warning("OPENAI_API_KEY is not set. SupervisorAgent might fail.")
-
-llm = ChatOpenAI(
-    model=settings.openai_llm_model or "gpt-4o",
-    api_key=api_key,
-    temperature=0
-)
+# Supervisor LLM - Use Azure OpenAI
+try:
+    from app.services.core.ai_service import ai_service
+    llm = ai_service.get_chat_model(temperature=0)
+    logger.info("✅ SupervisorAgent initialized with ai_service")
+except Exception as e:
+    logger.warning(f"⚠️ Failed to initialize ai_service, falling back to direct OpenAI: {e}")
+    api_key = settings.openai_api_key or settings.azure_openai_api_key
+    if not api_key:
+        logger.error("❌ No OpenAI/Azure API key found. SupervisorAgent will not work.")
+        llm = None
+    else:
+        llm = ChatOpenAI(
+            model=settings.openai_llm_model or "gpt-4o",
+            api_key=api_key,
+            temperature=0
+        )
 
 # Supervisor Prompt
 system_prompt = (

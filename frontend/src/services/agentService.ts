@@ -7,10 +7,11 @@
 
 import axios from 'axios';
 import { authService } from './authService';
+import { getApiUrl } from '../utils/apiConfig';
 
 // Axios 인스턴스 생성
 const api = axios.create({
-  baseURL: '',
+  baseURL: getApiUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

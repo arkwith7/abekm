@@ -6,7 +6,7 @@ const API_BASE_URL = getApiUrl();
 
 // axios 인스턴스 생성
 const api = axios.create({
-  baseURL: '', // 프록시 사용으로 빈 문자열
+  baseURL: getApiUrl(),
   headers: {
     'Content-Type': 'application/json',
   },

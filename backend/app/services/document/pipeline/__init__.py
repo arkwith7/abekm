@@ -12,10 +12,10 @@ Document Pipeline Services
 
 from .integrated_document_pipeline_service import IntegratedDocumentPipelineService
 from .integrated_content_service import IntegratedContentService
-from .large_file_processor import LargeFileProcessor
+# from .large_file_processor import LargeFileProcessor  # Deprecated or moved
 
 __all__ = [
     "IntegratedDocumentPipelineService",
     "IntegratedContentService", 
-    "LargeFileProcessor"
+    # "LargeFileProcessor"  # Deprecated
 ]

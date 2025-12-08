@@ -149,7 +149,7 @@ const PatentNetworkGraph: React.FC<PatentNetworkGraphProps> = ({
                     width={dimensions.width}
                     height={dimensions.height}
                     nodeCanvasObject={nodeCanvasObject}
-                    nodePointerAreaPaint={(node, color, ctx) => {
+                    nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
                         const size = getNodeSize(node);
                         ctx.beginPath();
                         ctx.arc(node.x!, node.y!, size + 2, 0, 2 * Math.PI);
@@ -157,7 +157,7 @@ const PatentNetworkGraph: React.FC<PatentNetworkGraphProps> = ({
                         ctx.fill();
                     }}
                     linkColor={() => '#CBD5E1'}
-                    linkWidth={(link) => Math.sqrt((link as unknown as NetworkLink).value || 1)}
+                    linkWidth={(link: any) => Math.sqrt((link as unknown as NetworkLink).value || 1)}
                     linkDirectionalArrowLength={4}
                     linkDirectionalArrowRelPos={1}
                     onNodeClick={handleNodeClick}

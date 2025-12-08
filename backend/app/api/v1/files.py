@@ -33,7 +33,7 @@ import datetime
 import logging
 import urllib.parse
 
-from app.services.document.pipeline.large_file_processor import large_file_processor
+# from app.services.document.pipeline.large_file_processor import large_file_processor  # Deprecated
 from app.core.config import settings
 from app.services.core import azure_blob_service as azure_blob_module
 

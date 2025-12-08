@@ -28,7 +28,7 @@ from app.utils.prompt_loader import load_presentation_prompt
 
 # Tools import
 from app.tools.presentation.outline_generation_tool import outline_generation_tool
-from app.tools.presentation.quick_pptx_builder_tool import quick_pptx_builder_tool
+# from app.tools.presentation.quick_pptx_builder_tool import quick_pptx_builder_tool  # Deprecated
 from app.tools.presentation.template_analyzer_tool import template_analyzer_tool
 from app.tools.presentation.slide_type_matcher_tool import slide_type_matcher_tool
 from app.tools.presentation.content_mapping_tool import content_mapping_tool
@@ -82,10 +82,7 @@ class UnifiedPresentationAgent(BaseAgent):
             "template_ppt_comparator_tool": template_ppt_comparator_tool,
             "visualization_tool": visualization_tool,
             
-            # Quick PPT 전용 도구
-            "quick_pptx_builder_tool": quick_pptx_builder_tool,
-            
-            # Template PPT 전용 도구
+            # Template PPT 전용 도구 (Quick PPT도 이 도구를 사용)
             "template_analyzer_tool": template_analyzer_tool,
             "slide_type_matcher_tool": slide_type_matcher_tool,
             "content_mapping_tool": content_mapping_tool,
@@ -154,11 +151,11 @@ class UnifiedPresentationAgent(BaseAgent):
 
 ## 필수 워크플로우 (Quick PPT) - 반드시 2개 도구 모두 실행!
 1. outline_generation_tool 실행 → deck_spec 획득 (1단계)
-2. quick_pptx_builder_tool 실행 → PPTX 파일 생성 (2단계 - 반드시 실행!)
+2. templated_pptx_builder_tool 실행 → PPTX 파일 생성 (2단계 - 반드시 실행!)
 3. 파일 생성 완료 후 Final Answer 출력
 
-⚠️ 중요: outline_generation_tool 실행 후 반드시 quick_pptx_builder_tool을 호출해야 합니다!
-⚠️ quick_pptx_builder_tool 호출 없이 Final Answer를 출력하면 안됩니다!"""
+⚠️ 중요: outline_generation_tool 실행 후 반드시 templated_pptx_builder_tool을 호출해야 합니다!
+⚠️ templated_pptx_builder_tool 호출 없이 Final Answer를 출력하면 안됩니다!"""
         
         else:  # TEMPLATE
             if pattern == ExecutionPattern.REACT:
@@ -231,7 +228,7 @@ class UnifiedPresentationAgent(BaseAgent):
         if mode == PresentationMode.QUICK:
             return [
                 "outline_generation_tool",
-                "quick_pptx_builder_tool",
+                "templated_pptx_builder_tool",
                 "visualization_tool",
                 "ppt_quality_validator_tool",
             ]
@@ -404,7 +401,7 @@ class UnifiedPresentationAgent(BaseAgent):
                 # Final Answer 확인
                 if parsed["final_answer"]:
                     # 필수 도구 사용 여부 확인
-                    required_tool = "quick_pptx_builder_tool" if mode == PresentationMode.QUICK else "templated_pptx_builder_tool"
+                    required_tool = "templated_pptx_builder_tool"  # Both modes use same builder now
                     if required_tool not in self._tools_used:
                         logger.warning(f"⚠️ [{self.name}] 필수 도구 {required_tool} 미사용 감지. 재시도/자동 실행 시도")
                         await self._handle_missing_required_tool(
@@ -460,7 +457,7 @@ class UnifiedPresentationAgent(BaseAgent):
                             action_input["max_slides"] = max_slides
 
                     # deck_spec 자동 주입 (Quick/Template 공통)
-                    if action_name in ["quick_pptx_builder_tool", "templated_pptx_builder_tool", "content_mapping_tool"]:
+                    if action_name in ["templated_pptx_builder_tool", "content_mapping_tool"]:
                         # deck_spec이 없거나 비어있고, 메모리에 저장된 deck_spec이 있는 경우
                         if self._latest_deck_spec:
                             if action_name == "content_mapping_tool":
@@ -547,7 +544,7 @@ class UnifiedPresentationAgent(BaseAgent):
                     self._tools_used.append(action_name)
 
                     # 🚀 [최적화] 파일 생성 도구가 성공했다면 즉시 종료 (LLM 요약 생략)
-                    if action_name in ["quick_pptx_builder_tool", "templated_pptx_builder_tool"]:
+                    if action_name == "templated_pptx_builder_tool":
                         if isinstance(observation, dict) and observation.get("success"):
                             logger.info(f"🚀 [{self.name}] 파일 생성 성공 감지 - 즉시 종료")
                             file_path = observation.get("file_path")
@@ -569,7 +566,7 @@ class UnifiedPresentationAgent(BaseAgent):
                     # 다음 단계 안내 메시지 추가
                     next_step_hint = ""
                     if action_name == "outline_generation_tool" and mode == PresentationMode.QUICK:
-                        next_step_hint = "\n\n⚠️ 다음 단계: deck_spec을 사용하여 quick_pptx_builder_tool을 호출하세요."
+                        next_step_hint = "\n\n⚠️ 다음 단계: deck_spec을 사용하여 templated_pptx_builder_tool을 호출하세요."
                     elif action_name == "outline_generation_tool" and mode == PresentationMode.TEMPLATE:
                         next_step_hint = "\n\n⚠️ 다음 단계: template_analyzer_tool을 호출하여 템플릿 구조를 분석하세요."
                     elif action_name == "template_analyzer_tool":
@@ -584,20 +581,20 @@ class UnifiedPresentationAgent(BaseAgent):
                         "content": f"**Observation**: {json.dumps(observation, ensure_ascii=False)}{next_step_hint}"
                     })
 
-                    # Quick 모드에서 outline 생성 직후 Quick Builder를 자동 실행하여 중간 정지 방지
+                    # Quick 모드에서 outline 생성 직후 Builder를 자동 실행하여 중간 정지 방지
                     if (
                         mode == PresentationMode.QUICK
                         and action_name == "outline_generation_tool"
-                        and "quick_pptx_builder_tool" not in self._tools_used
+                        and "templated_pptx_builder_tool" not in self._tools_used
                     ):
                         auto_executed, auto_tool, auto_result = await self._maybe_autorun_required_tool(
-                            required_tool="quick_pptx_builder_tool",
+                            required_tool="templated_pptx_builder_tool",
                             conversation=conversation,
                             template_id=template_id,
                             mode=mode,
                         )
 
-                        if auto_executed and auto_tool == "quick_pptx_builder_tool":
+                        if auto_executed and auto_tool == "templated_pptx_builder_tool":
                             if isinstance(auto_result, dict) and auto_result.get("success"):
                                 file_path = auto_result.get("file_path")
                                 file_name = auto_result.get("file_name") or auto_result.get("filename")
@@ -624,7 +621,7 @@ class UnifiedPresentationAgent(BaseAgent):
                         if "outline_generation_tool" not in self._tools_used:
                             hint = "**Action**: outline_generation_tool\n**Action Input**:\n```json\n{}\n```"
                         else:
-                            hint = "**Action**: quick_pptx_builder_tool\n**Action Input**:\n```json\n{\"deck_spec\": {}}\n```"
+                            hint = "**Action**: templated_pptx_builder_tool\n**Action Input**:\n```json\n{\"deck_spec\": {}}\n```"
                     else:  # TEMPLATE
                         if "outline_generation_tool" not in self._tools_used:
                             hint = "**Action**: outline_generation_tool\n**Action Input**:\n```json\n{}\n```"
@@ -826,7 +823,7 @@ class UnifiedPresentationAgent(BaseAgent):
             return {
                 "steps": [
                     {"step": 1, "tool": "outline_generation_tool", "description": "아웃라인 생성"},
-                    {"step": 2, "tool": "quick_pptx_builder_tool", "description": "PPTX 생성"},
+                    {"step": 2, "tool": "templated_pptx_builder_tool", "description": "PPTX 생성"},
                 ]
             }
     
@@ -850,7 +847,7 @@ class UnifiedPresentationAgent(BaseAgent):
                 "presentation_type": "general",
             }
         
-        elif tool_name == "quick_pptx_builder_tool":
+        elif tool_name == "templated_pptx_builder_tool" and mode == PresentationMode.QUICK:
             outline_result = execution_results.get("outline_generation_tool", {})
             deck_spec = outline_result.get("deck_spec", {})
             return {
@@ -936,9 +933,9 @@ class UnifiedPresentationAgent(BaseAgent):
 {{"context_text": "...", "topic": "{topic}", "max_slides": {max_slides}}}
 ```"""
         else:
-            if required_tool == "quick_pptx_builder_tool":
+            if required_tool == "templated_pptx_builder_tool" and mode == PresentationMode.QUICK:
                 action_template = """**Thought**: PPT 파일 생성
-**Action**: quick_pptx_builder_tool
+**Action**: templated_pptx_builder_tool
 **Action Input**:
 ```json
 {{"deck_spec": {{}}}}
@@ -974,8 +971,8 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         action_input = None
 
         if mode == PresentationMode.QUICK:
-            if required_tool == "quick_pptx_builder_tool" and self._latest_deck_spec:
-                tool_to_run = "quick_pptx_builder_tool"
+            if required_tool == "templated_pptx_builder_tool" and self._latest_deck_spec:
+                tool_to_run = "templated_pptx_builder_tool"
                 action_input = {"deck_spec": self._latest_deck_spec}
 
         elif mode == PresentationMode.TEMPLATE:

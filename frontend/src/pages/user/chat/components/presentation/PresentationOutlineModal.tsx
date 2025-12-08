@@ -248,13 +248,13 @@ const PresentationOutlineModal: React.FC<Props> = ({
         let timeoutId: NodeJS.Timeout | null = null;
 
         // 🆕 추론 단계 업데이트 헬퍼 함수 (ID 기반)
-        const updateReasoningStep = (stepId: string, status: 'in_progress' | 'completed' | 'error') => {
-            if (!isMountedRef.current) return;
-            setReasoningSteps(prev => prev.map(step => {
-                if (step.id === stepId) return { ...step, status };
-                return step;
-            }));
-        };
+        // const updateReasoningStep = (stepId: string, status: 'in_progress' | 'completed' | 'error') => {
+        //     if (!isMountedRef.current) return;
+        //     setReasoningSteps(prev => prev.map(step => {
+        //         if (step.id === stepId) return { ...step, status };
+        //         return step;
+        //     }));
+        // };
 
         const completeStepAndStartNext = (currentId: string, nextId: string) => {
             if (!isMountedRef.current) return;

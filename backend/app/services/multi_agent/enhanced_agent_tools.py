@@ -772,36 +772,41 @@ class PresentationGenerationTool(BaseTool):
     ) -> Dict[str, Any]:
         """비동기 프레젠테이션 생성 (권장 경로)."""
         logger.info(f"📊 (async) 프레젠테이션 생성 툴 실행: {slide_count}개 슬라이드")
-        try:
-            # 템플릿 미적용(Quick) 파이프라인 사용
-            from app.services.presentation.quick_ppt_generator_service import quick_ppt_service
-            topic = content.split('\n')[0][:70] if content else "프레젠테이션"
-            deck = quick_ppt_service.generate_fixed_outline(
-                topic=topic,
-                context_text=content[:8000],
-                max_slides=slide_count
-            )
-            file_path = quick_ppt_service.build_quick_pptx(deck)
-            return {
-                "success": True,
-                "file_path": file_path,
-                "file_name": file_path.split('/')[-1],
-                "slide_count": getattr(deck, 'max_slides', slide_count),
-                "template_style": template_style,  # quick 경로에서는 스타일이 시각적 테마에 직접 반영되지 않을 수 있음
-                "outline": {
-                    "title": deck.topic,
-                    "slides": [{"title": s.title, "layout": s.layout} for s in deck.slides]
-                },
-                "metadata": {
-                    "generation_timestamp": datetime.now().isoformat(),
-                    "content_length": len(content),
-                    "include_charts": include_charts,  # quick 경로에서는 무시될 수 있음
-                    "async": True
-                }
-            }
-        except Exception as e:
-            logger.error(f"❌ (async) 프레젠테이션 생성 실패: {e}")
-            return {"success": False, "error": str(e)}
+        logger.warning("⚠️ quick_ppt_service가 deprecated되어 기능이 비활성화되었습니다. unified_presentation_agent를 사용하세요.")
+        return {
+            "success": False,
+            "error": "quick_ppt_service is deprecated. Please use unified_presentation_agent instead."
+        }
+        # try:
+        #     # 템플릿 미적용(Quick) 파이프라인 사용
+        #     # from app.services.presentation.quick_ppt_generator_service import quick_ppt_service  # Deprecated
+        #     topic = content.split('\n')[0][:70] if content else "프레젠테이션"
+        #     deck = quick_ppt_service.generate_fixed_outline(
+        #         topic=topic,
+        #         context_text=content[:8000],
+        #         max_slides=slide_count
+        #     )
+        #     file_path = quick_ppt_service.build_quick_pptx(deck)
+        #     return {
+        #         "success": True,
+        #         "file_path": file_path,
+        #         "file_name": file_path.split('/')[-1],
+        #         "slide_count": getattr(deck, 'max_slides', slide_count),
+        #         "template_style": template_style,  # quick 경로에서는 스타일이 시각적 테마에 직접 반영되지 않을 수 있음
+        #         "outline": {
+        #             "title": deck.topic,
+        #             "slides": [{"title": s.title, "layout": s.layout} for s in deck.slides]
+        #         },
+        #         "metadata": {
+        #             "generation_timestamp": datetime.now().isoformat(),
+        #             "content_length": len(content),
+        #             "include_charts": include_charts,  # quick 경로에서는 무시될 수 있음
+        #             "async": True
+        #         }
+        #     }
+        # except Exception as e:
+        #     logger.error(f"❌ (async) 프레젠테이션 생성 실패: {e}")
+        #     return {"success": False, "error": str(e)}
 
     # 동기 폴백 (기존 인터페이스 유지)
     def _run(
