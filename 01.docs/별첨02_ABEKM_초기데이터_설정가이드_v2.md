@@ -362,11 +362,11 @@ DOCUMENT_TYPE,patent,특허 문서,특허 서지정보 추출 전용 파이프�
 
 **문서 유형별 처리 차이**:
 
-| 문서 유형 | 아이콘 | 처리 파이프라인 | 추출 기능 | 구현 상태 |
-|----------|-------|--------------|----------|----------|
-| **일반 문서** (general) | 📄 | GeneralPipeline | 기본 텍스트/이미지 추출 | ✅ 구현됨 |
-| **학술 논문** (academic_paper) | 📚 | AcademicPaperPipeline | Figure/Table 캡션, References, 섹션 구조화 | ✅ 구현됨 |
-| **특허 문서** (patent) | 📜 | PatentPipeline | Claims, 인용특허, 서지정보 | 🔜 향후 구현 |
+| 문서 유형                      | 아이콘 | 처리 파이프라인              | 추출 기능                               | 구현 상태    |
+| -------------------------- | --- | --------------------- | ----------------------------------- | -------- |
+| **일반 문서** (general)        | 📄  | GeneralPipeline       | 기본 텍스트/이미지 추출                       | ✅ 구현됨    |
+| **학술 논문** (academic_paper) | 📚  | AcademicPaperPipeline | Figure/Table 캡션, References, 섹션 구조화 | ✅ 구현됨    |
+| **특허 문서** (patent)         | 📜  | PatentPipeline        | Claims, 인용특허, 서지정보                  | 🔜 향후 구현 |
 
 **프론트엔드 업로드 화면 연동**:
 - API: `/api/v1/documents/document-types`
@@ -450,17 +450,23 @@ python -m data.seeds.permission_seeder  # 권한
 
 **목적**: 데이터베이스 스키마 생성 및 테이블 초기화
 
-```bash
+```
+
+bash
 # 1. 가상환경 활성화
 cd /home/admin/Dev/abekm/backend
 source /home/admin/Dev/abekm/.venv/bin/activate
 
 # 2. Alembic 마이그레이션 실행
+
 alembic upgrade head
 
 # 3. 마이그레이션 결과 확인
+
 # ✅ Total tables created: 38
+
 # ✅ Alembic version: 20251114_003 (최신)
+
 ```
 
 **마이그레이션 주요 내용**:
@@ -478,7 +484,9 @@ alembic upgrade head
 
 ### 3.2 데이터베이스 상태 검증
 
-```bash
+```
+
+bash
 cd /home/admin/Dev/abekm/backend
 source /home/admin/Dev/abekm/.venv/bin/activate
 
@@ -516,31 +524,45 @@ asyncio.run(check())
 "
 
 # 예상 출력:
+
 # ✅ Total tables: 38
+
 #   ✓ tb_user
+
 #   ✓ tb_sap_hr_info
+
 #   ✓ tb_knowledge_containers
+
 #   ✓ tb_user_permissions
+
 #   ✓ doc_chunk
+
 #   ✓ doc_embedding
+
 ```
 
 ### 3.3 초기 데이터 로딩
 
-```bash
+```
+
+bash
 cd /home/admin/Dev/abekm/backend
 source /home/admin/Dev/abekm/.venv/bin/activate
 
 # 전체 시드 데이터 실행
+
 python data/seeds/run_all_seeders.py
 
 # 실행 시 확인 메시지
+
 # 기존 데이터를 삭제하고 다시 로드하시겠습니까? (y/N): y
+
 ```
 
 **실제 실행 결과** (2025-11-17 기준):
 
 ```
+
 2025-11-17 17:11:54 - INFO - 🚀 WKMS 마스터 데이터 초기화 시작...
 ============================================================
 📋 1단계: 시스템 기본 데이터 로딩...
@@ -623,20 +645,20 @@ python data/seeds/run_all_seeders.py
 
 **ADMIN001 필수 권한**: 모든 지식 컨테이너에 ADMIN 권한 보유
 
-| 컨테이너 ID | 컨테이너 명 | ADMIN001 권한 | 상태 |
-|------------|-----------|--------------|------|
-| WJ_ROOT | 웅진 | ADMIN (level 10) | ✅ 정상 |
-| WJ_CEO | CEO직속 | ADMIN (level 10) | ✅ 정상 |
-| WJ_CLOUD | 클라우드사업본부 | ADMIN (level 10) | ✅ 정상 |
-| WJ_CTI | CTI사업본부 | ADMIN (level 10) | ✅ 정상 |
-| WJ_HR | 인사전략팀 | ADMIN (level 10) | ✅ 정상 |
-| WJ_PLANNING | 기획팀 | ADMIN (level 10) | ✅ 정상 |
+| 컨테이너 ID          | 컨테이너 명   | ADMIN001 권한      | 상태   |
+| ---------------- | -------- | ---------------- | ---- |
+| WJ_ROOT          | 웅진       | ADMIN (level 10) | ✅ 정상 |
+| WJ_CEO           | CEO직속    | ADMIN (level 10) | ✅ 정상 |
+| WJ_CLOUD         | 클라우드사업본부 | ADMIN (level 10) | ✅ 정상 |
+| WJ_CTI           | CTI사업본부  | ADMIN (level 10) | ✅ 정상 |
+| WJ_HR            | 인사전략팀    | ADMIN (level 10) | ✅ 정상 |
+| WJ_PLANNING      | 기획팀      | ADMIN (level 10) | ✅ 정상 |
 | WJ_CLOUD_SERVICE | 클라우드서비스팀 | ADMIN (level 10) | ✅ 정상 |
-| WJ_MS_SERVICE | MS서비스팀 | ADMIN (level 10) | ✅ 정상 |
-| WJ_INFRA_CONSULT | 인프라컨설팅팀 | ADMIN (level 10) | ✅ 정상 |
-| WJ_BIZ_OPS1 | Biz운영1팀 | ADMIN (level 10) | ✅ 정상 |
-| WJ_RECRUIT | 채용팀 | ADMIN (level 10) | ✅ 정상 |
-| WJ_TRAINING | 교육팀 | ADMIN (level 10) | ✅ 정상 |
+| WJ_MS_SERVICE    | MS서비스팀   | ADMIN (level 10) | ✅ 정상 |
+| WJ_INFRA_CONSULT | 인프라컨설팅팀  | ADMIN (level 10) | ✅ 정상 |
+| WJ_BIZ_OPS1      | Biz운영1팀  | ADMIN (level 10) | ✅ 정상 |
+| WJ_RECRUIT       | 채용팀      | ADMIN (level 10) | ✅ 정상 |
+| WJ_TRAINING      | 교육팀      | ADMIN (level 10) | ✅ 정상 |
 
 **검증 결과**: ✅ **ADMIN001이 전체 12개 컨테이너에 ADMIN 권한 보유 확인**
 
@@ -646,24 +668,24 @@ python data/seeds/run_all_seeders.py
 
 **부서/팀장 역할**: 담당 컨테이너 및 하위 컨테이너에 MANAGER 권한 보유
 
-| 사용자 | 역할 | 담당 컨테이너 | 보유 권한 | 상태 |
-|-------|------|-------------|----------|------|
-| **HR001** | 인사전략팀장 | WJ_HR | MANAGER | ✅ 정상 |
-|  |  | WJ_RECRUIT (하위) | MANAGER (상속) | ✅ 정상 |
-|  |  | WJ_TRAINING (하위) | MANAGER (상속) | ✅ 정상 |
-| **PLN001** | 기획팀장 | WJ_PLANNING | MANAGER | ✅ 정상 |
-| **CLD001** | 클라우드본부장 | WJ_CLOUD | MANAGER | ✅ 정상 |
-|  |  | WJ_CLOUD_SERVICE (하위) | MANAGER | ✅ 정상 |
-| **MSS001** | MS서비스팀장 | WJ_MS_SERVICE | MANAGER | ✅ 정상 |
-|  |  | WJ_CLOUD (상위) | VIEWER | ✅ 정상 |
-| **INF001** | CTI본부장 | WJ_CTI | MANAGER | ✅ 정상 |
-|  |  | WJ_INFRA_CONSULT (하위) | MANAGER | ✅ 정상 |
-| **BIZ001** | Biz운영1팀장 | WJ_BIZ_OPS1 | MANAGER | ✅ 정상 |
-|  |  | WJ_CTI (상위) | VIEWER | ✅ 정상 |
-| **REC001** | 채용팀장 | WJ_RECRUIT | MANAGER | ✅ 정상 |
-|  |  | WJ_HR (상위) | VIEWER | ✅ 정상 |
-| **TRN001** | 교육팀장 | WJ_TRAINING | MANAGER | ✅ 정상 |
-|  |  | WJ_HR (상위) | VIEWER | ✅ 정상 |
+| 사용자        | 역할       | 담당 컨테이너               | 보유 권한        | 상태   |
+| ---------- | -------- | --------------------- | ------------ | ---- |
+| **HR001**  | 인사전략팀장   | WJ_HR                 | MANAGER      | ✅ 정상 |
+|            |          | WJ_RECRUIT (하위)       | MANAGER (상속) | ✅ 정상 |
+|            |          | WJ_TRAINING (하위)      | MANAGER (상속) | ✅ 정상 |
+| **PLN001** | 기획팀장     | WJ_PLANNING           | MANAGER      | ✅ 정상 |
+| **CLD001** | 클라우드본부장  | WJ_CLOUD              | MANAGER      | ✅ 정상 |
+|            |          | WJ_CLOUD_SERVICE (하위) | MANAGER      | ✅ 정상 |
+| **MSS001** | MS서비스팀장  | WJ_MS_SERVICE         | MANAGER      | ✅ 정상 |
+|            |          | WJ_CLOUD (상위)         | VIEWER       | ✅ 정상 |
+| **INF001** | CTI본부장   | WJ_CTI                | MANAGER      | ✅ 정상 |
+|            |          | WJ_INFRA_CONSULT (하위) | MANAGER      | ✅ 정상 |
+| **BIZ001** | Biz운영1팀장 | WJ_BIZ_OPS1           | MANAGER      | ✅ 정상 |
+|            |          | WJ_CTI (상위)           | VIEWER       | ✅ 정상 |
+| **REC001** | 채용팀장     | WJ_RECRUIT            | MANAGER      | ✅ 정상 |
+|            |          | WJ_HR (상위)            | VIEWER       | ✅ 정상 |
+| **TRN001** | 교육팀장     | WJ_TRAINING           | MANAGER      | ✅ 정상 |
+|            |          | WJ_HR (상위)            | VIEWER       | ✅ 정상 |
 
 **검증 결과**: ✅ **모든 지식관리자가 담당 컨테이너에 적절한 권한 보유 확인**
 
@@ -673,10 +695,10 @@ python data/seeds/run_all_seeders.py
 
 **팀원 역할**: 소속 컨테이너에 EDITOR 또는 VIEWER 권한 보유
 
-| 사용자 | 역할 | 소속 컨테이너 | 보유 권한 | 상태 |
-|-------|------|-------------|----------|------|
+| 사용자          | 역할        | 소속 컨테이너       | 보유 권한  | 상태   |
+| ------------ | --------- | ------------- | ------ | ---- |
 | **77107791** | MS서비스팀 팀원 | WJ_MS_SERVICE | EDITOR | ✅ 정상 |
-|  |  | WJ_CLOUD (상위) | VIEWER | ✅ 정상 |
+|              |           | WJ_CLOUD (상위) | VIEWER | ✅ 정상 |
 
 **검증 결과**: ✅ **일반 사용자가 소속 컨테이너에 적절한 권한 보유 확인**
 
@@ -690,11 +712,11 @@ python data/seeds/run_all_seeders.py
 
 **사용자 컨테이너 패턴**: `USER_{emp_no}_{UUID}`
 
-| 예시 컨테이너 | 생성자 | OWNER 권한 | ADMIN001 ADMIN 권한 | 상태 |
-|-------------|-------|-----------|-------------------|------|
-| USER_HR001_abc123 | HR001 | ✅ 자동 부여 | ✅ 자동 부여 | 정상 |
-| USER_CLD001_def456 | CLD001 | ✅ 자동 부여 | ✅ 자동 부여 | 정상 |
-| USER_ADMIN001_xyz789 | ADMIN001 | ✅ 자동 부여 | ✅ 자동 부여 | 정상 |
+| 예시 컨테이너              | 생성자      | OWNER 권한 | ADMIN001 ADMIN 권한 | 상태 |
+| -------------------- | -------- | -------- | ----------------- | -- |
+| USER_HR001_abc123    | HR001    | ✅ 자동 부여  | ✅ 자동 부여           | 정상 |
+| USER_CLD001_def456   | CLD001   | ✅ 자동 부여  | ✅ 자동 부여           | 정상 |
+| USER_ADMIN001_xyz789 | ADMIN001 | ✅ 자동 부여  | ✅ 자동 부여           | 정상 |
 
 **구현 코드** (`backend/app/services/knowledge_container.py`):
 ```python
@@ -1056,15 +1078,15 @@ tb_user_permissions (권한)
 
 ### CSV 파일 크기 및 레코드 수
 
-| CSV 파일 | 레코드 수 | 크기 |
-|----------|----------|------|
-| common_codes.csv | ~20 | ~2KB |
-| categories.csv | ~6 | ~1KB |
-| sap_hr_info.csv | 9 | ~2KB |
-| users.csv | 9 | ~3KB |
-| knowledge_containers.csv | 12 | ~4KB |
-| user_roles.csv | 4 | ~1KB |
-| user_permissions.csv | ~50 | ~5KB |
+| CSV 파일                   | 레코드 수 | 크기   |
+| ------------------------ | ----- | ---- |
+| common_codes.csv         | ~20   | ~2KB |
+| categories.csv           | ~6    | ~1KB |
+| sap_hr_info.csv          | 9     | ~2KB |
+| users.csv                | 9     | ~3KB |
+| knowledge_containers.csv | 12    | ~4KB |
+| user_roles.csv           | 4     | ~1KB |
+| user_permissions.csv     | ~50   | ~5KB |
 
 ---
 
@@ -1428,12 +1450,12 @@ tar -czf wkms_files_backup_$(date +%Y%m%d).tar.gz /home/admin/wkms-aws/uploads/
 
 ## 📋 변경 이력
 
-| 버전  | 날짜         | 변경 내용                                                      | 작성자    |
-| --- | ---------- | ---------------------------------------------------------- | ------ |
-| 1.0 | 2025-01-29 | 초기 문서 작성                                                   | 시스템관리팀 |
-| 2.0 | 2025-07-30 | 통합 스크립트 반영, 중복 파일 정리, 실행 방법 업데이트                            | 시스템관리팀 |
-| 3.0 | 2025-10-27 | CSV 기반 데이터 관리 체계 전환, 문서 유형(DOCUMENT_TYPE) 체계 정립, FAQ 추가 | 시스템관리팀 |
-| 3.1 | 2025-11-04 | 권한 검증 체크리스트 추가, 사용자 컨테이너 자동 권한 부여 규칙 문서화, 권한 검증 결과 추가 | 시스템관리팀 |
+| 버전  | 날짜         | 변경 내용                                                             | 작성자    |
+| --- | ---------- | ----------------------------------------------------------------- | ------ |
+| 1.0 | 2025-01-29 | 초기 문서 작성                                                          | 시스템관리팀 |
+| 2.0 | 2025-07-30 | 통합 스크립트 반영, 중복 파일 정리, 실행 방법 업데이트                                  | 시스템관리팀 |
+| 3.0 | 2025-10-27 | CSV 기반 데이터 관리 체계 전환, 문서 유형(DOCUMENT_TYPE) 체계 정립, FAQ 추가           | 시스템관리팀 |
+| 3.1 | 2025-11-04 | 권한 검증 체크리스트 추가, 사용자 컨테이너 자동 권한 부여 규칙 문서화, 권한 검증 결과 추가             | 시스템관리팀 |
 | 3.2 | 2025-11-17 | Alembic 마이그레이션 추가, 실제 실행 결과 업데이트, 지식관리자 API 변경, 데이터베이스 검증 스크립트 추가 | 시스템관리팀 |
 
 ---

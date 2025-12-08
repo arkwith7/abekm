@@ -31,6 +31,7 @@ deployment/
 ## 🚀 배포 옵션 선택 가이드
 
 ### 1. 🐳 Docker 기반 배포 (권장)
+
 **적합한 경우:**
 - 빠른 프로토타이핑 및 개발
 - 중소규모 운영 환경
@@ -46,6 +47,7 @@ deployment/
 **시작하기:** [docker/README.md](./docker/README.md)
 
 ### 2. ☸️ 쿠버네티스 배포
+
 **적합한 경우:**
 - 대규모 프로덕션 환경
 - 자동 확장이 필요한 경우
@@ -61,6 +63,7 @@ deployment/
 **시작하기:** [../k8s/README.md](../k8s/README.md)
 
 ### 3. ☁️ 클라우드 네이티브 배포
+
 **적합한 경우:**
 - 클라우드 서비스 완전 활용
 - 관리형 서비스 선호
@@ -78,6 +81,7 @@ deployment/
 ## ⚡ 빠른 배포 가이드
 
 ### Docker로 즉시 시작 (5분)
+
 ```bash
 # 저장소 클론
 git clone <repository-url>
@@ -94,6 +98,7 @@ open http://localhost:3000
 ```
 
 ### 쿠버네티스 배포 (15분)
+
 ```bash
 # 이미지 빌드 및 푸시 (registry 설정 필요)
 docker build -t your-registry/wkms-backend:latest ./backend
@@ -115,18 +120,21 @@ kubectl get pods -n wkms
 ## 🔧 환경별 설정 가이드
 
 ### 개발 환경
+
 - **목적**: 로컬 개발 및 테스트
 - **특징**: 자동 리로딩, 디버깅 포트 오픈, 개발용 데이터
 - **배포**: Docker Compose 사용
 - **설정**: `.env.development`
 
 ### 스테이징 환경  
+
 - **목적**: 프로덕션 배포 전 최종 검증
 - **특징**: 프로덕션과 유사한 환경, 테스트 데이터
 - **배포**: Docker Compose 또는 쿠버네티스
 - **설정**: `.env.staging`
 
 ### 프로덕션 환경
+
 - **목적**: 실제 서비스 운영
 - **특징**: 고가용성, 자동 확장, 보안 강화
 - **배포**: 쿠버네티스 (권장) 또는 관리형 서비스
@@ -135,18 +143,21 @@ kubectl get pods -n wkms
 ## 📊 리소스 요구사항
 
 ### 최소 요구사항 (개발/테스트)
+
 - **CPU**: 2 cores
 - **메모리**: 4GB RAM
 - **스토리지**: 20GB
 - **네트워크**: 인터넷 연결
 
 ### 권장 요구사항 (프로덕션)
+
 - **CPU**: 4+ cores
 - **메모리**: 8GB+ RAM
 - **스토리지**: 100GB+ SSD
 - **네트워크**: 고속 인터넷, 로드 밸런서
 
 ### 대규모 환경 (엔터프라이즈)
+
 - **CPU**: 8+ cores (멀티 노드)
 - **메모리**: 16GB+ RAM
 - **스토리지**: 500GB+ SSD (분산 스토리지)
@@ -155,11 +166,13 @@ kubectl get pods -n wkms
 ## 🔐 보안 고려사항
 
 ### 개발 환경
+
 - 기본 패스워드 변경
 - 개발용 API 키 사용
 - HTTP 허용 (로컬만)
 
 ### 프로덕션 환경  
+
 - 강력한 패스워드 정책
 - 프로덕션 API 키 관리
 - HTTPS 필수
@@ -171,6 +184,7 @@ kubectl get pods -n wkms
 ### 공통 문제들
 
 #### 1. 포트 충돌
+
 ```bash
 # 사용 중인 포트 확인
 netstat -tlnp | grep :3000
@@ -181,6 +195,7 @@ FRONTEND_PORT=3001 BACKEND_PORT=8001 docker-compose up -d
 ```
 
 #### 2. 메모리 부족
+
 ```bash
 # Docker 메모리 사용량 확인
 docker stats
@@ -190,6 +205,7 @@ docker system prune -a
 ```
 
 #### 3. 네트워크 연결 문제
+
 ```bash
 # Docker 네트워크 확인
 docker network ls
@@ -200,6 +216,7 @@ docker-compose exec backend ping frontend
 ```
 
 ### 각 배포 유형별 상세 문제 해결
+
 - **Docker**: [docker/troubleshooting.md](./docker/troubleshooting.md)
 - **쿠버네티스**: [../k8s/troubleshooting/](../k8s/troubleshooting/)
 - **클라우드**: [cloud/troubleshooting.md](./cloud/troubleshooting.md)
@@ -207,6 +224,7 @@ docker-compose exec backend ping frontend
 ## 📈 모니터링 및 로깅
 
 ### 기본 모니터링
+
 ```bash
 # 서비스 상태 확인
 docker-compose ps                    # Docker 환경
@@ -222,6 +240,7 @@ kubectl top nodes && kubectl top pods -n wkms    # 쿠버네티스 환경
 ```
 
 ### 고급 모니터링
+
 - **Prometheus + Grafana**: 메트릭 수집 및 시각화
 - **ELK Stack**: 중앙화된 로그 관리
 - **Jaeger**: 분산 추적
@@ -230,6 +249,7 @@ kubectl top nodes && kubectl top pods -n wkms    # 쿠버네티스 환경
 ## 🔄 CI/CD 통합
 
 ### GitHub Actions 예시
+
 ```yaml
 name: Deploy to Production
 on:
@@ -246,6 +266,7 @@ jobs:
 ```
 
 ### Jenkins 파이프라인
+
 ```groovy
 pipeline {
     agent any
