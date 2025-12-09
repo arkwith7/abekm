@@ -1,5 +1,6 @@
 import { Image } from 'lucide-react';
 import React from 'react';
+import { getApiUrl } from '../../../../utils/apiConfig';
 import { SearchResult } from '../types';
 
 const TOKEN_STORAGE_KEYS = ['ABEKM_token', 'access_token', 'token'];
@@ -126,7 +127,11 @@ const ResultItem: React.FC<{
             headers['Authorization'] = `Bearer ${token}`;
           }
 
-          const response = await fetch(imageApiUrl, {
+          // 백엔드 API baseURL 추가 (프록시가 아닌 직접 호출)
+          const baseUrl = getApiUrl() || '';
+          const fullUrl = imageApiUrl.startsWith('http') ? imageApiUrl : `${baseUrl}${imageApiUrl}`;
+
+          const response = await fetch(fullUrl, {
             headers,
             credentials: 'include',
             signal: controller.signal,

@@ -132,56 +132,70 @@ class ContentMappingTool(BaseTool):
         text_boxes: List[Dict[str, Any]],
         template_structure: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Generate mappings using AI - template의 실제 element_id를 사용."""
+        """Generate mappings using AI - element_role 기반 매핑 (v3.0)."""
         mappings = []
         
-        # 슬라이드별 텍스트박스 그룹화
-        textboxes_by_slide: Dict[int, List[Dict[str, Any]]] = {}
+        # 슬라이드별 텍스트박스 그룹화 및 역할별 분류
+        textboxes_by_slide: Dict[int, Dict[str, List[Dict[str, Any]]]] = {}
         for tb in text_boxes:
             slide_idx = tb.get('slide_index', 0)
             if slide_idx not in textboxes_by_slide:
-                textboxes_by_slide[slide_idx] = []
-            textboxes_by_slide[slide_idx].append(tb)
+                textboxes_by_slide[slide_idx] = {
+                    'title': [],      # main_title, slide_title
+                    'subtitle': [],   # subtitle, metadata
+                    'key_message': [],  # key_message
+                    'body': [],       # body_content, bullet_item, content_item
+                    'toc': [],        # toc_item, toc_number
+                    'other': []       # 그 외
+                }
+            
+            # is_fixed가 True인 요소는 매핑 대상에서 제외
+            if tb.get('is_fixed', False):
+                continue
+            
+            element_role = tb.get('element_role', 'unknown')
+            
+            # element_role에 따라 분류
+            if element_role in ['main_title', 'slide_title']:
+                textboxes_by_slide[slide_idx]['title'].append(tb)
+            elif element_role in ['subtitle', 'metadata']:
+                textboxes_by_slide[slide_idx]['subtitle'].append(tb)
+            elif element_role == 'key_message':
+                textboxes_by_slide[slide_idx]['key_message'].append(tb)
+            elif element_role in ['body_content', 'bullet_item', 'content_item', 'numbered_card']:
+                textboxes_by_slide[slide_idx]['body'].append(tb)
+            elif element_role in ['toc_item', 'toc_number']:
+                textboxes_by_slide[slide_idx]['toc'].append(tb)
+            else:
+                textboxes_by_slide[slide_idx]['other'].append(tb)
+        
+        logger.info(f"📋 텍스트박스 역할별 분류 완료: {len(textboxes_by_slide)}개 슬라이드")
         
         # 각 슬라이드별로 매핑 생성
         for slide_idx, slide in enumerate(slides):
             slide_title = slide.get('title', '')
             slide_key_message = slide.get('key_message', '')
             slide_bullets = slide.get('bullets', [])
+            slide_subtitle = slide.get('subtitle', '')
             
-            # 해당 슬라이드의 텍스트박스 가져오기
-            # 템플릿 슬라이드 개수보다 outline 슬라이드가 많을 수 있으므로 순환 처리
+            # 템플릿 슬라이드 순환 처리
             template_slide_count = len(textboxes_by_slide) if textboxes_by_slide else 1
             template_slide_idx = slide_idx % template_slide_count if template_slide_count > 0 else 0
             
-            slide_textboxes = textboxes_by_slide.get(template_slide_idx, [])
+            slide_boxes = textboxes_by_slide.get(template_slide_idx, {})
             
-            if not slide_textboxes:
+            if not slide_boxes:
                 logger.warning(f"⚠️ 슬라이드 {slide_idx}에 매핑할 텍스트박스 없음")
                 continue
             
-            # 텍스트박스를 역할별로 분류 (title 역할이 있으면 분리)
-            title_boxes = []
-            content_boxes = []
+            logger.info(f"📋 슬라이드 {slide_idx}: title={len(slide_boxes.get('title', []))}, "
+                       f"subtitle={len(slide_boxes.get('subtitle', []))}, "
+                       f"key_message={len(slide_boxes.get('key_message', []))}, "
+                       f"body={len(slide_boxes.get('body', []))}, "
+                       f"toc={len(slide_boxes.get('toc', []))}")
             
-            for tb in slide_textboxes:
-                role = tb.get('role', '').lower()
-                element_id = tb.get('element_id', '')
-                
-                # title 역할이거나, element_id에 title이 포함되어 있거나, 첫 번째 텍스트박스
-                if role == 'title' or 'title' in element_id.lower():
-                    title_boxes.append(tb)
-                else:
-                    content_boxes.append(tb)
-            
-            # title 박스가 없으면 첫 번째를 title로 사용
-            if not title_boxes and slide_textboxes:
-                title_boxes = [slide_textboxes[0]]
-                content_boxes = slide_textboxes[1:]
-            
-            logger.info(f"📋 슬라이드 {slide_idx}: title_boxes={len(title_boxes)}, content_boxes={len(content_boxes)}")
-            
-            # 1. Title 매핑 (실제 element_id 사용)
+            # 1. Title 매핑 (main_title, slide_title 역할)
+            title_boxes = slide_boxes.get('title', [])
             if title_boxes and slide_title:
                 actual_element_id = title_boxes[0].get('element_id', f'textbox-{slide_idx}-0')
                 mappings.append({
@@ -190,39 +204,75 @@ class ContentMappingTool(BaseTool):
                     'objectType': 'textbox',
                     'action': 'replace_content',
                     'newContent': slide_title,
-                    'isEnabled': True
+                    'isEnabled': True,
+                    'target_role': 'title'
                 })
-                logger.info(f"✅ Title 매핑: slide={slide_idx}, elementId='{actual_element_id}', content='{slide_title[:30]}...'")
+                logger.info(f"✅ Title 매핑: slide={slide_idx}, elementId='{actual_element_id}'")
             
-            # 2. Key Message 매핑 (첫 번째 content box에)
-            if content_boxes and slide_key_message:
-                actual_element_id = content_boxes[0].get('element_id', f'textbox-{slide_idx}-1')
+            # 2. Subtitle 매핑 (subtitle, metadata 역할)
+            subtitle_boxes = slide_boxes.get('subtitle', [])
+            if subtitle_boxes and slide_subtitle:
+                actual_element_id = subtitle_boxes[0].get('element_id', f'textbox-{slide_idx}-1')
+                mappings.append({
+                    'slideIndex': slide_idx,
+                    'elementId': actual_element_id,
+                    'objectType': 'textbox',
+                    'action': 'replace_content',
+                    'newContent': slide_subtitle,
+                    'isEnabled': True,
+                    'target_role': 'subtitle'
+                })
+                logger.info(f"✅ Subtitle 매핑: slide={slide_idx}, elementId='{actual_element_id}'")
+            
+            # 3. Key Message 매핑 (key_message 역할)
+            key_message_boxes = slide_boxes.get('key_message', [])
+            if key_message_boxes and slide_key_message:
+                actual_element_id = key_message_boxes[0].get('element_id', f'textbox-{slide_idx}-2')
                 mappings.append({
                     'slideIndex': slide_idx,
                     'elementId': actual_element_id,
                     'objectType': 'textbox',
                     'action': 'replace_content',
                     'newContent': slide_key_message,
-                    'isEnabled': True
+                    'isEnabled': True,
+                    'target_role': 'key_message'
                 })
                 logger.info(f"✅ KeyMessage 매핑: slide={slide_idx}, elementId='{actual_element_id}'")
+            elif slide_key_message:
+                # key_message 역할 박스가 없으면 body 첫 번째에 매핑
+                body_boxes = slide_boxes.get('body', [])
+                if body_boxes:
+                    actual_element_id = body_boxes[0].get('element_id', f'textbox-{slide_idx}-3')
+                    mappings.append({
+                        'slideIndex': slide_idx,
+                        'elementId': actual_element_id,
+                        'objectType': 'textbox',
+                        'action': 'replace_content',
+                        'newContent': slide_key_message,
+                        'isEnabled': True,
+                        'target_role': 'key_message_fallback'
+                    })
+                    logger.info(f"✅ KeyMessage (fallback to body): slide={slide_idx}, elementId='{actual_element_id}'")
             
-            # 3. Bullets 매핑 (나머지 content boxes에)
+            # 4. Bullets/Body 매핑 (body_content, bullet_item 역할)
+            body_boxes = slide_boxes.get('body', [])
+            # key_message가 body에 매핑되었으면 offset
+            body_offset = 1 if (not key_message_boxes and slide_key_message) else 0
+            
             for i, bullet in enumerate(slide_bullets):
-                # key_message가 있으면 1부터, 없으면 0부터
-                box_idx = i + 1 if slide_key_message else i
-                
-                if box_idx < len(content_boxes):
-                    actual_element_id = content_boxes[box_idx].get('element_id', f'textbox-{slide_idx}-{box_idx+1}')
+                box_idx = i + body_offset
+                if box_idx < len(body_boxes):
+                    actual_element_id = body_boxes[box_idx].get('element_id', f'textbox-{slide_idx}-{box_idx+3}')
                     mappings.append({
                         'slideIndex': slide_idx,
                         'elementId': actual_element_id,
                         'objectType': 'textbox',
                         'action': 'replace_content',
                         'newContent': bullet,
-                        'isEnabled': True
+                        'isEnabled': True,
+                        'target_role': 'body'
                     })
-                    logger.info(f"✅ Bullet 매핑: slide={slide_idx}, elementId='{actual_element_id}', content='{str(bullet)[:30]}...'")
+                    logger.info(f"✅ Body 매핑: slide={slide_idx}, elementId='{actual_element_id}'")
         
         return mappings
 
@@ -234,7 +284,7 @@ class ContentMappingTool(BaseTool):
         slide_matches: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """
-        slide_type_matcher_tool의 결과를 활용하여 매핑 생성.
+        slide_type_matcher_tool의 결과를 활용하여 매핑 생성 (element_role 기반 v3.0).
         
         slide_matches 구조:
         [
@@ -251,15 +301,41 @@ class ContentMappingTool(BaseTool):
         """
         mappings = []
         
-        # 슬라이드별 텍스트박스 그룹화 (template_index 기준)
-        textboxes_by_slide: Dict[int, List[Dict[str, Any]]] = {}
+        # 슬라이드별 텍스트박스를 element_role로 분류
+        textboxes_by_slide: Dict[int, Dict[str, List[Dict[str, Any]]]] = {}
         for tb in text_boxes:
             slide_idx = tb.get('slide_index', 0)
             if slide_idx not in textboxes_by_slide:
-                textboxes_by_slide[slide_idx] = []
-            textboxes_by_slide[slide_idx].append(tb)
+                textboxes_by_slide[slide_idx] = {
+                    'title': [],      # main_title, slide_title
+                    'subtitle': [],   # subtitle, metadata
+                    'key_message': [],  # key_message
+                    'body': [],       # body_content, bullet_item, content_item, numbered_card
+                    'toc': [],        # toc_item, toc_number
+                    'other': []       # 그 외
+                }
+            
+            # is_fixed가 True인 요소는 매핑 대상에서 제외
+            if tb.get('is_fixed', False):
+                continue
+            
+            element_role = tb.get('element_role', 'unknown')
+            
+            # element_role에 따라 분류
+            if element_role in ['main_title', 'slide_title']:
+                textboxes_by_slide[slide_idx]['title'].append(tb)
+            elif element_role in ['subtitle', 'metadata']:
+                textboxes_by_slide[slide_idx]['subtitle'].append(tb)
+            elif element_role == 'key_message':
+                textboxes_by_slide[slide_idx]['key_message'].append(tb)
+            elif element_role in ['body_content', 'bullet_item', 'content_item', 'numbered_card']:
+                textboxes_by_slide[slide_idx]['body'].append(tb)
+            elif element_role in ['toc_item', 'toc_number']:
+                textboxes_by_slide[slide_idx]['toc'].append(tb)
+            else:
+                textboxes_by_slide[slide_idx]['other'].append(tb)
         
-        logger.info(f"📋 텍스트박스 그룹화: {len(textboxes_by_slide)}개 슬라이드")
+        logger.info(f"📋 텍스트박스 역할별 분류: {len(textboxes_by_slide)}개 슬라이드")
         
         # slide_matches를 딕셔너리로 변환 (outline_index -> template_index)
         outline_to_template: Dict[int, int] = {}
@@ -269,64 +345,91 @@ class ContentMappingTool(BaseTool):
             outline_to_template[outline_idx] = template_idx
             logger.info(f"  매칭: outline[{outline_idx}] -> template[{template_idx}] ({match.get('match_reason', '')})")
         
+        # 목차(TOC) 슬라이드가 아닌 슬라이드들의 제목 목록 수집 (목차 내용 생성용)
+        non_toc_slides_titles = []
+        for slide in slides:
+            slide_role = slide.get('role', '').lower()
+            slide_title = slide.get('title', '')
+            if slide_role not in ['toc', 'title', 'closing', 'thank_you', 'qa']:
+                if slide_title and '목차' not in slide_title:
+                    non_toc_slides_titles.append(slide_title)
+        
+        logger.info(f"📋 목차용 슬라이드 제목 목록: {non_toc_slides_titles}")
+        
         # 각 outline 슬라이드별로 매핑 생성
         for slide_idx, slide in enumerate(slides):
             slide_title = slide.get('title', '')
             slide_key_message = slide.get('key_message', '')
             slide_bullets = slide.get('bullets', [])
+            slide_subtitle = slide.get('subtitle', '')
+            slide_role = slide.get('role', '').lower()
             
-            # slide_matches에서 해당 outline 슬라이드의 템플릿 슬라이드 인덱스 가져오기
+            # 목차 슬라이드 감지
+            is_toc_slide = (
+                slide_role == 'toc' or 
+                '목차' in slide_title or 
+                'contents' in slide_title.lower() or
+                'table of contents' in slide_title.lower()
+            )
+            
+            if is_toc_slide:
+                logger.info(f"📑 목차 슬라이드 감지: outline[{slide_idx}] '{slide_title}'")
+                slide_bullets = [f"{i+1:02d}. {title}" for i, title in enumerate(non_toc_slides_titles)]
+                logger.info(f"📑 목차 내용 생성: {slide_bullets}")
+            
+            # slide_matches에서 템플릿 슬라이드 인덱스 가져오기
             template_slide_idx = outline_to_template.get(slide_idx)
-            
             if template_slide_idx is None:
-                # 매칭이 없으면 순환 처리
                 template_slide_count = len(textboxes_by_slide) if textboxes_by_slide else 1
                 template_slide_idx = slide_idx % template_slide_count if template_slide_count > 0 else 0
                 logger.warning(f"⚠️ outline[{slide_idx}]에 대한 매칭 없음, 순환 처리: template[{template_slide_idx}]")
             
-            slide_textboxes = textboxes_by_slide.get(template_slide_idx, [])
-            
-            if not slide_textboxes:
+            slide_boxes = textboxes_by_slide.get(template_slide_idx, {})
+            if not slide_boxes:
                 logger.warning(f"⚠️ template[{template_slide_idx}]에 텍스트박스 없음")
                 continue
             
-            # 텍스트박스를 역할별로 분류
-            title_boxes = []
-            content_boxes = []
+            logger.info(f"📋 outline[{slide_idx}] -> template[{template_slide_idx}]: "
+                       f"title={len(slide_boxes.get('title', []))}, "
+                       f"key_message={len(slide_boxes.get('key_message', []))}, "
+                       f"body={len(slide_boxes.get('body', []))}")
             
-            for tb in slide_textboxes:
-                role = tb.get('role', '').lower()
-                element_id = tb.get('element_id', '')
-                
-                if role == 'title' or 'title' in element_id.lower():
-                    title_boxes.append(tb)
-                else:
-                    content_boxes.append(tb)
-            
-            # title 박스가 없으면 첫 번째를 title로 사용
-            if not title_boxes and slide_textboxes:
-                title_boxes = [slide_textboxes[0]]
-                content_boxes = slide_textboxes[1:]
-            
-            logger.info(f"📋 outline[{slide_idx}] -> template[{template_slide_idx}]: title_boxes={len(title_boxes)}, content_boxes={len(content_boxes)}")
-            
-            # 1. Title 매핑
+            # 1. Title 매핑 (main_title, slide_title 역할)
+            title_boxes = slide_boxes.get('title', [])
             if title_boxes and slide_title:
                 actual_element_id = title_boxes[0].get('element_id', f'textbox-{template_slide_idx}-0')
                 mappings.append({
-                    'slideIndex': template_slide_idx,  # 템플릿 슬라이드 인덱스 사용!
-                    'outlineIndex': slide_idx,  # 원본 outline 인덱스도 저장
+                    'slideIndex': template_slide_idx,
+                    'outlineIndex': slide_idx,
                     'elementId': actual_element_id,
                     'objectType': 'textbox',
                     'action': 'replace_content',
                     'newContent': slide_title,
-                    'isEnabled': True
+                    'isEnabled': True,
+                    'target_role': 'title'
                 })
                 logger.info(f"✅ Title 매핑: outline[{slide_idx}] -> template[{template_slide_idx}].{actual_element_id}")
             
-            # 2. Key Message 매핑
-            if content_boxes and slide_key_message:
-                actual_element_id = content_boxes[0].get('element_id', f'textbox-{template_slide_idx}-1')
+            # 2. Subtitle 매핑 (subtitle, metadata 역할)
+            subtitle_boxes = slide_boxes.get('subtitle', [])
+            if subtitle_boxes and slide_subtitle:
+                actual_element_id = subtitle_boxes[0].get('element_id', f'textbox-{template_slide_idx}-1')
+                mappings.append({
+                    'slideIndex': template_slide_idx,
+                    'outlineIndex': slide_idx,
+                    'elementId': actual_element_id,
+                    'objectType': 'textbox',
+                    'action': 'replace_content',
+                    'newContent': slide_subtitle,
+                    'isEnabled': True,
+                    'target_role': 'subtitle'
+                })
+                logger.info(f"✅ Subtitle 매핑: outline[{slide_idx}] -> template[{template_slide_idx}].{actual_element_id}")
+            
+            # 3. Key Message 매핑 (key_message 역할)
+            key_message_boxes = slide_boxes.get('key_message', [])
+            if key_message_boxes and slide_key_message:
+                actual_element_id = key_message_boxes[0].get('element_id', f'textbox-{template_slide_idx}-2')
                 mappings.append({
                     'slideIndex': template_slide_idx,
                     'outlineIndex': slide_idx,
@@ -334,26 +437,88 @@ class ContentMappingTool(BaseTool):
                     'objectType': 'textbox',
                     'action': 'replace_content',
                     'newContent': slide_key_message,
-                    'isEnabled': True
+                    'isEnabled': True,
+                    'target_role': 'key_message'
                 })
                 logger.info(f"✅ KeyMessage 매핑: outline[{slide_idx}] -> template[{template_slide_idx}].{actual_element_id}")
-            
-            # 3. Bullets 매핑
-            for i, bullet in enumerate(slide_bullets):
-                box_idx = i + 1 if slide_key_message else i
-                
-                if box_idx < len(content_boxes):
-                    actual_element_id = content_boxes[box_idx].get('element_id', f'textbox-{template_slide_idx}-{box_idx+1}')
+            elif slide_key_message:
+                # key_message 역할 박스가 없으면 body 첫 번째에 매핑
+                body_boxes = slide_boxes.get('body', [])
+                if body_boxes:
+                    actual_element_id = body_boxes[0].get('element_id', f'textbox-{template_slide_idx}-3')
                     mappings.append({
                         'slideIndex': template_slide_idx,
                         'outlineIndex': slide_idx,
                         'elementId': actual_element_id,
                         'objectType': 'textbox',
                         'action': 'replace_content',
-                        'newContent': bullet,
-                        'isEnabled': True
+                        'newContent': slide_key_message,
+                        'isEnabled': True,
+                        'target_role': 'key_message_fallback'
                     })
-                    logger.info(f"✅ Bullet 매핑: outline[{slide_idx}] -> template[{template_slide_idx}].{actual_element_id}")
+                    logger.info(f"✅ KeyMessage (fallback): outline[{slide_idx}] -> template[{template_slide_idx}].{actual_element_id}")
+            
+            # 4. TOC 항목 매핑 (목차 슬라이드인 경우)
+            if is_toc_slide:
+                toc_boxes = slide_boxes.get('toc', [])
+                # toc_number와 toc_item 분리
+                toc_numbers = [tb for tb in toc_boxes if tb.get('element_role') == 'toc_number']
+                toc_items = [tb for tb in toc_boxes if tb.get('element_role') == 'toc_item']
+                
+                for i, bullet in enumerate(slide_bullets):
+                    # 번호 부분과 텍스트 부분 분리
+                    parts = bullet.split('. ', 1)
+                    if len(parts) == 2:
+                        num_part, text_part = parts
+                        
+                        # toc_number 매핑
+                        if i < len(toc_numbers):
+                            actual_element_id = toc_numbers[i].get('element_id')
+                            mappings.append({
+                                'slideIndex': template_slide_idx,
+                                'outlineIndex': slide_idx,
+                                'elementId': actual_element_id,
+                                'objectType': 'textbox',
+                                'action': 'replace_content',
+                                'newContent': num_part,
+                                'isEnabled': True,
+                                'target_role': 'toc_number'
+                            })
+                        
+                        # toc_item 매핑
+                        if i < len(toc_items):
+                            actual_element_id = toc_items[i].get('element_id')
+                            mappings.append({
+                                'slideIndex': template_slide_idx,
+                                'outlineIndex': slide_idx,
+                                'elementId': actual_element_id,
+                                'objectType': 'textbox',
+                                'action': 'replace_content',
+                                'newContent': text_part,
+                                'isEnabled': True,
+                                'target_role': 'toc_item'
+                            })
+                            logger.info(f"✅ TOC 매핑: {num_part}. {text_part}")
+            else:
+                # 5. Body/Bullets 매핑 (일반 슬라이드)
+                body_boxes = slide_boxes.get('body', [])
+                body_offset = 1 if (not key_message_boxes and slide_key_message) else 0
+                
+                for i, bullet in enumerate(slide_bullets):
+                    box_idx = i + body_offset
+                    if box_idx < len(body_boxes):
+                        actual_element_id = body_boxes[box_idx].get('element_id', f'textbox-{template_slide_idx}-{box_idx+3}')
+                        mappings.append({
+                            'slideIndex': template_slide_idx,
+                            'outlineIndex': slide_idx,
+                            'elementId': actual_element_id,
+                            'objectType': 'textbox',
+                            'action': 'replace_content',
+                            'newContent': bullet,
+                            'isEnabled': True,
+                            'target_role': 'body'
+                        })
+                        logger.info(f"✅ Body 매핑: outline[{slide_idx}] -> template[{template_slide_idx}].{actual_element_id}")
         
         return mappings
 

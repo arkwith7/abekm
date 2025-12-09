@@ -262,6 +262,12 @@ class Settings(BaseSettings):
     
     similarity_threshold: float = 0.7
     
+    # 이미지(멀티모달) 검색 유사도 임계값
+    # - 0.75~0.95: 매우 유사 (같은 대상, 유사 구도)
+    # - 0.60~0.75: 유사 (같은 카테고리, 다른 맥락)
+    # - 0.40~0.60: 관련 있음 (같은 주제)
+    image_similarity_threshold: float = 0.75
+    
     # RAG 검색 설정
     rag_similarity_threshold: float = 0.3
     rag_max_chunks: int = 30

@@ -24,6 +24,7 @@ from app.services.core.ai_service import ai_service
 from .ppt_models import ChartData, DiagramData, SlideSpec, DeckSpec
 from .ppt_template_manager import PPTTemplateManager, template_manager
 from .enhanced_object_processor import EnhancedPPTObjectProcessor
+# Note: TemplateContentCleaner 사용 안 함 (스타일 손실 방지)
 
 
 class TemplatedPPTGeneratorService:
@@ -35,6 +36,7 @@ class TemplatedPPTGeneratorService:
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.template_manager = template_manager
         self.object_processor = EnhancedPPTObjectProcessor()
+        # Note: content_cleaner 사용 안 함 (스타일 손실 방지)
         
         # 풍부한 색상 테마
         self.color_themes = {
@@ -49,6 +51,7 @@ class TemplatedPPTGeneratorService:
         """과도하게 긴 topic(여러 줄, 키메시지 포함 등)을 파일명용으로 정제.
 
         규칙:
+        0. 🆕 요청 표현 제거 (PPT 작성해 주세요, 만들어줘 등)
         1. 줄 단위로 분리 후 첫 줄 우선. (첫 줄이 5자 미만이면 다음 줄 탐색)
         2. '키메시지', '키 메시지', '제품 개요' 이후 내용 잘라냄.
         3. 중복 연속 단어 제거.
@@ -59,6 +62,10 @@ class TemplatedPPTGeneratorService:
             return "presentation"
 
         original = topic
+        
+        # 🆕 Step 0: 요청 표현 제거 (명사형으로 축약)
+        topic = self._remove_request_expressions(topic)
+        
         # 줄 분리 + 첫 적절한 라인
         lines = [ln.strip() for ln in re.split(r"[\r\n]+", topic) if ln.strip()]
         if lines:
@@ -94,6 +101,63 @@ class TemplatedPPTGeneratorService:
 
         logger.info(f"🧪 토픽 파일명 정규화: original='{original[:60]}', normalized='{safe}'")
         return safe
+    
+    def _remove_request_expressions(self, text: str) -> str:
+        """요청 표현을 제거하고 명사형 제목으로 정제.
+        
+        예시:
+        - '자동차 산업의 특허분석 방법론에 대해 PPT 작성해 주세요' → '자동차 산업의 특허분석 방법론'
+        - 'AI 기술 트렌드 발표 자료 만들어줘' → 'AI 기술 트렌드'
+        - '2024 마케팅 전략' → '2024 마케팅 전략' (이미 명사형)
+        """
+        if not text:
+            return text
+        
+        original = text
+        
+        # 1. 후위 요청 표현 패턴 (끝에서부터 제거)
+        suffix_patterns = [
+            r'\s*(에 대해|에 대한|에 관한|에 관해|을 위한|를 위한)\s*(PPT|ppt|프레젠테이션|발표\s*자료|슬라이드).*$',
+            r'\s*(PPT|ppt|프레젠테이션|발표\s*자료|슬라이드)\s*(작성|생성|만들|제작).*$',
+            r'\s*(작성|생성|만들어|제작)\s*(해|좀)?\s*(주세요|줘|줘요|주십시오|부탁).*$',
+            r'\s*(해|좀)?\s*(주세요|줘|줘요|주십시오|부탁).*$',
+            r'\s+PPT\s*$',
+            r'\s+ppt\s*$',
+        ]
+        
+        for pattern in suffix_patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE).strip()
+        
+        # 2. 전위 요청 표현 패턴 (앞에서부터 제거)
+        prefix_patterns = [
+            r'^(다음|아래|위)\s*(내용|주제)(에 대해|으로|로)?\s*',
+        ]
+        
+        for pattern in prefix_patterns:
+            text = re.sub(pattern, '', text, flags=re.IGNORECASE).strip()
+        
+        # 3. 중간에 있는 불필요한 표현 제거
+        mid_patterns = [
+            r'\s+에 대해\s+',
+            r'\s+에 대한\s+',
+            r'\s+관련\s+',
+        ]
+        
+        for pattern in mid_patterns:
+            # 문맥상 필요할 수 있으므로 공백으로 대체
+            text = re.sub(pattern, ' ', text).strip()
+        
+        # 4. 조사 정리 (끝에 '의', '에', '를' 등이 남으면 제거)
+        text = re.sub(r'[의에를을가이]$', '', text).strip()
+        
+        # 결과가 너무 짧으면 원본 반환
+        if len(text) < 3:
+            text = original
+        
+        if text != original:
+            logger.info(f"📝 요청 표현 제거: '{original[:50]}' → '{text[:50]}'")
+        
+        return text
 
     async def generate_pptx_from_data(
         self,
@@ -776,6 +840,11 @@ class TemplatedPPTGeneratorService:
             template_slide_count = len(prs.slides)
             ai_slide_count = len(spec.slides)
             logger.info(f"📋 템플릿 로드 완료: {template_slide_count}개 슬라이드, AI 슬라이드: {ai_slide_count}개")
+            
+            # 🆕 스타일 보존을 위해 템플릿 텍스트 정리 생략
+            # content_cleaner._clean_slide_content()를 호출하면 스타일이 손실됨
+            # 대신 enhanced_object_processor가 매핑된 텍스트박스의 텍스트만 교체 (run.text 직접 변경)
+            logger.info(f"📋 템플릿 스타일 보존 모드: 텍스트 정리 생략, 매핑만 적용")
             
             # 🆕 전략 C: AI 슬라이드가 템플릿보다 많은 경우 처리
             if ai_slide_count > template_slide_count and not used_template_indices:

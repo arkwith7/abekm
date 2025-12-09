@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { api } from './userService';
 
 // 검색 결과 타입 정의
 export interface SearchResult {
@@ -72,7 +72,7 @@ export const hybridSearch = async (query: string, filters: SearchFilters & { sea
   try {
     console.log('🔍 하이브리드 검색 API 호출:', { query, filters });
 
-    const response = await axios.post(`/api/v1/search/hybrid`, {
+    const response = await api.post(`/api/v1/search/hybrid`, {
       query,
       search_type: filters.search_type || 'hybrid',
       container_ids: filters.container_ids || null,
@@ -114,7 +114,7 @@ export const vectorSearch = async (query: string, filters: SearchFilters = {}): 
   try {
     console.log('🧠 벡터 검색 API 호출:', { query, filters });
 
-    const response = await axios.get(`/api/v1/search/vector`, {
+    const response = await api.get(`/api/v1/search/vector`, {
       params: {
         query,
         limit: filters.max_results || 20
@@ -151,7 +151,7 @@ export const keywordSearch = async (query: string, filters: SearchFilters = {}):
   try {
     console.log('🔤 키워드 검색 API 호출:', { query, filters });
 
-    const response = await axios.get(`/api/v1/search/keyword`, {
+    const response = await api.get(`/api/v1/search/keyword`, {
       params: {
         query,
         limit: filters.max_results || 20
@@ -188,7 +188,7 @@ export const getSearchSuggestions = async (query: string): Promise<string[]> => 
   try {
     console.log('💡 검색 제안 API 호출:', { query });
 
-    const response = await axios.get(`/api/v1/search/suggestions`, {
+    const response = await api.get(`/api/v1/search/suggestions`, {
       params: { query, limit: 5 }
     });
 
@@ -209,7 +209,7 @@ export const searchDocuments = async (query: string, limit: number = 10): Promis
   try {
     console.log('📋 기본 문서 검색 API 호출:', { query, limit });
 
-    const response = await axios.post(`/api/v1/search`, {
+    const response = await api.post(`/api/v1/search`, {
       query,
       limit
     });
@@ -253,7 +253,7 @@ export const searchDocuments = async (query: string, limit: number = 10): Promis
  */
 export const getSearchAnalytics = async (): Promise<any> => {
   try {
-    const response = await axios.get(`/api/v1/search/analytics`);
+    const response = await api.get(`/api/v1/search/analytics`);
     return response.data;
   } catch (error: any) {
     console.error('❌ 검색 분석 오류:', error.response?.data || error.message);
@@ -276,7 +276,7 @@ export const multimodalSearch = async (
   try {
     console.log('🎨 멀티모달 검색 API 호출:', { query, filters });
 
-    const response = await axios.post(`/api/v1/search/multimodal`, {
+    const response = await api.post(`/api/v1/search/multimodal`, {
       query,
       top_k: filters.max_results || 20,
       container_ids: filters.container_ids || null,
@@ -322,7 +322,7 @@ export const clipSearch = async (
       formData.append('container_ids', filters.container_ids.join(','));
     }
 
-    const response = await axios.post(`/api/v1/search/clip`, formData, {
+    const response = await api.post(`/api/v1/search/clip`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }
@@ -371,7 +371,7 @@ export const imageSearchWithBase64 = async (
       container_ids: filters.container_ids || []
     };
 
-    const response = await axios.post(`/api/v1/search/multimodal`, requestBody);
+    const response = await api.post(`/api/v1/search/multimodal`, requestBody);
 
     console.log('✅ Base64 이미지 검색 응답:', response.data);
     return response.data;

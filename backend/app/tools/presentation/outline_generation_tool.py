@@ -125,30 +125,46 @@ class OutlineGenerationTool(BaseTool):
 
     async def _refine_topic(self, topic: str) -> str:
         """요청 표현을 제거하고 명사형 제목으로 정제."""
-        # 간단한 패턴 매칭으로 처리 가능한 경우
-        simple_patterns = [
-            r'(.+?)\s*PPT\s*작성.*$',
-            r'(.+?)\s*프레젠테이션\s*[작만].*$',
-            r'(.+?)\s*발표\s*자료.*$',
-            r'(.+?)\s*슬라이드.*$',
-            r'(.+?)\s*해[주줘].*$',
-            r'(.+?)\s*부탁.*$',
+        if not topic:
+            return topic
+        
+        original = topic
+        
+        # 1. 후위 요청 표현 패턴 (끝에서부터 제거) - 더 포괄적으로 개선
+        suffix_patterns = [
+            r'\s*(에 대해|에 대한|에 관한|에 관해|을 위한|를 위한)\s*(PPT|ppt|프레젠테이션|발표\s*자료|슬라이드).*$',
+            r'\s*(PPT|ppt|프레젠테이션|발표\s*자료|슬라이드)\s*(작성|생성|만들|제작).*$',
+            r'\s*(작성|생성|만들어|제작)\s*(해|좀)?\s*(주세요|줘|줘요|주십시오|부탁).*$',
+            r'\s*(해|좀)?\s*(주세요|줘|줘요|주십시오|부탁).*$',
+            r'\s+PPT\s*$',
+            r'\s+ppt\s*$',
         ]
         
-        for pattern in simple_patterns:
-            match = re.search(pattern, topic, re.IGNORECASE)
-            if match:
-                refined = match.group(1).strip()
-                if refined:
-                    return refined
+        for pattern in suffix_patterns:
+            topic = re.sub(pattern, '', topic, flags=re.IGNORECASE).strip()
         
-        # 복잡한 경우 LLM 사용
-        if any(word in topic.lower() for word in ['작성', '해줘', '부탁', '만들', '생성']):
+        # 2. 전위 요청 표현 패턴 (앞에서부터 제거)
+        prefix_patterns = [
+            r'^(다음|아래|위)\s*(내용|주제)(에 대해|으로|로)?\s*',
+        ]
+        
+        for pattern in prefix_patterns:
+            topic = re.sub(pattern, '', topic, flags=re.IGNORECASE).strip()
+        
+        # 3. 조사 정리 (끝에 '의', '에', '를' 등이 남으면 제거)
+        topic = re.sub(r'[의에를을가이]$', '', topic).strip()
+        
+        # 결과가 너무 짧으면 원본 반환
+        if len(topic) < 3:
+            topic = original
+        
+        # 4. 정규식으로 처리 안 된 복잡한 경우 LLM 사용
+        if topic == original and any(word in original.lower() for word in ['작성', '해줘', '부탁', '만들', '생성']):
             try:
                 prompt = (
                     f"다음 요청문에서 핵심 주제만 추출하여 명사형 제목으로 변환하세요. "
                     f"'PPT 작성', '해줘요' 같은 요청 표현은 모두 제거하고, 순수한 주제만 반환하세요.\n\n"
-                    f"요청문: \"{topic}\"\n\n"
+                    f"요청문: \"{original}\"\n\n"
                     f"예시:\n"
                     f"- 입력: '자동차산업 특허분석 방법론 PPT작성 해줘요' → 출력: '자동차산업 특허분석 방법론'\n"
                     f"- 입력: 'AI 기술 트렌드 발표 자료 만들어줘' → 출력: 'AI 기술 트렌드'\n"
@@ -169,7 +185,6 @@ class OutlineGenerationTool(BaseTool):
             except Exception as e:
                 logger.warning(f"제목 정제 LLM 호출 실패: {e}")
         
-        # 정제 실패 시 원본 반환
         return topic
     
     async def _generate_outline_with_llm(self, topic: str, context: str, max_slides: int) -> Optional[str]:
@@ -183,6 +198,12 @@ class OutlineGenerationTool(BaseTool):
             f"- 각 슬라이드는 '### 제목 [Layout: ...]' 형식으로 작성 (제목에 '슬라이드 1' 같은 번호나 접두어는 절대 붙이지 마세요. 순수한 제목만 작성)\n"
             f"- 각 슬라이드 하위에 '- 내용' 형태로 불릿 포인트 작성\n"
             f"- '🔑 **키 메시지**: ...' 형식으로 핵심 메시지 포함\n\n"
+            f"## 🔴 목차 슬라이드 필수 규칙 (매우 중요!)\n"
+            f"- 목차 슬라이드의 항목들은 반드시 실제 슬라이드 제목들과 정확히 일치해야 합니다\n"
+            f"- 예: 실제 슬라이드 제목이 '제품 개요', '주요 기능', '기술 사양'이라면\n"
+            f"  목차에도 정확히 '제품 개요', '주요 기능', '기술 사양'으로 표시\n"
+            f"- 목차에 '01. 제품 개요' 형식의 번호를 넣을 수 있지만, 제목 텍스트 자체는 동일해야 함\n"
+            f"- 목차 항목 개수는 실제 본문 슬라이드 개수와 동일해야 함\n\n"
             f"## 사용 가능한 레이아웃 태그 (적극 활용)\n"
             f"- [Layout: 2-Column]: 비교/대조 (좌우 2단)\n"
             f"- [Layout: Process]: 단계/흐름 (화살표 프로세스)\n"

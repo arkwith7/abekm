@@ -34,7 +34,8 @@ import ManagerDashboard from './pages/manager/ManagerDashboard';
 import UserPermissionManagement from './pages/manager/UserPermissionManagement';
 import AgentChatPage from './pages/user/AgentChatPage';
 import ChatHistoryPage from './pages/user/chat/ChatHistoryPage';
-import ChatPage from './pages/user/ChatPage';
+// ⚠️ "일반 RAG 채팅" 비활성화 (2025-12-09) - AI Agents로 통합
+// import ChatPage from './pages/user/ChatPage';
 import ContainerExplorer from './pages/user/ContainerExplorer';
 import { UserDashboard } from './pages/user/Dashboard';
 import MyKnowledge from './pages/user/MyKnowledge';
@@ -110,7 +111,9 @@ function App() {
                       <Route path="search" element={<SearchPage />} />
                       <Route path="my-knowledge" element={<MyKnowledge />} />
                       <Route path="explore" element={<ContainerExplorer />} />
-                      <Route path="chat" element={<ChatPage />} />
+                      {/* ⚠️ "일반 RAG 채팅" 라우트 비활성화 (2025-12-09) */}
+                      {/* AI Agents로 통합되어 더 이상 사용하지 않음 */}
+                      {/* <Route path="chat" element={<ChatPage />} /> */}
                       <Route path="chat/history" element={<ChatHistoryPage />} />
                       <Route path="agent-chat" element={<AgentChatPage />} />
                       <Route path="agent-chat/presentation" element={<PresentationAgentChatPage />} />
@@ -133,7 +136,8 @@ function App() {
                       {/* 사용자 기능도 포함 */}
                       <Route path="search" element={<SearchPage />} />
                       <Route path="my-knowledge" element={<MyKnowledge />} />
-                      <Route path="chat" element={<ChatPage />} />
+                      {/* ⚠️ "일반 RAG 채팅" 비활성화 (2025-12-09) */}
+                      {/* <Route path="chat" element={<ChatPage />} /> */}
                       <Route path="chat/history" element={<ChatHistoryPage />} />
                       <Route path="presentation/html" element={<HTMLPresentationViewer />} />
                     </Route>
@@ -159,7 +163,8 @@ function App() {
                       {/* 사용자 기능 */}
                       <Route path="user/search" element={<SearchPage />} />
                       <Route path="user/my-knowledge" element={<MyKnowledge />} />
-                      <Route path="user/chat" element={<ChatPage />} />
+                      {/* ⚠️ "일반 RAG 채팅" 비활성화 (2025-12-09) */}
+                      {/* <Route path="user/chat" element={<ChatPage />} /> */}
                       <Route path="user/chat/history" element={<ChatHistoryPage />} />
                     </Route>
                   </Route>

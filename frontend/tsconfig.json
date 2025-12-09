@@ -25,6 +25,7 @@
   ],
   "exclude": [
     "**/backup/**",
+    "**/deprecated/**",
     "**/*_broken.tsx",
     "**/*_old.tsx",
     "**/*_new.tsx",

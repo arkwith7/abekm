@@ -61,12 +61,14 @@ const userMenuItems: MenuItem[] = [
     icon: Search,
     id: 'search'
   },
-  {
-    name: '일반 RAG 채팅',
-    path: '/user/chat',
-    icon: MessageSquare,
-    id: 'chat'
-  },
+  // ⚠️ "일반 RAG 채팅" 메뉴 비활성화 (2025-12-09)
+  // AI Agents로 통합되어 더 이상 사용하지 않음
+  // {
+  //   name: '일반 RAG 채팅',
+  //   path: '/user/chat',
+  //   icon: MessageSquare,
+  //   id: 'chat'
+  // },
   {
     name: 'AI Agents',
     path: '/user/agent-chat',
@@ -99,7 +101,8 @@ export const UserLayout: React.FC = () => {
     if (location.pathname === '/user/agent-chat') return 'agent-chat';
     if (location.pathname.startsWith('/user/agent-chat/')) return 'agent-chat-sub';
     if (location.pathname.startsWith('/user/chat/history')) return 'chat-history';
-    if (location.pathname.startsWith('/user/chat')) return 'chat';
+    // ⚠️ "일반 RAG 채팅" 비활성화 (2025-12-09)
+    // if (location.pathname.startsWith('/user/chat')) return 'chat';
     if (location.pathname.startsWith('/user/profile')) return 'profile';
     if (location.pathname.startsWith('/user/permission-requests')) return 'permission-requests';
     if (location.pathname.startsWith('/user/presentation/html')) return 'presentation-html';

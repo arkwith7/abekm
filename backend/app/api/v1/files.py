@@ -670,10 +670,19 @@ async def office_to_pdf(
                             # LibreOffice가 실행 중인 인스턴스가 있으면 종료
                             subprocess.run(["pkill", "-f", "soffice"], capture_output=True)
                             
+                            # 환경 변수 설정 (한국어 폰트 지원)
+                            env = os.environ.copy()
+                            # 한국어 로케일 설정 (사용 가능한 경우)
+                            env['LC_ALL'] = 'ko_KR.UTF-8'
+                            env['LANG'] = 'ko_KR.UTF-8'
+                            env['LC_CTYPE'] = 'ko_KR.UTF-8'
+                            # HOME 디렉토리 설정 (LibreOffice 프로필 생성용)
+                            env['HOME'] = os.path.expanduser('~')
+                            
                             # PowerPoint에 특화된 고품질 PDF 변환 명령어
                             if file_extension in ['.ppt', '.pptx']:
-                                # PowerPoint 최고 품질 변환을 위한 필터 옵션
-                                filter_options = "SelectPdfVersion=1;UseTaggedPDF=true;ExportFormFields=true;FormsType=0;ExportBookmarks=true;ExportHiddenSlides=false;SinglePageSheets=false;ExportNotes=false;ExportNotesPages=false;EmbedStandardFonts=false;UseTransitionEffects=false;IsSkipEmptyPages=true;IsAddStream=false;ExportPlaceholders=false;IsCollectPresentationModes=false;Quality=100;ReduceImageResolution=false;MaxImageResolution=600"
+                                # PowerPoint 최고 품질 변환을 위한 필터 옵션 (폰트 임베딩 활성화)
+                                filter_options = "SelectPdfVersion=1;UseTaggedPDF=true;ExportFormFields=true;FormsType=0;ExportBookmarks=true;ExportHiddenSlides=false;SinglePageSheets=false;ExportNotes=false;ExportNotesPages=false;EmbedStandardFonts=true;UseTransitionEffects=false;IsSkipEmptyPages=true;IsAddStream=false;ExportPlaceholders=false;IsCollectPresentationModes=false;Quality=100;ReduceImageResolution=false;MaxImageResolution=600"
                                 
                                 cmd = [
                                     "libreoffice",
@@ -688,7 +697,9 @@ async def office_to_pdf(
                                     file_path
                                 ]
                             else:
-                                # 기본 PDF 변환 (Word, Excel 등)
+                                # Word, Excel 등 - 폰트 임베딩 활성화
+                                # writer_pdf_Export 필터에서 EmbedStandardFonts=true로 폰트 임베딩
+                                filter_options = "EmbedStandardFonts=true;ExportFormFields=true;UseTaggedPDF=true"
                                 cmd = [
                                     "libreoffice",
                                     "--headless",
@@ -697,18 +708,19 @@ async def office_to_pdf(
                                     "--nolockcheck",
                                     "--nologo",
                                     "--norestore",
-                                    "--convert-to", "pdf",
+                                    "--convert-to", f"pdf:writer_pdf_Export:{filter_options}",
                                     "--outdir", temp_dir,
                                     file_path
                                 ]
                             logger.info(f"LibreOffice 변환 명령어: {' '.join(cmd)}")
-                            logger.info(f"변환 설정 - 파일 형식: {file_extension}, 품질: 최고, 이미지 해상도: 600DPI")
+                            logger.info(f"변환 설정 - 파일 형식: {file_extension}, 품질: 최고, 이미지 해상도: 600DPI, 한국어 지원: 활성화")
                             
                             result = subprocess.run(
                                 cmd,
                                 capture_output=True,
                                 text=True,
-                                timeout=300  # 5분으로 타임아웃 증가
+                                timeout=300,  # 5분으로 타임아웃 증가
+                                env=env  # 한국어 로케일 환경 변수 적용
                             )
                             if result.returncode == 0:
                                 original_filename = Path(file_path).stem

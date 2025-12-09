@@ -14,8 +14,9 @@ from logging.handlers import RotatingFileHandler
 from app.api.v1.users import router as user_auth_router, user_router, sap_router
 # auth_me.py 제거됨 - users.py에 통합됨
 # test_auth.py 제거됨 - 테스트용 코드
-from app.api.v1.chat import router as chat_router
-from app.api.v1.presentation import router as presentation_router
+# ⚠️ 일반 RAG 채팅 비활성화 (2025-12-09) - AI Agent로 통합
+# from app.api.v1.chat import router as chat_router
+from app.api.v1.presentation import router as presentation_router  # ✅ PPT 템플릿/생성 API (활성)
 from app.api.v1.search import router as search_router
 from app.api.v1.multimodal_search import router as multimodal_search_router  # 멀티모달 검색
 from app.api.v1.files import router as files_router
@@ -254,8 +255,9 @@ app.include_router(sap_router)        # /api/v1/sap - SAP HR 정보 관리
 # test_auth_router 제거됨 - 테스트용 코드
 
 # 💬 핵심 기능 API들
-app.include_router(chat_router, prefix="/api/v1")
-app.include_router(presentation_router, prefix="/api/v1")
+# ⚠️ 일반 RAG 채팅 비활성화 (2025-12-09) - AI Agent로 통합
+# app.include_router(chat_router, prefix="/api/v1")
+app.include_router(presentation_router, prefix="/api/v1")  # ✅ PPT 템플릿/생성 API (프론트엔드 사용 중)
 app.include_router(search_router, prefix="/api/v1")
 
 # 🤖 Agent-based RAG API (Phase 2)

@@ -2365,13 +2365,13 @@ class SearchService:
                 # - 0.75~0.95: 매우 유사 (같은 대상, 유사 구도)
                 # - 0.60~0.75: 유사 (같은 카테고리, 다른 맥락)
                 # - 0.40~0.60: 관련 있음 (같은 주제)
-                # - 임계값 0.75: CLIP과 동일한 정확도 기준 유지
-                image_threshold = 0.75
+                # - 환경변수 IMAGE_SIMILARITY_THRESHOLD로 조정 가능
+                image_threshold = settings.image_similarity_threshold
             else:
                 # Azure CLIP: 시맨틱 유사도 중심 모델
                 # - 특성: 이미지-텍스트 의미 매칭 → 점수가 높게 나옴
-                # - 임계값 0.75: 높은 정확도 유지
-                image_threshold = 0.75
+                # - 환경변수 IMAGE_SIMILARITY_THRESHOLD로 조정 가능
+                image_threshold = settings.image_similarity_threshold
             
             # 사용자 지정 임계값 우선 적용
             if filters and isinstance(filters.get("image_similarity_threshold"), (int, float)):
@@ -2399,11 +2399,12 @@ class SearchService:
             
             # 4. 이미지 검색 결과 포맷팅 (container_path 추가)
             if image_results:
-                # 컨테이너 정보 조회를 위한 container_id 수집
-                container_ids_to_fetch = [
+                # 컨테이너 정보 조회를 위한 container_id 수집 (중복 제거)
+                container_ids_to_fetch = list(set(
                     str(r["container_id"]) for r in image_results 
                     if r.get("container_id")
-                ]
+                ))
+                logger.info(f"[MULTIMODAL_SEARCH] 컨테이너 조회: 원본 {len(image_results)}건 → 중복제거 {len(container_ids_to_fetch)}건")
                 
                 # 컨테이너 정보 조회
                 container_details = {}

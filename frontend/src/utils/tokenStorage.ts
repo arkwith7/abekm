@@ -91,3 +91,17 @@ export const clearAllAuthStorage = () => {
   clearRefreshTokenExpiry();
   clearUserInfo();
 };
+
+/**
+ * 로그아웃 시 localStorage 전체 초기화
+ * 보안상 이전 세션의 모든 데이터를 완전히 삭제
+ */
+export const clearAllLocalStorage = () => {
+  // 전체 localStorage 초기화 (보안 강화)
+  localStorage.clear();
+  
+  // sessionStorage도 함께 초기화
+  sessionStorage.clear();
+  
+  console.log('🧹 전체 localStorage/sessionStorage 초기화 완료');
+};

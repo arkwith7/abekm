@@ -2,18 +2,17 @@
  * 인증 관련 유틸리티 함수들
  */
 
-import { clearAllAuthStorage, getAccessToken } from './tokenStorage';
+import { clearAllLocalStorage, getAccessToken } from './tokenStorage';
 
 /**
  * 401 Unauthorized 응답 처리
- * 토큰 제거, 세션 무효화 이벤트 발송, 로그인 페이지로 리다이렉트
+ * 전체 localStorage/sessionStorage 초기화, 세션 무효화 이벤트 발송, 로그인 페이지로 리다이렉트
  */
 export const handleUnauthorized = (): void => {
   console.warn('🔐 인증 실패 - 로그인 페이지로 리다이렉트');
 
-  // 모든 토큰 제거
-  clearAllAuthStorage();
-  localStorage.removeItem('csrf_token');
+  // 🔒 보안 강화: 전체 localStorage/sessionStorage 초기화
+  clearAllLocalStorage();
 
   // 세션 무효화 이벤트 발송
   window.dispatchEvent(new CustomEvent('session:invalid', { detail: { status: 401 } }));

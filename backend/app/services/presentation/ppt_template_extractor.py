@@ -578,8 +578,22 @@ def extract_template_metadata(path: str, output_path: str) -> str:
     - 시각화 스타일 감지 (card_grid, numbered_cards, icon_boxes 등)
     - 완전한 스타일 정보 보존
     - 그룹 내 텍스트 요소 재귀 추출
+    
+    주의: 원본 템플릿 파일을 수정하지 않고, 복사본을 생성하여 shape.name을 업데이트합니다.
     """
-    prs = Presentation(path)
+    import shutil
+    from pathlib import Path as PathLib
+    
+    # 원본 파일 복사 (shape.name 업데이트용)
+    original_path = PathLib(path)
+    backup_suffix = "_with_ids"
+    updated_path = original_path.parent / f"{original_path.stem}{backup_suffix}{original_path.suffix}"
+    
+    # 복사본 생성
+    shutil.copy(path, updated_path)
+    
+    # 복사본에서 작업
+    prs = Presentation(str(updated_path))
     slide_width_px = emu_to_px(prs.slide_width)
     slide_height_px = emu_to_px(prs.slide_height)
     total_slides = len(prs.slides)
@@ -665,10 +679,10 @@ def extract_template_metadata(path: str, output_path: str) -> str:
         result["slides"].append(slide_info)
 
     try:
-        prs.save(path)
-        print(f"✅ 템플릿 파일 업데이트됨: {path}")
+        prs.save(str(updated_path))
+        print(f"✅ 템플릿 복사본 업데이트됨 (ID 포함): {updated_path}")
     except Exception as e:
-        print(f"⚠️ 템플릿 파일 저장 실패: {e}")
+        print(f"⚠️ 템플릿 복사본 저장 실패: {e}")
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)

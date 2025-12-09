@@ -19,7 +19,8 @@ class TemplateContentCleaner:
     """템플릿 콘텐츠 정리기"""
     
     def __init__(self):
-        self.preserved_shapes = {"background", "logo", "decoration", "border"}
+        # 🆕 logo 제거 - Logo, Company 등의 플레이스홀더도 정리 대상
+        self.preserved_shapes = {"background", "decoration", "border"}
         self.cleanable_shapes = {"title", "content", "text", "subtitle"}
         
     def clean_template_content(self, template_path: str, output_path: str, 
@@ -249,7 +250,10 @@ class TemplateContentCleaner:
             return False
     
     def _clean_shape_text(self, shape: BaseShape) -> bool:
-        """도형의 텍스트 내용 제거 - 강력한 정리 모드"""
+        """도형의 텍스트 내용 제거 - 스타일 보존 모드
+        
+        🆕 개선: text_frame.clear() 대신 기존 run의 텍스트만 빈 문자열로 변경하여 스타일 유지
+        """
         cleaned = False
         
         try:
@@ -263,52 +267,55 @@ class TemplateContentCleaner:
                     try:
                         logger.debug(f"🧹 텍스트 프레임 정리: '{original_text[:30]}...'")
                         
-                        # 🎯 방법 1: 완전 클리어 후 빈 구조 재생성 (스타일 최대한 보존)
+                        # 🎯 방법 1 (개선): 기존 run의 텍스트만 빈 문자열로 변경 (스타일 완전 보존)
                         try:
-                            # 기본 문단의 폰트 정보 백업 (첫 번째 문단/런에서)
-                            backup_font_info = {}
-                            if text_frame.paragraphs and text_frame.paragraphs[0].runs:
-                                first_run = text_frame.paragraphs[0].runs[0]
-                                backup_font_info = {
-                                    'name': getattr(first_run.font, 'name', None),
-                                    'size': getattr(first_run.font, 'size', None),
-                                    'bold': getattr(first_run.font, 'bold', None),
-                                    'italic': getattr(first_run.font, 'italic', None),
-                                    'color': getattr(first_run.font.color, 'rgb', None) if hasattr(first_run.font, 'color') else None
-                                }
+                            if text_frame.paragraphs:
+                                for para in text_frame.paragraphs:
+                                    if para.runs:
+                                        # 첫 번째 run만 유지하고 나머지 run의 텍스트 제거
+                                        for i, run in enumerate(para.runs):
+                                            run.text = ""
+                                    else:
+                                        # run이 없으면 paragraph 직접 설정 (스타일 보존 안됨)
+                                        para.text = ""
                             
-                            # 모든 문단 제거
-                            text_frame.clear()
+                            logger.debug(f"✅ 스타일 보존 정리 성공 (run 텍스트만 제거)")
+                            cleaned = True
                             
-                            # 빈 문단 하나 생성
-                            if not text_frame.paragraphs:
-                                para = text_frame.add_paragraph()
-                            else:
-                                para = text_frame.paragraphs[0]
+                        except Exception as run_e:
+                            logger.debug(f"run 방식 실패: {run_e}, clear 방식으로 폴백")
                             
-                            para.text = ""  # 빈 텍스트로 설정
-                            
-                            # 백업된 폰트 정보 복원 시도
+                            # 🎯 방법 2 (폴백): clear 후 스타일 복원 시도
                             try:
-                                if backup_font_info and para.runs:
-                                    run = para.runs[0] if para.runs else para.add_run()
+                                # 기본 문단의 폰트 정보 백업
+                                backup_font_info = {}
+                                if text_frame.paragraphs and text_frame.paragraphs[0].runs:
+                                    first_run = text_frame.paragraphs[0].runs[0]
+                                    backup_font_info = {
+                                        'name': getattr(first_run.font, 'name', None),
+                                        'size': getattr(first_run.font, 'size', None),
+                                        'bold': getattr(first_run.font, 'bold', None),
+                                        'italic': getattr(first_run.font, 'italic', None),
+                                        'color': getattr(first_run.font.color, 'rgb', None) if hasattr(first_run.font, 'color') else None
+                                    }
+                                
+                                text_frame.clear()
+                                
+                                # 빈 문단 하나 생성
+                                if not text_frame.paragraphs:
+                                    para = text_frame.add_paragraph()
+                                else:
+                                    para = text_frame.paragraphs[0]
+                                
+                                # run 생성 및 스타일 복원
+                                run = para.add_run()
+                                run.text = ""
+                                
+                                if backup_font_info:
                                     if backup_font_info.get('name'):
                                         run.font.name = backup_font_info['name']
                                     if backup_font_info.get('size'):
-                                        # backup size may be a pptx.util.Pt or a numeric value (float)
-                                        try:
-                                            from pptx.util import Pt
-                                            sz = backup_font_info['size']
-                                            if isinstance(sz, (int, float)):
-                                                run.font.size = Pt(sz)
-                                            else:
-                                                run.font.size = sz
-                                        except Exception:
-                                            # fallback: assign directly
-                                            try:
-                                                run.font.size = backup_font_info['size']
-                                            except Exception:
-                                                pass
+                                        run.font.size = backup_font_info['size']
                                     if backup_font_info.get('bold') is not None:
                                         run.font.bold = backup_font_info['bold']
                                     if backup_font_info.get('italic') is not None:
@@ -318,31 +325,12 @@ class TemplateContentCleaner:
                                             run.font.color.rgb = backup_font_info['color']
                                         except:
                                             pass
-                            except Exception as font_e:
-                                logger.debug(f"폰트 정보 복원 실패 (무시): {font_e}")
-                            
-                            logger.debug(f"✅ 완전 정리 성공")
-                            cleaned = True
-                            
-                        except Exception as clear_e:
-                            logger.debug(f"완전 정리 실패, 런 방식으로 폴백: {clear_e}")
-                            
-                            # 🎯 방법 2: 런 단위로 텍스트만 비우기 (스타일 보존)
-                            try:
-                                if text_frame.paragraphs:
-                                    for para in text_frame.paragraphs:
-                                        if para.runs:
-                                            for run in para.runs:
-                                                run.text = ""
-                                        else:
-                                            # 런이 없으면 빈 런 하나 생성
-                                            para.add_run().text = ""
                                 
-                                logger.debug(f"✅ 런 방식 정리 성공")
+                                logger.debug(f"✅ clear + 스타일 복원 성공")
                                 cleaned = True
                                 
-                            except Exception as run_e:
-                                logger.debug(f"런 방식 실패, 직접 방식으로 폴백: {run_e}")
+                            except Exception as clear_e:
+                                logger.debug(f"clear 방식도 실패: {clear_e}")
                                 
                                 # 🎯 방법 3: 직접 text 속성 변경 (마지막 수단)
                                 try:

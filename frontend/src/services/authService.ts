@@ -1,6 +1,6 @@
 import axios from 'axios';
 import {
-  clearAllAuthStorage,
+  clearAllLocalStorage,
   getAccessToken,
   getAccessTokenExpiry,
   getRefreshToken,
@@ -92,18 +92,20 @@ export const authService = {
   },
 
   logout(clearDocumentsCallback?: () => void): void {
-    clearAllAuthStorage();
-    localStorage.removeItem('csrf_token');
+    // 🔒 보안 강화: 로그아웃 시 모든 localStorage/sessionStorage 초기화
+    // 이전 세션의 데이터가 남아있지 않도록 완전히 삭제
+    clearAllLocalStorage();
 
     // CSRF 쿠키도 삭제
     document.cookie = 'csrf_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
 
     // 선택된 문서 클리어 (제공된 콜백이 있는 경우)
+    // Note: localStorage가 이미 초기화되었으므로 메모리 상태만 클리어
     if (clearDocumentsCallback) {
       clearDocumentsCallback();
     }
 
-    console.log('🚪 로그아웃 처리 완료 (선택된 문서 클리어 포함)');
+    console.log('🚪 로그아웃 처리 완료 (전체 localStorage 초기화 포함)');
   },
 
   getToken(): string | null {

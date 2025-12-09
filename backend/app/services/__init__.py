@@ -11,19 +11,23 @@ WKMS Services Package
   - search.search_service
 
 💬 Chat & RAG System:
-  - chat.unified_chat_service
+  - chat.rag_search_service (active)
+  - chat.chat_attachment_service (active)
+  - chat.conversation_context_service (active)
 
 🔐 Auth & Permission:
   - auth.*
 
 🔧 Core Services:
   - core.*
+  
+🎨 Presentation:
+  - presentation.*
 """
 
 # 메인 통합 서비스들만 최상위에서 import
 from .document import document_service
 from .search import search_service  
-from .chat import unified_chat_service
 from .core import ai_service, korean_nlp_service, EmbeddingService
 
 # 기존 호환성 유지 (추후 제거 예정)
@@ -47,7 +51,6 @@ __all__ = [
     # 통합 서비스들 (메인)
     "document_service",
     "search_service", 
-    "unified_chat_service",
     
     # 핵심 서비스들
     "ai_service",

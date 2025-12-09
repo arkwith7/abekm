@@ -45,7 +45,10 @@ const FileViewer: React.FC<FileViewerProps> = ({
   };
 
   const getFileViewerUrl = (document: Document): string => {
-    const baseUrl = '';
+    // iframe에서는 프록시를 사용할 수 없으므로 백엔드 URL을 직접 사용
+    // 개발 환경: http://localhost:8000
+    // 프로덕션 환경: REACT_APP_API_URL 또는 빈 문자열 (nginx 프록시)
+    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
     const fileExt = document.file_extension?.toLowerCase() || '';
 
     // 토큰 가져오기 - 우선순위: ABEKM_token (최신) > access_token > token (오래된)

@@ -59,11 +59,7 @@ const MessageList: React.FC<MessageListProps> = ({
       }
     }
 
-    renderedMessages.push(
-      <MessageBubble key={`${message.id || 'msg'}-${idx}`} message={message} onOpenDocument={onOpenDocument} />
-    );
-
-    // 🆕 assistant 메시지 뒤에 Reasoning 패널 표시 (있는 경우)
+    // 🆕 assistant 메시지 앞에 Reasoning 패널 표시 (있는 경우) - 질문과 답변 사이
     if (message.role === 'assistant' && (message as any).reasoning) {
       renderedMessages.push(
         <div key={`reasoning-${message.id || idx}`} className="max-w-4xl mx-auto">
@@ -75,7 +71,7 @@ const MessageList: React.FC<MessageListProps> = ({
       );
     }
 
-    // 🆕 PPT 생성 진행 상태 패널 표시 (pptReasoning이 있는 경우)
+    // 🆕 PPT 생성 진행 상태 패널 표시 - 질문과 답변 사이 (pptReasoning이 있는 경우)
     if (message.role === 'assistant' && (message as any).pptReasoning) {
       const pptData = (message as any).pptReasoning;
       renderedMessages.push(
@@ -88,6 +84,10 @@ const MessageList: React.FC<MessageListProps> = ({
         </div>
       );
     }
+
+    renderedMessages.push(
+      <MessageBubble key={`${message.id || 'msg'}-${idx}`} message={message} onOpenDocument={onOpenDocument} />
+    );
   });
 
   return (

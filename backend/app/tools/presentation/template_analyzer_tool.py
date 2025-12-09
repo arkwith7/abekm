@@ -136,23 +136,38 @@ class TemplateAnalyzerTool(BaseTool):
                         'shapes': shapes  # 전체 shapes 정보 포함
                     })
                     
-                    # Collect text box information
+                    # Collect text box information (including element_role from metadata v3.0)
                     for element in elements:
                         element_type = element.get('type', '').upper()
                         element_name = element.get('name', '')
+                        element_id = element.get('id', '')
                         
-                        if element_type in ['TEXT_BOX', 'TEXTBOX'] or element_name.startswith('textbox-'):
+                        # textbox 또는 shape-X-X 형식의 요소 수집 (AUTO_SHAPE 포함)
+                        is_textbox = element_type in ['TEXT_BOX', 'TEXTBOX'] or element_name.startswith('textbox-') or element_id.startswith('textbox-')
+                        is_shape = element_id.startswith('shape-')
+                        
+                        if is_textbox or is_shape:
+                            # 콘텐츠 추출
+                            content = ''
+                            if element.get('content'):
+                                content = element.get('content', '')[:50]
+                            elif element.get('text', {}).get('raw'):
+                                content = element.get('text', {}).get('raw', '')[:50]
+                            
                             text_boxes.append({
                                 'slide_index': idx,
-                                'element_id': element_name or element.get('id', f'element_{idx}'),
-                                'content': element.get('text', {}).get('raw', '')[:50] if element.get('text') else '',
+                                'element_id': element_id or element_name or f'element_{idx}',
+                                'element_role': element.get('element_role', 'unknown'),  # AI Agent용 역할 정보
+                                'content': content,
                                 'position': {
-                                    'left_px': element.get('left_px'),
-                                    'top_px': element.get('top_px'),
-                                    'width_px': element.get('width_px'),
-                                    'height_px': element.get('height_px'),
+                                    'left_px': element.get('left_px') or element.get('position', {}).get('left'),
+                                    'top_px': element.get('top_px') or element.get('position', {}).get('top'),
+                                    'width_px': element.get('width_px') or element.get('position', {}).get('width'),
+                                    'height_px': element.get('height_px') or element.get('position', {}).get('height'),
                                 },
-                                'role': role  # 해당 슬라이드의 역할 정보 포함
+                                'slide_role': role,  # 슬라이드 역할 (title, toc, content, etc.)
+                                'is_fixed': element.get('is_fixed', False),  # 고정 요소 여부
+                                'style': element.get('style', {})  # 스타일 정보
                             })
 
             result = {

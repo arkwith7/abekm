@@ -4,11 +4,11 @@ import axios from 'axios';
 import { KnowledgeContainer } from '../pages/user/my-knowledge/components/KnowledgeContainerTree';
 import { AIChat, Document, Recommendation, SearchResult, UploadProgress, UserActivity } from '../types/user.types';
 import { redirectToLogin } from '../utils/navigation';
-import { clearAllAuthStorage, getAccessToken } from '../utils/tokenStorage';
+import { clearAllLocalStorage, getAccessToken } from '../utils/tokenStorage';
 import { getApiUrl } from '../utils/apiConfig';
 
 // axios 인스턴스 생성 (baseURL 설정)
-const api = axios.create({
+export const api = axios.create({
   baseURL: getApiUrl(),
   headers: {
     'Content-Type': 'application/json',
@@ -96,9 +96,8 @@ const handleSessionExpiry = () => {
   // 1. 모든 진행 중인 요청 취소
   cancelAllPendingRequests();
 
-  // 2. 인증 정보 즉시 삭제
-  clearAllAuthStorage();
-  localStorage.removeItem('csrf_token');
+  // 2. 🔒 보안 강화: 전체 localStorage/sessionStorage 초기화
+  clearAllLocalStorage();
 
   // 3. 글로벌 이벤트 발생 (다른 컴포넌트들이 상태를 정리할 수 있도록)
   window.dispatchEvent(new CustomEvent('session:expired'));
@@ -823,7 +822,8 @@ export const uploadChatAttachments = async (files: File[]): Promise<UploadedChat
     formData.append('files', file, file.name);
   });
 
-  const response = await api.post(`/api/v1/chat/assets`, formData, {
+  // ✅ Agent API로 통합 (2025-12-09)
+  const response = await api.post(`/api/v1/agent/chat/assets`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
@@ -845,7 +845,8 @@ export const transcribeChatAudio = async (blob: Blob, language: string = 'ko-KR'
   formData.append('file', blob, `voice-${Date.now()}.webm`);
   formData.append('language', language);
 
-  const response = await api.post(`/api/v1/chat/transcribe`, formData, {
+  // ✅ Agent API로 통합 (2025-12-09)
+  const response = await api.post(`/api/v1/agent/chat/transcribe`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'
     }
@@ -854,7 +855,10 @@ export const transcribeChatAudio = async (blob: Blob, language: string = 'ko-KR'
   return response.data;
 };
 
-// RAG 기반 채팅 (새로운 함수)
+/**
+ * @deprecated 사용하지 마세요. useAgentChat 훅의 /api/v1/agent/chat/stream 사용
+ * RAG 기반 채팅 (사용 중단 - 2025-12-09)
+ */
 export const sendRagChatMessage = async (
   message: string,
   options: {
@@ -868,14 +872,18 @@ export const sendRagChatMessage = async (
     voice_asset_id?: string;
   } = {}
 ) => {
-  const response = await api.post(`/api/v1/chat`, {
+  console.warn('⚠️ sendRagChatMessage is deprecated. Use useAgentChat hook instead.');
+  const response = await api.post(`/api/v1/agent/chat`, {
     message,
     ...options
   });
   return response.data;
 };
 
-// 스트리밍 RAG 기반 채팅
+/**
+ * @deprecated 사용하지 마세요. useAgentChat 훅의 /api/v1/agent/chat/stream 사용
+ * 스트리밍 RAG 기반 채팅 (사용 중단 - 2025-12-09)
+ */
 export const sendRagChatMessageStream = async (
   message: string,
   options: {
@@ -893,6 +901,7 @@ export const sendRagChatMessageStream = async (
   } = {}
 ) => {
   try {
+    console.warn('⚠️ sendRagChatMessageStream is deprecated. Use useAgentChat hook instead.');
     const authToken = getAccessToken();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
@@ -902,7 +911,8 @@ export const sendRagChatMessageStream = async (
     }
 
     const apiBaseUrl = getApiUrl();
-    const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/chat/stream` : '/api/v1/chat/stream';
+    // ✅ Agent API로 통합 (2025-12-09)
+    const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/chat/stream` : '/api/v1/agent/chat/stream';
     
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -916,8 +926,7 @@ export const sendRagChatMessageStream = async (
     if (!response.ok) {
       // 401 Unauthorized 처리 - 세션 만료 시 로그인 페이지로 리다이렉트
       if (response.status === 401) {
-        clearAllAuthStorage();
-        localStorage.removeItem('csrf_token');
+        clearAllLocalStorage();
         window.dispatchEvent(new Event('session:invalid'));
         window.location.href = '/login';
         return;
@@ -969,7 +978,10 @@ export const sendRagChatMessageStream = async (
   }
 };
 
-// 🎯 이미지 포함 RAG 채팅 (Vision API)
+/**
+ * @deprecated 사용하지 마세요. Agent API에서는 attachments로 이미지 처리
+ * 이미지 포함 RAG 채팅 (Vision API) (사용 중단 - 2025-12-09)
+ */
 export const sendRagChatMessageWithImages = async (
   message: string,
   images: File[],
@@ -1011,7 +1023,9 @@ export const sendRagChatMessageWithImages = async (
     // Content-Type은 브라우저가 자동으로 설정 (multipart/form-data with boundary)
 
     const apiBaseUrl = getApiUrl();
+    // ⚠️ Deprecated: Vision API는 Agent attachments로 대체 권장
     const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/chat/vision` : '/api/v1/chat/vision';
+    console.warn('⚠️ sendRagChatMessageWithImages is deprecated. Use useAgentChat with attachments instead.');
     
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -1022,8 +1036,7 @@ export const sendRagChatMessageWithImages = async (
     if (!response.ok) {
       // 401 Unauthorized 처리
       if (response.status === 401) {
-        clearAllAuthStorage();
-        localStorage.removeItem('csrf_token');
+        clearAllLocalStorage();
         window.dispatchEvent(new Event('session:invalid'));
         window.location.href = '/login';
         return;
@@ -1046,7 +1059,12 @@ export const getChatHistory = async (): Promise<AIChat[]> => {
   return response.data;
 };
 
+/**
+ * @deprecated 사용하지 마세요. Agent API에서는 피드백 기능 미지원
+ * 채팅 피드백 제출 (사용 중단 - 2025-12-09)
+ */
 export const submitChatFeedback = async (chatId: string, feedback: 'positive' | 'negative'): Promise<void> => {
+  console.warn('⚠️ submitChatFeedback is deprecated.');
   await api.post(`/api/v1/chat/${chatId}/feedback`, {
     feedback
   });

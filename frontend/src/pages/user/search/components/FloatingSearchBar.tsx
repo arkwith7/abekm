@@ -326,7 +326,7 @@ export const FloatingSearchBar: React.FC<FloatingSearchBarProps> = ({
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">지식 컨테이너</label>
                                             <select
-                                                value={filters.containerIds.length > 0 ? filters.containerIds[0] : ''}
+                                                value={(filters.containerIds?.length ?? 0) > 0 ? filters.containerIds[0] : ''}
                                                 onChange={(e) => updateFilters({
                                                     containerIds: e.target.value ? [e.target.value] : []
                                                 })}
@@ -341,7 +341,7 @@ export const FloatingSearchBar: React.FC<FloatingSearchBarProps> = ({
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">파일 형식</label>
                                             <select
-                                                value={filters.documentTypes.length > 0 ? filters.documentTypes[0] : ''}
+                                                value={(filters.documentTypes?.length ?? 0) > 0 ? filters.documentTypes[0] : ''}
                                                 onChange={(e) => updateFilters({
                                                     documentTypes: e.target.value ? [e.target.value] : []
                                                 })}

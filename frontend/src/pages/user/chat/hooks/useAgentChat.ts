@@ -267,7 +267,8 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
         previewUrl: (asset.previewUrl && (asset.previewUrl.startsWith('blob:') || asset.previewUrl.startsWith('data:')))
           ? asset.previewUrl
           : undefined,
-        downloadUrl: asset.downloadUrl || `/api/v1/chat/assets/${asset.assetId}`
+        // ✅ Agent API로 통합 (2025-12-09)
+        downloadUrl: asset.downloadUrl || `/api/v1/agent/chat/assets/${asset.assetId}`
       })) : undefined
     };
 

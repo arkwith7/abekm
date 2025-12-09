@@ -23,8 +23,8 @@ from app.services.presentation.ppt_template_manager import template_manager
 from app.services.presentation.template_migration_service import template_migration_service
 from app.services.presentation.template_debugger import template_debugger
 from app.services.presentation.template_content_generator_service import template_content_generator
-from app.services.file_manager import file_manager
-from app.services.office_generator_client import office_generator_client
+from app.services.presentation.file_manager import file_manager
+from app.services.presentation.office_generator_client import office_generator_client
 from app.models.presentation import PresentationRequest, PresentationResponse, PresentationMetadata, StructuredOutline
 
 # 🚀 Unified Agent (Replaces all legacy agents)

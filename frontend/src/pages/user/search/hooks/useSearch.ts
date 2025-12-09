@@ -18,16 +18,20 @@ export const useSearch = () => {
     currentPage: savedSearchState?.currentPage || 1,
   });
 
-  const [filters, setFilters] = useState<SearchFilters>(
-    savedSearchState?.filters || {
+  const [filters, setFilters] = useState<SearchFilters>(() => {
+    const defaultFilters: SearchFilters = {
       searchType: 'hybrid',
       containerIds: [],
       includeSubContainers: true,
       documentTypes: [],
       dateRange: {},
       scoreThreshold: 0.1
-    }
-  );
+    };
+    // savedSearchState?.filters와 병합하여 누락된 필드 방지
+    return savedSearchState?.filters
+      ? { ...defaultFilters, ...savedSearchState.filters }
+      : defaultFilters;
+  });
 
   const [selectedResults, setSelectedResults] = useState<Set<string>>(
     new Set(savedSearchState?.selectedResults || [])

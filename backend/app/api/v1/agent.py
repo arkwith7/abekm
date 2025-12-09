@@ -1,16 +1,32 @@
 """
 Agent-based Chat API - PaperSearchAgent를 사용한 새로운 채팅 엔드포인트
 Feature flag로 점진적 전환 가능
+
+통합된 엔드포인트:
+- /agent/chat - 기본 채팅
+- /agent/chat/stream - 스트리밍 채팅
+- /agent/chat/assets - 첨부파일 업로드
+- /agent/chat/assets/{asset_id} - 첨부파일 다운로드
+- /agent/chat/transcribe - 음성→텍스트 변환
+- /agent/sessions - 세션 관리
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 import uuid
+import os
+import tempfile
+import asyncio
+import aiofiles
+from botocore.exceptions import ClientError
+from urllib.parse import quote
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.config import settings
 from app.models import User
 from app.agents import paper_search_agent
 from app.agents.supervisor_agent import supervisor_agent
@@ -19,10 +35,12 @@ from app.tools.contracts import AgentConstraints, AgentIntent, AgentResult
 from loguru import logger
 from app.services.document.extraction.text_extractor_service import TextExtractorService
 from app.services.chat.chat_attachment_service import chat_attachment_service
+from app.services.core.audio_transcription_service import audio_transcription_service
 from pathlib import Path
 
 
-router = APIRouter(tags=["agent"])
+# 태그는 main.py에서 include_router 시 설정됨 (tags=["🤖 Agent RAG"])
+router = APIRouter()
 
 
 def _should_force_ppt_generation(message: str, tool: Optional[str]) -> bool:
@@ -1334,3 +1352,180 @@ async def agent_health():
         "tools": list(paper_search_agent.tools.keys()),
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+# =============================================================================
+# 📎 첨부파일 관리 엔드포인트 (chat.py에서 통합)
+# =============================================================================
+
+@router.post("/agent/chat/assets")
+async def upload_agent_chat_assets(
+    files: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user)
+):
+    """채팅 첨부파일 업로드 (이미지, 문서, 오디오)
+    
+    Args:
+        files: 업로드할 파일 리스트
+        current_user: 현재 사용자 (인증)
+    
+    Returns:
+        {"success": true, "assets": [...]}
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="업로드할 파일이 없습니다.")
+
+    assets = []
+    for upload in files:
+        try:
+            stored = await chat_attachment_service.save(upload, str(current_user.emp_no))
+            assets.append({
+                "asset_id": stored.asset_id,
+                "file_name": stored.file_name,
+                "mime_type": stored.mime_type,
+                "size": stored.size,
+                "category": stored.category,
+                "preview_url": stored.preview_url,
+                "download_url": stored.download_url
+            })
+        except Exception as exc:
+            logger.error(f"❌ 첨부 파일 업로드 실패: {exc}")
+            raise HTTPException(status_code=500, detail="첨부 파일 업로드 중 오류가 발생했습니다.")
+
+    return {"success": True, "assets": assets}
+
+
+@router.get("/agent/chat/assets/{asset_id}")
+async def download_agent_chat_asset(
+    asset_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """채팅 첨부파일 다운로드
+    
+    Args:
+        asset_id: 파일 식별자
+        current_user: 현재 사용자 (인증)
+    
+    Returns:
+        파일 스트림 또는 FileResponse
+    """
+    stored = chat_attachment_service.get(asset_id)
+    if not stored:
+        raise HTTPException(status_code=404, detail="첨부 파일을 찾을 수 없습니다.")
+
+    stored_owner = str(stored.owner_emp_no) if stored.owner_emp_no else None
+    current_emp_no = str(current_user.emp_no)
+    logger.info(f"🔐 [AgentChatAsset] 접근 시도: asset={asset_id}, stored_owner={stored_owner}, current={current_emp_no}")
+
+    if stored_owner != current_emp_no:
+        logger.warning(f"❌ [AgentChatAsset] 권한 없음: {current_emp_no} != {stored_owner}")
+        raise HTTPException(status_code=403, detail="첨부 파일에 대한 접근 권한이 없습니다.")
+
+    # S3 스토리지 처리
+    if stored.storage_backend == "s3":
+        if not chat_attachment_service.s3_client:
+            logger.error("S3 client is not initialized but storage_backend is s3")
+            raise HTTPException(status_code=500, detail="스토리지 설정 오류가 발생했습니다.")
+            
+        try:
+            # S3에서 파일 스트림 가져오기
+            s3_response = chat_attachment_service.s3_client.get_object(
+                Bucket=chat_attachment_service.s3_bucket,
+                Key=str(stored.path)
+            )
+            
+            # 파일명 인코딩 처리 (RFC 5987)
+            encoded_filename = quote(stored.file_name)
+            
+            return StreamingResponse(
+                s3_response['Body'],
+                media_type=stored.mime_type,
+                headers={
+                    "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+                }
+            )
+        except ClientError as e:
+            logger.error(f"S3 Download Error: {e}")
+            raise HTTPException(status_code=404, detail="파일을 찾을 수 없습니다.")
+        except Exception as e:
+            logger.error(f"S3 Streaming Error: {e}")
+            raise HTTPException(status_code=500, detail="파일 다운로드 중 오류가 발생했습니다.")
+
+    # 로컬 스토리지 처리
+    return FileResponse(
+        path=stored.path,
+        media_type=stored.mime_type,
+        filename=stored.file_name
+    )
+
+
+# =============================================================================
+# 🎤 음성 변환 엔드포인트 (chat.py에서 통합)
+# =============================================================================
+
+@router.post("/agent/chat/transcribe")
+async def transcribe_agent_chat_audio(
+    file: UploadFile = File(...),
+    language: str = Form("ko-KR"),
+    current_user: User = Depends(get_current_user)
+):
+    """음성 파일을 텍스트로 변환 (AWS Transcribe)
+    
+    Args:
+        file: 오디오 파일 (webm, mp3, wav, m4a 등)
+        language: 언어 코드 (ko-KR, en-US, ja-JP, zh-CN 등)
+        current_user: 현재 사용자 (인증)
+    
+    Returns:
+        {"success": true, "transcript": "변환된 텍스트"}
+    """
+    if not audio_transcription_service.enabled:
+        raise HTTPException(status_code=503, detail="오디오 전사 기능이 비활성화되어 있습니다.")
+
+    suffix = Path(file.filename or "audio.webm").suffix or ".webm"
+    temp_fd, temp_path_str = tempfile.mkstemp(suffix=suffix)
+    os.close(temp_fd)
+    temp_path = Path(temp_path_str)
+
+    try:
+        # 파일 저장
+        async with aiofiles.open(temp_path, "wb") as out_file:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                await out_file.write(chunk)
+
+        logger.info(
+            "🎤 [AGENT-TRANSCRIBE] 변환 요청 - user: %s, file: %s, size: %d bytes, language: %s",
+            current_user.username,
+            file.filename,
+            temp_path.stat().st_size,
+            language
+        )
+
+        # AWS Transcribe 변환 (동기 → 비동기 래핑)
+        transcript = await asyncio.to_thread(
+            audio_transcription_service.transcribe, 
+            temp_path,
+            language
+        )
+        
+        logger.info(
+            "✅ [AGENT-TRANSCRIBE] 변환 완료 - user: %s, text_length: %d",
+            current_user.username,
+            len(transcript)
+        )
+        
+        return {"success": True, "transcript": transcript}
+        
+    except Exception as exc:
+        logger.error(f"❌ [AGENT-TRANSCRIBE] 변환 실패: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail="음성 텍스트 변환 중 오류가 발생했습니다.")
+    finally:
+        try:
+            await file.close()
+        except Exception:
+            pass
+        temp_path.unlink(missing_ok=True)
+

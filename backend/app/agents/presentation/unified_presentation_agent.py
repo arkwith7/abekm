@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type
@@ -28,7 +29,7 @@ from app.utils.prompt_loader import load_presentation_prompt
 
 # Tools import
 from app.tools.presentation.outline_generation_tool import outline_generation_tool
-# from app.tools.presentation.quick_pptx_builder_tool import quick_pptx_builder_tool  # Deprecated
+from app.tools.presentation.quick_pptx_builder_tool import quick_pptx_builder_tool  # Restored 2025-12-09
 from app.tools.presentation.template_analyzer_tool import template_analyzer_tool
 from app.tools.presentation.slide_type_matcher_tool import slide_type_matcher_tool
 from app.tools.presentation.content_mapping_tool import content_mapping_tool
@@ -78,11 +79,12 @@ class UnifiedPresentationAgent(BaseAgent):
         self.tools = {
             # 공통 도구
             "outline_generation_tool": outline_generation_tool,
+            "quick_pptx_builder_tool": quick_pptx_builder_tool,  # Restored 2025-12-09 for Quick PPT
             "ppt_quality_validator_tool": ppt_quality_validator_tool,
             "template_ppt_comparator_tool": template_ppt_comparator_tool,
             "visualization_tool": visualization_tool,
             
-            # Template PPT 전용 도구 (Quick PPT도 이 도구를 사용)
+            # Template PPT 전용 도구
             "template_analyzer_tool": template_analyzer_tool,
             "slide_type_matcher_tool": slide_type_matcher_tool,
             "content_mapping_tool": content_mapping_tool,
@@ -457,7 +459,8 @@ class UnifiedPresentationAgent(BaseAgent):
                             action_input["max_slides"] = max_slides
 
                     # deck_spec 자동 주입 (Quick/Template 공통)
-                    if action_name in ["templated_pptx_builder_tool", "content_mapping_tool"]:
+                    # quick_pptx_builder_tool 추가됨 (2025-12-09 복원)
+                    if action_name in ["quick_pptx_builder_tool", "templated_pptx_builder_tool", "content_mapping_tool"]:
                         # deck_spec이 없거나 비어있고, 메모리에 저장된 deck_spec이 있는 경우
                         if self._latest_deck_spec:
                             if action_name == "content_mapping_tool":
@@ -1246,6 +1249,9 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         Returns:
             PPT 파일 경로 및 정보
         """
+        # 🆕 파일명에서 요청 표현 제거 (명사형으로 축약)
+        output_filename = self._refine_output_filename(output_filename)
+        
         logger.info(
             f"🏗️ [{self.name}] PPT 빌드 시작: template={template_id}, "
             f"slides={len(slides_data)}, filename={output_filename}"
@@ -1702,6 +1708,51 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             })
         
         return ui_slides
+    
+    def _refine_output_filename(self, filename: str) -> str:
+        """파일명에서 요청 표현을 제거하고 명사형으로 축약.
+        
+        예시:
+        - '자동차 산업의 특허분석 방법론에 대해 PPT 작성해 주세요' → '자동차 산업의 특허분석 방법론'
+        - 'AI 기술 트렌드 발표 자료 만들어줘' → 'AI 기술 트렌드'
+        """
+        if not filename or filename == "presentation":
+            return filename
+        
+        original = filename
+        
+        # 1. 후위 요청 표현 패턴 (끝에서부터 제거)
+        suffix_patterns = [
+            r'\s*(에 대해|에 대한|에 관한|에 관해|을 위한|를 위한)\s*(PPT|ppt|프레젠테이션|발표\s*자료|슬라이드).*$',
+            r'\s*(PPT|ppt|프레젠테이션|발표\s*자료|슬라이드)\s*(작성|생성|만들|제작).*$',
+            r'\s*(작성|생성|만들어|제작)\s*(해|좀)?\s*(주세요|줘|줘요|주십시오|부탁).*$',
+            r'\s*(해|좀)?\s*(주세요|줘|줘요|주십시오|부탁).*$',
+            r'\s+PPT\s*$',
+            r'\s+ppt\s*$',
+        ]
+        
+        for pattern in suffix_patterns:
+            filename = re.sub(pattern, '', filename, flags=re.IGNORECASE).strip()
+        
+        # 2. 전위 요청 표현 패턴 (앞에서부터 제거)
+        prefix_patterns = [
+            r'^(다음|아래|위)\s*(내용|주제)(에 대해|으로|로)?\s*',
+        ]
+        
+        for pattern in prefix_patterns:
+            filename = re.sub(pattern, '', filename, flags=re.IGNORECASE).strip()
+        
+        # 3. 조사 정리 (끝에 '의', '에', '를' 등이 남으면 제거)
+        filename = re.sub(r'[의에를을가이]$', '', filename).strip()
+        
+        # 결과가 너무 짧으면 원본 반환
+        if len(filename) < 3:
+            filename = original
+        
+        if filename != original:
+            logger.info(f"📝 파일명 정제: '{original[:50]}' → '{filename[:50]}'")
+        
+        return filename
     
     def _apply_ui_edits_to_deck_spec(
         self,

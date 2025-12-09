@@ -2,8 +2,13 @@ import logging
 from typing import List, Dict, Any, Optional
 from pptx.util import Inches, Pt
 from enum import Enum
+from lxml import etree
 
 logger = logging.getLogger(__name__)
+
+# XML 네임스페이스 상수
+A_NS = '{http://schemas.openxmlformats.org/drawingml/2006/main}'
+P_NS = '{http://schemas.openxmlformats.org/presentationml/2006/main}'
 
 class PPTObjectType(Enum):
     TEXTBOX = "textbox"
@@ -26,6 +31,55 @@ class EnhancedPPTObjectProcessor:
     
     def __init__(self):
         self.logger = logger
+    
+    def _fix_empty_solid_fill_line(self, shape):
+        """
+        Shape의 빈 solidFill 선 스타일을 noFill로 변환
+        
+        문제: 원본 템플릿에 <a:ln><a:solidFill/></a:ln> 형태로 
+        빈 solidFill이 있으면 PowerPoint가 기본 검정 테두리를 적용함
+        
+        해결: 빈 solidFill을 noFill로 변환하여 테두리 제거
+        """
+        try:
+            if not hasattr(shape, '_element'):
+                return False
+                
+            elem = shape._element
+            
+            # spPr (Shape Properties) 찾기
+            spPr = elem.find(f'.//{A_NS}spPr')
+            if spPr is None:
+                return False
+            
+            # ln (line) 태그 찾기
+            ln = spPr.find(f'{A_NS}ln')
+            if ln is None:
+                return False
+            
+            # solidFill 확인
+            solidFill = ln.find(f'{A_NS}solidFill')
+            if solidFill is None:
+                return False
+            
+            # solidFill이 비어있는지 확인 (색상 정보 없음)
+            srgbClr = solidFill.find(f'{A_NS}srgbClr')
+            schemeClr = solidFill.find(f'{A_NS}schemeClr')
+            
+            if srgbClr is None and schemeClr is None:
+                # 빈 solidFill → noFill로 변환
+                ln.remove(solidFill)
+                noFill = etree.SubElement(ln, f'{A_NS}noFill')
+                
+                shape_name = getattr(shape, 'name', 'Unknown')
+                self.logger.info(f"🔧 빈 solidFill → noFill 변환 완료: {shape_name}")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.warning(f"선 스타일 수정 실패: {e}")
+            return False
     
     def _map_ppt_type_to_object_type(self, ppt_type: str) -> str:
         """PPT 내부 타입을 표준 오브젝트 타입으로 매핑"""
@@ -462,80 +516,120 @@ class EnhancedPPTObjectProcessor:
         return style_info
     
     def _replace_text_preserving_style(self, text_frame, new_content, original_style):
-        """스타일을 보존하면서 텍스트 내용만 교체"""
+        """스타일을 보존하면서 텍스트 내용만 교체
+        
+        🆕 개선: text_frame.clear() 대신 기존 run의 텍스트만 교체하여 스타일 유지
+        """
         try:
-            # 새 내용으로 텍스트 설정
-            text_frame.clear()
-            p = text_frame.paragraphs[0]
-            p.text = new_content
-            
-            # 원본 스타일이 있으면 적용
-            if original_style and original_style.get('paragraphs'):
+            # 원본 스타일이 있고 paragraphs가 있으면 스타일 보존 방식 사용
+            if original_style and original_style.get('paragraphs') and text_frame.paragraphs:
                 first_para_style = original_style['paragraphs'][0]
                 
-                # 첫 번째 paragraph 스타일 적용
-                if hasattr(p, 'alignment'):
-                    p.alignment = first_para_style.get('alignment')
-                if hasattr(p, 'level'):
-                    p.level = first_para_style.get('level', 0)
+                # 🆕 방법 1: 기존 paragraph의 첫 번째 run 텍스트만 교체 (스타일 보존)
+                if text_frame.paragraphs[0].runs:
+                    # 첫 번째 run의 텍스트만 교체
+                    first_run = text_frame.paragraphs[0].runs[0]
+                    first_run.text = new_content
+                    
+                    # 나머지 run들은 제거 (텍스트만)
+                    for i, run in enumerate(text_frame.paragraphs[0].runs):
+                        if i > 0:
+                            run.text = ""
+                    
+                    # 나머지 paragraph들의 텍스트 제거
+                    for i, para in enumerate(text_frame.paragraphs):
+                        if i > 0:
+                            for run in para.runs:
+                                run.text = ""
+                    
+                    self.logger.debug(f"✅ 스타일 보존 텍스트 교체 완료 (run 재사용)")
+                    return
                 
-                # Run 스타일 적용
-                if first_para_style.get('runs') and p.runs:
-                    first_run = p.runs[0]
+                # 🆕 방법 2: run이 없으면 새로 생성하고 스타일 적용
+                text_frame.clear()
+                p = text_frame.paragraphs[0] if text_frame.paragraphs else text_frame.add_paragraph()
+                run = p.add_run()
+                run.text = new_content
+                
+                # Paragraph 스타일 적용
+                if first_para_style.get('alignment') is not None:
+                    p.alignment = first_para_style['alignment']
+                if first_para_style.get('level') is not None:
+                    p.level = first_para_style['level']
+                
+                # Run 스타일 적용 (원본의 첫 번째 run 스타일 사용)
+                if first_para_style.get('runs'):
                     first_run_style = first_para_style['runs'][0]
                     
                     # 폰트 정보 적용
                     if first_run_style.get('font_name'):
-                        first_run.font.name = first_run_style['font_name']
+                        run.font.name = first_run_style['font_name']
                     if first_run_style.get('font_size'):
-                        first_run.font.size = first_run_style['font_size']
+                        run.font.size = first_run_style['font_size']
                     if first_run_style.get('bold') is not None:
-                        first_run.font.bold = first_run_style['bold']
+                        run.font.bold = first_run_style['bold']
                     if first_run_style.get('italic') is not None:
-                        first_run.font.italic = first_run_style['italic']
+                        run.font.italic = first_run_style['italic']
                     if first_run_style.get('underline') is not None:
-                        first_run.font.underline = first_run_style['underline']
+                        run.font.underline = first_run_style['underline']
                     
-                    # 색상 적용 (개선된 로직)
+                    # 색상 적용
                     if first_run_style.get('color_info'):
-                        try:
-                            color_info = first_run_style['color_info']
-                            self.logger.debug(f"색상 적용 시도: {color_info}")
-                            
-                            # 색상 타입에 따른 적용
-                            if color_info.get('type') is not None:
-                                from pptx.enum.dml import MSO_COLOR_TYPE
-                                
-                                if color_info['type'] == MSO_COLOR_TYPE.RGB and color_info.get('rgb'):
-                                    # RGB 색상 적용
-                                    first_run.font.color.rgb = color_info['rgb']
-                                    self.logger.debug(f"RGB 색상 적용 완료: {color_info['rgb']}")
-                                
-                                elif color_info['type'] == MSO_COLOR_TYPE.SCHEME and color_info.get('theme_color'):
-                                    # 테마 색상 적용
-                                    first_run.font.color.theme_color = color_info['theme_color']
-                                    if color_info.get('brightness') is not None:
-                                        first_run.font.color.brightness = color_info['brightness']
-                                    self.logger.debug(f"테마 색상 적용 완료: {color_info['theme_color']}")
-                                
-                                else:
-                                    # RGB가 있으면 RGB로 폴백
-                                    if color_info.get('rgb'):
-                                        first_run.font.color.rgb = color_info['rgb']
-                                        self.logger.debug(f"RGB 폴백 적용: {color_info['rgb']}")
-                            
-                            else:
-                                # 타입 정보가 없으면 RGB로 시도
-                                if color_info.get('rgb'):
-                                    first_run.font.color.rgb = color_info['rgb']
-                                    self.logger.debug(f"RGB 직접 적용: {color_info['rgb']}")
-                                    
-                        except Exception as e:
-                            self.logger.warning(f"색상 적용 실패: {e}")
-                            # 색상 적용에 실패해도 다른 스타일은 유지
-        
+                        self._apply_color_to_run(run, first_run_style['color_info'])
+                
+                self.logger.debug(f"✅ 스타일 보존 텍스트 교체 완료 (새 run 생성)")
+                return
+            
+            # 🆕 방법 3: 원본 스타일 정보가 없는 경우 - 기존 run 재사용 시도
+            if text_frame.paragraphs and text_frame.paragraphs[0].runs:
+                first_run = text_frame.paragraphs[0].runs[0]
+                first_run.text = new_content
+                
+                # 나머지 run/paragraph 텍스트 제거
+                for i, run in enumerate(text_frame.paragraphs[0].runs):
+                    if i > 0:
+                        run.text = ""
+                for i, para in enumerate(text_frame.paragraphs):
+                    if i > 0:
+                        for run in para.runs:
+                            run.text = ""
+                
+                self.logger.debug(f"✅ 텍스트 교체 완료 (기존 run 재사용, 스타일 유지)")
+                return
+            
+            # 🆕 방법 4: 최종 폴백 - clear 후 텍스트 설정
+            text_frame.clear()
+            p = text_frame.paragraphs[0] if text_frame.paragraphs else text_frame.add_paragraph()
+            p.text = new_content
+            self.logger.debug(f"✅ 텍스트 교체 완료 (폴백, 스타일 없음)")
+            
         except Exception as e:
-            self.logger.warning(f"스타일 적용 실패: {e}, 텍스트만 교체됨")
+            self.logger.warning(f"스타일 보존 텍스트 교체 실패: {e}, 단순 교체로 폴백")
+            try:
+                text_frame.clear()
+                if text_frame.paragraphs:
+                    text_frame.paragraphs[0].text = new_content
+            except:
+                pass
+    
+    def _apply_color_to_run(self, run, color_info):
+        """Run에 색상 정보 적용"""
+        try:
+            if not color_info:
+                return
+                
+            from pptx.enum.dml import MSO_COLOR_TYPE
+            
+            if color_info.get('type') == MSO_COLOR_TYPE.RGB and color_info.get('rgb'):
+                run.font.color.rgb = color_info['rgb']
+            elif color_info.get('type') == MSO_COLOR_TYPE.SCHEME and color_info.get('theme_color'):
+                run.font.color.theme_color = color_info['theme_color']
+                if color_info.get('brightness') is not None:
+                    run.font.color.brightness = color_info['brightness']
+            elif color_info.get('rgb'):
+                run.font.color.rgb = color_info['rgb']
+        except Exception as e:
+            self.logger.debug(f"색상 적용 실패: {e}")
     
     def _hide_object(self, shape):
         """오브젝트 숨기기"""
@@ -618,6 +712,9 @@ class EnhancedPPTObjectProcessor:
                 # 텍스트만 교체 (스타일 유지)
                 self._replace_text_preserving_style(shape.text_frame, new_content, original_style)
                 
+                # 🆕 빈 solidFill 선 스타일 수정 (검정 테두리 제거)
+                self._fix_empty_solid_fill_line(shape)
+                
                 self.logger.info(f"✅ 텍스트박스 내용 교체 완료 (스타일 보존): '{new_content}'")
             else:
                 self.logger.warning(f"⚠️ 새 내용이 비어있음: newContent='{new_content}'")
@@ -645,6 +742,9 @@ class EnhancedPPTObjectProcessor:
                 
                 # 텍스트만 교체 (스타일 유지)
                 self._replace_text_preserving_style(shape.text_frame, new_content, original_style)
+                
+                # 🆕 빈 solidFill 선 스타일 수정 (검정 테두리 제거)
+                self._fix_empty_solid_fill_line(shape)
                 
                 self.logger.info(f"✅ 도형 내용 교체 완료 (스타일 보존): '{new_content}'")
             else:
