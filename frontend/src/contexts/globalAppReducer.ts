@@ -511,11 +511,39 @@ export const globalAppReducer = (state: GlobalAppState, action: GlobalAppAction)
 // 로컬 스토리지 관련 유틸리티 함수들
 export const saveStateToLocalStorage = (state: GlobalAppState) => {
   try {
+    // ⚠️ DB 데이터(containers, documents, results)는 저장하지 않음
+    // UI 설정만 저장 (viewMode, selectedContainer, expandedContainers 등)
     const stateToSave = {
       selectedContainers: state.selectedContainers,
       selectedDocuments: state.selectedDocuments,
       workContext: state.workContext,
-      pageStates: state.pageStates
+      pageStates: {
+        search: {
+          query: state.pageStates.search.query,
+          filters: state.pageStates.search.filters,
+          // results는 저장하지 않음 (DB 데이터)
+          selectedResults: state.pageStates.search.selectedResults,
+          viewMode: state.pageStates.search.viewMode,
+          currentPage: state.pageStates.search.currentPage,
+          selectedDocuments: state.pageStates.search.selectedDocuments,
+        },
+        myKnowledge: {
+          selectedContainer: state.pageStates.myKnowledge.selectedContainer,
+          expandedContainers: state.pageStates.myKnowledge.expandedContainers,
+          searchTerm: state.pageStates.myKnowledge.searchTerm,
+          filterStatus: state.pageStates.myKnowledge.filterStatus,
+          sortBy: state.pageStates.myKnowledge.sortBy,
+          sortOrder: state.pageStates.myKnowledge.sortOrder,
+          selectedDocuments: state.pageStates.myKnowledge.selectedDocuments,
+          currentPage: state.pageStates.myKnowledge.currentPage,
+          viewMode: state.pageStates.myKnowledge.viewMode,
+          // containers, documents는 저장하지 않음 (DB 데이터)
+        },
+        chat: state.pageStates.chat,
+        agentChat: state.pageStates.agentChat,
+        chatHistory: state.pageStates.chatHistory,
+        containerExplorer: state.pageStates.containerExplorer,
+      }
     };
     localStorage.setItem('ABEKM-app-state', JSON.stringify(stateToSave));
   } catch (error) {

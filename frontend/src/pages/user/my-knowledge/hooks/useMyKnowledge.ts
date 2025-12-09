@@ -35,10 +35,8 @@ export const useMyKnowledge = () => {
     savedMyKnowledgeState?.viewMode || 'list'
   );
 
-  // 컨테이너 관련
-  const [containers, setContainers] = useState<KnowledgeContainer[]>(
-    savedMyKnowledgeState?.containers || []
-  );
+  // 컨테이너 관련 - ⚠️ localStorage 캐시 사용 안 함 (DB 결과 우선)
+  const [containers, setContainers] = useState<KnowledgeContainer[]>([]);
   const [selectedContainerId, setSelectedContainerId] = useState<string | null>(
     savedMyKnowledgeState?.selectedContainer || null
   );
@@ -46,10 +44,8 @@ export const useMyKnowledge = () => {
     new Set(savedMyKnowledgeState?.expandedContainers || [])
   );
 
-  // 문서 관련
-  const [documents, setDocuments] = useState<ExtendedDocument[]>(
-    savedMyKnowledgeState?.documents || []
-  );
+  // 문서 관련 - ⚠️ localStorage 캐시 사용 안 함 (DB 결과 우선)
+  const [documents, setDocuments] = useState<ExtendedDocument[]>([]);
 
   // 페이지네이션 관련
   const [currentPage, setCurrentPage] = useState(
@@ -98,6 +94,7 @@ export const useMyKnowledge = () => {
   }, [expandedContainers]);
 
   // 상태 변경 시 pageStates에 저장 (디바운스 적용)
+  // ⚠️ containers, documents는 저장하지 않음 (DB 결과 우선)
   useEffect(() => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -105,8 +102,7 @@ export const useMyKnowledge = () => {
 
     saveTimeoutRef.current = setTimeout(() => {
       actions.savePageState('myKnowledge', {
-        containers, // 컨테이너 목록 저장
-        documents, // 문서 목록 저장
+        // containers, documents는 저장하지 않음 - 항상 API에서 최신 데이터 로드
         selectedContainer: selectedContainerId,
         expandedContainers: Array.from(expandedContainersRef.current),
         searchTerm,
@@ -125,7 +121,7 @@ export const useMyKnowledge = () => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedContainerId, searchTerm, filterStatus, sortBy, sortOrder, currentPage, viewMode, containers, documents]);
+  }, [selectedContainerId, searchTerm, filterStatus, sortBy, sortOrder, currentPage, viewMode]);
 
   const findContainerById = useCallback((id: string, searchContainers: KnowledgeContainer[]): KnowledgeContainer | null => {
     const search = (items: KnowledgeContainer[]): KnowledgeContainer | null => {

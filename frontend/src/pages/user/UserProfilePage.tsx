@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { authService } from '../../services/authService';
+import { getApiUrl } from '../../utils/apiConfig';
 
 interface UserInfo {
     emp_no: string;
@@ -149,7 +150,10 @@ const UserProfilePage: React.FC = () => {
                 }
             });
 
-            const response = await fetch(`/api/v1/auth/me`, {
+            const apiBaseUrl = getApiUrl();
+            const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/auth/me` : '/api/v1/auth/me';
+            
+            const response = await fetch(apiUrl, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}`,

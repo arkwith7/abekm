@@ -10,7 +10,8 @@ export const useSearch = () => {
   const [state, setState] = useState({
     query: savedSearchState?.query || '',
     isSearching: false,
-    searchResults: (savedSearchState?.results as SearchResult[]) || [] as SearchResult[],
+    // ⚠️ searchResults는 localStorage에서 복원하지 않음 (DB 결과 우선)
+    searchResults: [] as SearchResult[],
     totalCount: 0,
     searchTime: null as number | null,
     error: null as string | null,
@@ -45,6 +46,7 @@ export const useSearch = () => {
   }, [filters]);
 
   // 상태 변경 시 pageStates에 저장 (디바운스 적용)
+  // ⚠️ searchResults는 저장하지 않음 (DB 결과 우선)
   useEffect(() => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -53,7 +55,7 @@ export const useSearch = () => {
     const payload = {
       query: state.query,
       filters: filtersRef.current,
-      results: state.searchResults,
+      // results는 저장하지 않음 - 항상 API에서 최신 데이터 로드
       selectedResults: Array.from(selectedResults),
       viewMode,
       currentPage: state.currentPage,
@@ -70,7 +72,7 @@ export const useSearch = () => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.query, state.searchResults, selectedResults, viewMode, state.currentPage]);
+  }, [state.query, selectedResults, viewMode, state.currentPage]);
 
   const buildSearchParams = useCallback((query: string, page: number = 1) => {
     const currentFilters = filtersRef.current || {

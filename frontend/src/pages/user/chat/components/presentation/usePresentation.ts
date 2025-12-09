@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { getApiUrl } from '../../../../../utils/apiConfig';
 
 type BuildProgress = {
   stage: 'outline_generating' | 'outline_ready' | 'building' | 'complete' | 'error';
@@ -32,7 +33,10 @@ export function usePresentation(sessionId: string) {
       // } : undefined;
 
       // 원클릭 전용 엔드포인트로 변경
-      const response = await fetch(`/api/v1/agent/presentation/build-quick`, {
+      const apiBaseUrl = getApiUrl();
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/presentation/build-quick` : '/api/v1/agent/presentation/build-quick';
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -116,7 +120,10 @@ export function usePresentation(sessionId: string) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/v1/agent/presentation/outline`, {
+      const apiBaseUrl = getApiUrl();
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/presentation/outline` : '/api/v1/agent/presentation/outline';
+      
+      const res = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -176,7 +183,10 @@ export function usePresentation(sessionId: string) {
       });
 
       // 🆕 ReAct Agent 엔드포인트 사용 (Plan-Execute도 지원)
-      const response = await fetch(`/api/v1/agent/presentation/build-with-template-react`, {
+      const apiBaseUrl = getApiUrl();
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/presentation/build-with-template-react` : '/api/v1/agent/presentation/build-with-template-react';
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -993,7 +993,8 @@ async def search_documents(
            - 컨테이너별 필터링
            - 페이징 (skip, limit)
            - 권한 기반 자동 필터링
-           """)
+           """,
+           status_code=200)
 async def get_documents(
     skip: int = Query(0, ge=0, description="건너뛸 문서 수"),
     limit: int = Query(100, ge=1, le=100, description="조회할 문서 수 (최대 100)"),
@@ -1006,8 +1007,11 @@ async def get_documents(
     📋 단계: 권한 기반 필터링 → 페이징 → 응답 변환
     🔐 권한: 사용자별 접근 가능한 문서만 조회
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"[DOCUMENTS-API] 🎯 함수 진입 - user={user.emp_no}, container={container_id}")
     try:
-        logger.info(f"문서 목록 조회 - 사용자: {user.emp_no}, skip: {skip}, limit: {limit}, container_id: {container_id}")
+        logger.info(f"[DOCUMENTS-API] 🚀 문서 목록 조회 시작 - 사용자: {user.emp_no}, skip: {skip}, limit: {limit}, container_id: {container_id}")
         
         # 📊 tb_file_bss_info와 tb_file_dtl_info JOIN하여 문서 목록 조회
         # 🔐 권한 기반 문서 필터링: 사용자가 접근 가능한 컨테이너의 문서만 표시
@@ -1127,8 +1131,13 @@ async def get_documents(
         logger.info(f"문서 목록 조회 완료 - 사용자: {user.emp_no}, 조회 건수: {len(documents)}")
         return response
 
+    except HTTPException as http_ex:
+        logger.error(f"[DOCUMENTS-API] ❌ HTTP 예외 발생 - status: {http_ex.status_code}, detail: {http_ex.detail}")
+        raise
     except Exception as e:
-        logger.error(f"문서 목록 조회 중 예외 발생 - 사용자: {user.emp_no}, 오류: {e}")
+        logger.error(f"[DOCUMENTS-API] ❌ 일반 예외 발생 - 사용자: {user.emp_no}, 오류: {str(e)}, 타입: {type(e).__name__}")
+        import traceback
+        logger.error(f"[DOCUMENTS-API] 스택 트레이스: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail=f"문서 목록 조회 중 내부 오류가 발생했습니다: {str(e)}"

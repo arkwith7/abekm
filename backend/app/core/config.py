@@ -230,16 +230,16 @@ class Settings(BaseSettings):
     clip_embedding_dimension: int = 512  # CLIP 임베딩 차원
     
     # AWS Bedrock 모델
-    bedrock_llm_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
-    bedrock_text_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"  # bedrock_service.py에서 사용
+    bedrock_llm_model_id: str = "apac.anthropic.claude-3-5-sonnet-20241022-v2:0"
+    bedrock_text_model_id: str = "apac.anthropic.claude-3-5-sonnet-20241022-v2:0"  # bedrock_service.py에서 사용
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
     bedrock_alt_embedding_model_id: str = "amazon.titan-embed-text-v1:0"  # 대체 임베딩 모델
     bedrock_embedding_dimension: int = 1024  # Titan V2 기본 차원 (1024, 512, 256 지원)
     
     # AWS Bedrock 멀티모달 모델 (Cohere Embed v4)
-    bedrock_multimodal_embedding_model_id: str = "cohere.embed-v4:0"
-    bedrock_multimodal_embedding_dimension: int = 1024
-    bedrock_multimodal_llm_model_id: str = "anthropic.claude-3-sonnet-20240229-v1:0"
+    bedrock_multimodal_embedding_model_id: str = "twelvelabs.marengo-embed-3-0-v1:0"
+    bedrock_multimodal_embedding_dimension: int = 512
+    bedrock_multimodal_llm_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
     
     # OpenAI 모델 (.env에서 설정 필수)
     openai_llm_model: str = Field(default="")
@@ -552,7 +552,7 @@ class Settings(BaseSettings):
     query_rewrite_azure_api_key: str = ""
     query_rewrite_azure_api_version: str = "2024-12-01-preview"
     # Bedrock 설정
-    query_rewrite_bedrock_model_id: str = "us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+    query_rewrite_bedrock_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
     query_rewrite_bedrock_region: str = "ap-northeast-2"
     # 공통 파라미터
     query_rewrite_max_tokens: int = 500

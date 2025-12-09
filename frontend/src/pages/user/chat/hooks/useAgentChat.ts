@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AgentChatRequest, agentService } from '../../../../services/agentService';
 import { uploadChatAttachments, UploadedChatAsset } from '../../../../services/userService';
+import { getApiUrl } from '../../../../utils/apiConfig';
 import {
   clearPersistedAgentChatState,
   isAgentChatStateExpired,
@@ -301,7 +302,10 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
       console.log('🤖 [useAgentChat] SSE 스트리밍 요청:', request);
 
       const token = localStorage.getItem('ABEKM_token');
-      const response = await fetch('/api/v1/agent/chat/stream', {
+      const apiBaseUrl = getApiUrl();
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/chat/stream` : '/api/v1/agent/chat/stream';
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -577,7 +581,10 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
       console.log('🔄 [useAgentChat] 세션 복원 시작:', sessionIdToLoad);
 
       const token = localStorage.getItem('ABEKM_token');
-      const response = await fetch(`/api/v1/agent/sessions/${sessionIdToLoad}`, {
+      const apiBaseUrl = getApiUrl();
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/sessions/${sessionIdToLoad}` : `/api/v1/agent/sessions/${sessionIdToLoad}`;
+      
+      const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -647,7 +654,10 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
   const listSessions = useCallback(async (limit: number = 20, offset: number = 0) => {
     try {
       const token = localStorage.getItem('ABEKM_token');
-      const response = await fetch(`/api/v1/agent/sessions?limit=${limit}&offset=${offset}`, {
+      const apiBaseUrl = getApiUrl();
+      const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/sessions?limit=${limit}&offset=${offset}` : `/api/v1/agent/sessions?limit=${limit}&offset=${offset}`;
+      
+      const response = await fetch(apiUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,

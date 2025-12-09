@@ -15,6 +15,15 @@ const api = axios.create({
   },
 });
 
+// api 인스턴스에 인증 토큰 인터셉터 추가
+api.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 // 세션 만료 상태 추적 (중복 처리 방지)
 let isLoggingOut = false;
 let sessionExpiredAt: number | null = null;
@@ -570,40 +579,8 @@ export const getMyContainers = async (): Promise<KnowledgeContainer[]> => {
 
   } catch (error) {
     console.error('Failed to fetch containers:', error);
-
-    // 폴백 데이터 제공
-    const fallbackContainers: KnowledgeContainer[] = [
-      {
-        id: 'WJ_ROOT',
-        name: '웅진',
-        path: '/WJ_ROOT',
-        permission: 'VIEWER',
-        document_count: 0,
-        children: [
-          {
-            id: 'WJ_CEO',
-            name: 'CEO직속',
-            path: '/WJ_ROOT/WJ_CEO',
-            parent_id: 'WJ_ROOT',
-            permission: 'EDITOR',
-            document_count: 0,
-            children: [
-              {
-                id: 'WJ_HR',
-                name: '인사전략팀',
-                path: '/WJ_ROOT/WJ_CEO/WJ_HR',
-                parent_id: 'WJ_CEO',
-                permission: 'OWNER', // 인사전략팀장은 소유자 권한
-                document_count: 6,
-                children: []
-              }
-            ]
-          }
-        ]
-      }
-    ];
-
-    return fallbackContainers;
+    // API 실패 시 빈 배열 반환 (하드코딩된 fallback 데이터 제거)
+    return [];
   }
 };
 
@@ -924,7 +901,10 @@ export const sendRagChatMessageStream = async (
       headers['Authorization'] = `Bearer ${authToken}`;
     }
 
-    const response = await fetch(`/api/v1/chat/stream`, {
+    const apiBaseUrl = getApiUrl();
+    const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/chat/stream` : '/api/v1/chat/stream';
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -1030,7 +1010,10 @@ export const sendRagChatMessageWithImages = async (
     }
     // Content-Type은 브라우저가 자동으로 설정 (multipart/form-data with boundary)
 
-    const response = await fetch(`/api/v1/chat/vision`, {
+    const apiBaseUrl = getApiUrl();
+    const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/chat/vision` : '/api/v1/chat/vision';
+    
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers,
       body: formData

@@ -129,11 +129,16 @@ def _compact_sql(sql: str) -> str:
 # 비동기 데이터베이스 세션 의존성
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """향상된 비동기 데이터베이스 세션 관리"""
+    import logging
+    logger = logging.getLogger(__name__)
     async_session_local = get_async_session_local()
     async with async_session_local() as session:
         try:
+            logger.info("[DB-SESSION] ✅ 데이터베이스 세션 생성")
             yield session
+            logger.info("[DB-SESSION] ✅ 세션 정상 종료")
         except Exception as e:
+            logger.error(f"[DB-SESSION] ❌ 세션 오류: {e}")
             await session.rollback()
             raise e
         finally:

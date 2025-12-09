@@ -4,6 +4,7 @@ import FileViewer from '../../components/common/FileViewer';
 import { useSelectedDocuments, useWorkContext } from '../../contexts/GlobalAppContext';
 import { Document as GlobalDocument } from '../../contexts/types';
 import { Document as ViewerDocument } from '../../types/user.types';
+import { getApiUrl } from '../../utils/apiConfig';
 import ChatHeader from './chat/components/ChatHeader';
 import MessageComposer from './chat/components/MessageComposer';
 import MessageList from './chat/components/MessageList';
@@ -387,7 +388,10 @@ const ChatPage: React.FC = () => {
       // 📋 템플릿 목록 즉시 로드 (이전에 빈 목록으로 로드되었을 수 있으므로 빈 경우에도 재요청)
       if (!templatesLoaded || templates.length === 0) {
         try {
-          const resp = await fetch(`/api/v1/agent/presentation/templates`, {
+          const apiBaseUrl = getApiUrl();
+          const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/presentation/templates` : '/api/v1/agent/presentation/templates';
+          
+          const resp = await fetch(apiUrl, {
             headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` }
           });
 

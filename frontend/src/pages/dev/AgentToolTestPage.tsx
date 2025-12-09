@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useSelectedDocuments } from '../../contexts/GlobalAppContext';
 import type { Document as GlobalDocument } from '../../contexts/types';
+import { getApiUrl } from '../../utils/apiConfig';
 
 interface AgentCapability {
     tool_name: string;
@@ -44,7 +45,10 @@ const AgentToolTestPage: React.FC = () => {
 
                 console.log('🔍 Capabilities API 호출 시도...');
 
-                const response = await fetch('/api/v1/chat/multi-agent/capabilities', {
+                const apiBaseUrl = getApiUrl();
+                const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/chat/multi-agent/capabilities` : '/api/v1/chat/multi-agent/capabilities';
+                
+                const response = await fetch(apiUrl, {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
@@ -99,7 +103,10 @@ const AgentToolTestPage: React.FC = () => {
 
         try {
             const token = localStorage.getItem('ABEKM_token');
-            const response = await fetch('/api/v1/chat/agent-tool/execute', {
+            const apiBaseUrl = getApiUrl();
+            const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/chat/agent-tool/execute` : '/api/v1/chat/agent-tool/execute';
+            
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

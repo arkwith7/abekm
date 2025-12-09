@@ -685,15 +685,16 @@ export class RealtimeSTTClient {
   }
 
   private buildWebSocketUrl(token: string | null): string {
-    // 개발 환경: 백엔드로 직접 연결 (프록시 우회)
-    // 프로덕션 환경: 기존 로직 사용
-    if (process.env.NODE_ENV === 'development') {
-      const backendWs = 'ws://localhost:8000';
+    // 환경변수에서 WebSocket URL 가져오기
+    const wsUrl = process.env.REACT_APP_WS_URL;
+    
+    // 환경변수가 설정된 경우 사용
+    if (wsUrl) {
       const query = token ? `?token=${encodeURIComponent(token)}` : '';
-      return `${backendWs}/api/v1/transcribe/stream${query}`;
+      return `${wsUrl}/api/v1/transcribe/stream${query}`;
     }
 
-    // 프로덕션: API URL 기반 WebSocket 경로 구성
+    // Fallback: API URL 기반 WebSocket 경로 구성
     const apiBase = getApiUrl();
     const httpBase = apiBase && apiBase.length > 0 ? apiBase : `${window.location.origin}/api`;
     const normalizedBase = httpBase.replace(/\/$/, '');

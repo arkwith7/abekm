@@ -11,9 +11,16 @@ module.exports = function (app) {
   console.log('🔄 REACT_APP_ENV:', process.env.REACT_APP_ENV);
   console.log('🐛 Debug Mode:', isDebug);
 
-  // Docker 환경 (REACT_APP_API_URL이 외부 URL인 경우)에서는 프록시 비활성화
-  if (target && (target.includes('15.165.163.233') || target.startsWith('http://15.165'))) {
-    console.log('🐳 Docker 환경 감지 - setupProxy 비활성화 (nginx가 프록시 담당)');
+  // Docker/프로덕션 환경 감지: REACT_APP_API_URL이 명시적으로 설정된 경우 프록시 비활성화
+  // Nginx가 프록시를 담당하므로 중복 프록시 방지
+  const isExplicitApiUrl = process.env.REACT_APP_API_URL && 
+                          process.env.REACT_APP_API_URL !== 'http://localhost:8000' &&
+                          process.env.REACT_APP_API_URL !== 'http://127.0.0.1:8000';
+  
+  if (isExplicitApiUrl) {
+    console.log('🐳 프로덕션/Docker 환경 감지 - setupProxy 비활성화');
+    console.log('   REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
+    console.log('   (Nginx 또는 직접 연결이 프록시 담당)');
     console.log('✅ setupProxy.js 설정 완료 (bypass mode)');
     return; // 프록시 설정하지 않음
   }

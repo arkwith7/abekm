@@ -1,8 +1,14 @@
 import axios from 'axios';
 import { Download, Edit2, Eye, Globe, Lock, Users, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
+import { getApiUrl } from '../../../../utils/apiConfig';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000/api/v1';
+const getApiBaseUrl = () => {
+  const apiUrl = getApiUrl();
+  return apiUrl ? `${apiUrl}/api/v1` : '/api/v1';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 interface AccessRule {
     rule_id: number;

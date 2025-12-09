@@ -1,5 +1,6 @@
 import { ArrowLeft, ArrowRight, Check, CheckCircle, Download, Edit3, Loader2, RefreshCw, Sparkles, Trash2, X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { getApiUrl } from '../../../../../utils/apiConfig';
 
 // ============================================
 // 타입 정의
@@ -168,7 +169,10 @@ const PresentationOutlineModal: React.FC<Props> = ({
 
     const loadTemplates = async () => {
         try {
-            const response = await fetch('/api/v1/agent/presentation/templates', {
+            const apiBaseUrl = getApiUrl();
+            const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/presentation/templates` : '/api/v1/agent/presentation/templates';
+            
+            const response = await fetch(apiUrl, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` }
             });
             if (response.ok) {
@@ -272,7 +276,10 @@ const PresentationOutlineModal: React.FC<Props> = ({
             try {
                 console.log(`🚀 콘텐츠 생성 API 호출 (시도 ${retryCount + 1}/${MAX_RETRIES + 1}):`, localSelectedTemplateId);
 
-                const response = await fetch(`/api/v1/agent/presentation/templates/${encodeURIComponent(localSelectedTemplateId)}/generate-content`, {
+                const apiBaseUrl = getApiUrl();
+                const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/presentation/templates/${encodeURIComponent(localSelectedTemplateId)}/generate-content` : `/api/v1/agent/presentation/templates/${encodeURIComponent(localSelectedTemplateId)}/generate-content`;
+                
+                const response = await fetch(apiUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -421,7 +428,10 @@ const PresentationOutlineModal: React.FC<Props> = ({
         setError(null);
 
         try {
-            const response = await fetch(`/api/v1/agent/presentation/templates/${encodeURIComponent(localSelectedTemplateId!)}/build-from-data`, {
+            const apiBaseUrl = getApiUrl();
+            const apiUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/agent/presentation/templates/${encodeURIComponent(localSelectedTemplateId!)}/build-from-data` : `/api/v1/agent/presentation/templates/${encodeURIComponent(localSelectedTemplateId!)}/build-from-data`;
+            
+            const response = await fetch(apiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

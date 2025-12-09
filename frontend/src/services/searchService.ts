@@ -96,14 +96,14 @@ export const hybridSearch = async (query: string, filters: SearchFilters & { sea
     };
   } catch (error: any) {
     console.error('❌ 하이브리드 검색 오류:', error.response?.data || error.message);
-
-    // 개발 중 목업 데이터 반환
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('🚧 개발 모드: 목업 데이터 반환');
-      return generateMockSearchResponse(query, 'hybrid');
-    }
-
-    throw error;
+    // API 오류 시 빈 결과 반환 (mock 데이터 제거)
+    return {
+      results: [],
+      total_count: 0,
+      search_time: 0,
+      search_type: 'hybrid',
+      message: '검색 중 오류가 발생했습니다.'
+    };
   }
 };
 
@@ -133,14 +133,14 @@ export const vectorSearch = async (query: string, filters: SearchFilters = {}): 
     };
   } catch (error: any) {
     console.error('❌ 벡터 검색 오류:', error.response?.data || error.message);
-
-    // 개발 중 목업 데이터 반환
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('🚧 개발 모드: 목업 데이터 반환');
-      return generateMockSearchResponse(query, 'vector_only');
-    }
-
-    throw error;
+    // API 오류 시 빈 결과 반환 (mock 데이터 제거)
+    return {
+      results: [],
+      total_count: 0,
+      search_time: 0,
+      search_type: 'vector_only',
+      message: '검색 중 오류가 발생했습니다.'
+    };
   }
 };
 
@@ -170,14 +170,14 @@ export const keywordSearch = async (query: string, filters: SearchFilters = {}):
     };
   } catch (error: any) {
     console.error('❌ 키워드 검색 오류:', error.response?.data || error.message);
-
-    // 개발 중 목업 데이터 반환
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('🚧 개발 모드: 목업 데이터 반환');
-      return generateMockSearchResponse(query, 'keyword_only');
-    }
-
-    throw error;
+    // API 오류 시 빈 결과 반환 (mock 데이터 제거)
+    return {
+      results: [],
+      total_count: 0,
+      search_time: 0,
+      search_type: 'keyword_only',
+      message: '검색 중 오류가 발생했습니다.'
+    };
   }
 };
 
@@ -196,12 +196,7 @@ export const getSearchSuggestions = async (query: string): Promise<string[]> => 
     return response.data.suggestions || [];
   } catch (error: any) {
     console.error('❌ 검색 제안 오류:', error.response?.data || error.message);
-
-    // 개발 중 목업 데이터 반환
-    if (process.env.NODE_ENV === 'development') {
-      return generateMockSuggestions(query);
-    }
-
+    // API 오류 시 빈 배열 반환 (mock 데이터 제거)
     return [];
   }
 };
@@ -242,14 +237,14 @@ export const searchDocuments = async (query: string, limit: number = 10): Promis
     };
   } catch (error: any) {
     console.error('❌ 기본 문서 검색 오류:', error.response?.data || error.message);
-
-    // 개발 중 목업 데이터 반환
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('🚧 개발 모드: 목업 데이터 반환');
-      return generateMockSearchResponse(query, 'hybrid');
-    }
-
-    throw error;
+    // API 오류 시 빈 결과 반환 (mock 데이터 제거)
+    return {
+      results: [],
+      total_count: 0,
+      search_time: 0,
+      search_type: 'hybrid',
+      message: '검색 중 오류가 발생했습니다.'
+    };
   }
 };
 
@@ -262,17 +257,12 @@ export const getSearchAnalytics = async (): Promise<any> => {
     return response.data;
   } catch (error: any) {
     console.error('❌ 검색 분석 오류:', error.response?.data || error.message);
-
-    // 개발 중 목업 데이터 반환
-    if (process.env.NODE_ENV === 'development') {
-      return {
-        total_searches: 1234,
-        popular_queries: ['인사평가', '교육프로그램', '복리후생'],
-        search_trends: []
-      };
-    }
-
-    throw error;
+    // API 오류 시 빈 데이터 반환 (mock 데이터 제거)
+    return {
+      total_searches: 0,
+      popular_queries: [],
+      search_trends: []
+    };
   }
 };
 
@@ -299,14 +289,15 @@ export const multimodalSearch = async (
     return response.data;
   } catch (error: any) {
     console.error('❌ 멀티모달 검색 오류:', error.response?.data || error.message);
-
-    // 개발 중 목업 데이터 반환
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('🚧 개발 모드: 멀티모달 목업 데이터 반환');
-      return generateMockMultimodalResponse(query);
-    }
-
-    throw error;
+    // API 오류 시 빈 결과 반환 (mock 데이터 제거)
+    return {
+      success: false,
+      query,
+      has_image_query: false,
+      results: [],
+      total_found: 0,
+      search_metadata: { error: '검색 중 오류가 발생했습니다.' }
+    };
   }
 };
 
@@ -341,14 +332,15 @@ export const clipSearch = async (
     return response.data;
   } catch (error: any) {
     console.error('❌ CLIP 검색 오류:', error.response?.data || error.message);
-
-    // 개발 중 목업 데이터 반환
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('🚧 개발 모드: CLIP 목업 데이터 반환');
-      return generateMockMultimodalResponse(query, !!imageFile);
-    }
-
-    throw error;
+    // API 오류 시 빈 결과 반환 (mock 데이터 제거)
+    return {
+      success: false,
+      query,
+      has_image_query: !!imageFile,
+      results: [],
+      total_found: 0,
+      search_metadata: { error: '검색 중 오류가 발생했습니다.' }
+    };
   }
 };
 
@@ -385,153 +377,14 @@ export const imageSearchWithBase64 = async (
     return response.data;
   } catch (error: any) {
     console.error('❌ Base64 이미지 검색 오류:', error.response?.data || error.message);
-
-    // 개발 중 목업 데이터 반환
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('🚧 개발 모드: 이미지 검색 목업 데이터 반환');
-      return generateMockMultimodalResponse(query || '이미지 검색', true);
-    }
-
-    throw error;
+    // API 오류 시 빈 결과 반환 (mock 데이터 제거)
+    return {
+      success: false,
+      query: query || '이미지 검색',
+      has_image_query: true,
+      results: [],
+      total_found: 0,
+      search_metadata: { error: '검색 중 오류가 발생했습니다.' }
+    };
   }
-};
-
-/**
- * 개발용 멀티모달 목업 검색 결과 생성
- */
-const generateMockMultimodalResponse = (query: string, hasImage: boolean = false): MultimodalSearchResponse => {
-  const mockResults: MultimodalSearchResult[] = [
-    {
-      file_id: 'mm_doc1',
-      title: `${query}와 관련된 이미지 포함 문서`,
-      content_preview: `이 문서는 "${query}"에 대한 비주얼 자료를 포함하고 있습니다. 차트와 그래프가 포함되어 있습니다.`,
-      similarity_score: 0.95,
-      match_type: 'multimodal',
-      container_id: 'woongjin_hr',
-      file_path: '/documents/mm_doc1.pdf',
-      has_images: true,
-      image_count: 5,
-      clip_score: 0.92,
-      modality: 'text',
-      metadata: {
-        document_id: 'mm_doc1',
-        document_type: 'pdf',
-        search_methods: ['vector', 'clip'],
-        file_name: `${query}_비주얼_자료.pdf`
-      }
-    },
-    {
-      file_id: 'mm_doc2',
-      title: `${query} 프레젠테이션`,
-      content_preview: `${query} 관련 프레젠테이션 자료입니다. 다수의 이미지와 차트가 포함되어 있습니다.`,
-      similarity_score: 0.88,
-      match_type: 'multimodal',
-      container_id: 'woongjin_edu',
-      file_path: '/documents/presentation.pptx',
-      has_images: true,
-      image_count: 12,
-      clip_score: 0.87,
-      modality: 'image',
-      metadata: {
-        document_id: 'mm_doc2',
-        document_type: 'pptx',
-        search_methods: ['clip', 'vector'],
-        file_name: '프레젠테이션.pptx'
-      }
-    }
-  ];
-
-  return {
-    success: true,
-    query,
-    has_image_query: hasImage,
-    results: mockResults,
-    total_found: mockResults.length,
-    search_metadata: {
-      search_type: 'multimodal',
-      note: '개발 모드 목업 데이터'
-    }
-  };
-};
-
-/**
- * 개발용 목업 검색 결과 생성
- */
-const generateMockSearchResponse = (query: string, searchType: string): SearchResponse => {
-  const mockResults: SearchResult[] = [
-    {
-      file_id: 'doc1',
-      title: `${query}와 관련된 첫 번째 문서`,
-      content_preview: `이 문서는 "${query}"에 대한 상세한 정보를 포함하고 있습니다. 하이브리드 검색을 통해 찾아낸 관련성 높은 문서입니다.`,
-      similarity_score: 0.95,
-      match_type: searchType === 'hybrid' ? 'hybrid' : searchType.replace('_only', ''),
-      container_id: 'woongjin_hr',
-      file_path: '/documents/doc1.pdf',
-      metadata: {
-        document_id: 'doc1',
-        document_type: 'pdf',
-        search_methods: searchType === 'hybrid' ? ['vector', 'keyword'] : [searchType.replace('_only', '')],
-        file_name: `${query}_관련_문서.pdf`
-      }
-    },
-    {
-      file_id: 'doc2',
-      title: `${query} 관련 정책 문서`,
-      content_preview: `회사의 ${query} 관련 정책과 절차에 대해 설명하는 공식 문서입니다. 모든 직원이 숙지해야 할 중요한 내용입니다.`,
-      similarity_score: 0.87,
-      match_type: searchType === 'hybrid' ? 'hybrid' : searchType.replace('_only', ''),
-      container_id: 'woongjin_edu',
-      file_path: '/documents/policy.docx',
-      metadata: {
-        document_id: 'doc2',
-        document_type: 'docx',
-        search_methods: searchType === 'hybrid' ? ['vector', 'keyword'] : [searchType.replace('_only', '')],
-        file_name: '정책_문서.docx'
-      }
-    },
-    {
-      file_id: 'doc3',
-      title: `${query} 실무 가이드라인`,
-      content_preview: `실무진을 위한 ${query} 처리 가이드라인입니다. 단계별 절차와 주의사항을 포함하고 있습니다.`,
-      similarity_score: 0.78,
-      match_type: searchType === 'hybrid' ? 'hybrid' : searchType.replace('_only', ''),
-      container_id: 'woongjin_eval',
-      file_path: '/documents/guidelines.md',
-      metadata: {
-        document_id: 'doc3',
-        document_type: 'md',
-        search_methods: searchType === 'hybrid' ? ['vector'] : [searchType.replace('_only', '')],
-        file_name: '실무_가이드라인.md'
-      }
-    }
-  ];
-
-  return {
-    results: mockResults,
-    total_count: mockResults.length,
-    search_time: Math.floor(Math.random() * 500) + 100, // 100-600ms
-    search_type: searchType,
-    message: '개발 모드에서 목업 데이터를 반환합니다.'
-  };
-};
-
-/**
- * 개발용 목업 검색 제안 생성
- */
-const generateMockSuggestions = (query: string): string[] => {
-  const commonSuggestions = [
-    '인사 평가',
-    '교육 프로그램',
-    '복리후생',
-    '업무 매뉴얼',
-    '보안 정책',
-    '회계 규정'
-  ];
-
-  return commonSuggestions
-    .filter(suggestion =>
-      suggestion.toLowerCase().includes(query.toLowerCase()) ||
-      query.toLowerCase().includes(suggestion.toLowerCase())
-    )
-    .slice(0, 5);
 };
