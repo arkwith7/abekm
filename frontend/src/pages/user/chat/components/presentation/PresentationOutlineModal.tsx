@@ -108,6 +108,9 @@ const PresentationOutlineModal: React.FC<Props> = ({
     const [generatedPptFilename, setGeneratedPptFilename] = useState<string | null>(null);
     const [googlePreviewUrl, setGooglePreviewUrl] = useState<string | null>(null);
     const [directDownloadUrl, setDirectDownloadUrl] = useState<string | null>(null);
+    const [presentationTitle, setPresentationTitle] = useState<string | null>(null);  // 🆕 AI 생성 제목
+    // 🆕 v3.4: 슬라이드 대체 정보 (도식 레이아웃이 주제와 맞지 않을 때)
+    const [slideReplacements, setSlideReplacements] = useState<Array<{original: number; replacement: number; reason?: string}>>([]);
 
     const [error, setError] = useState<string | null>(null);
     const [loadingMessage, setLoadingMessage] = useState<string>("");
@@ -146,6 +149,7 @@ const PresentationOutlineModal: React.FC<Props> = ({
             setCurrentStep('setup');
             setError(null);
             setSlidesContent([]);
+            setSlideReplacements([]);  // 🆕 v3.4: 슬라이드 대체 정보 초기화
             setIsGenerating(false);  // 🔧 생성 상태 초기화
             isGeneratingRef.current = false;  // 🔧 ref도 초기화
             // sourceContent(채팅 원본 질의)는 props에서 직접 사용
@@ -291,7 +295,8 @@ const PresentationOutlineModal: React.FC<Props> = ({
                         context: "",  // context는 비워둠 (RAG에서 수집)
                         session_id: sessionId,  // 채팅 컨텍스트 활용
                         container_ids: containerIds,  // RAG 검색 범위
-                        use_rag: true  // Agentic AI: RAG 검색 활성화
+                        use_rag: true,  // Agentic AI: RAG 검색 활성화
+                        use_ai_first: true  // 🆕 AI-First 파이프라인 사용
                     }),
                     signal: controller.signal,
                     keepalive: true  // 🔧 연결 유지
@@ -371,6 +376,18 @@ const PresentationOutlineModal: React.FC<Props> = ({
             }, 500);
 
             setSlidesContent(data.slides);
+            // 🆕 AI가 생성한 프레젠테이션 제목 저장
+            if (data.presentation_title) {
+                setPresentationTitle(data.presentation_title);
+                console.log("📌 프레젠테이션 제목:", data.presentation_title);
+            }
+            // 🆕 v3.4: 슬라이드 대체 정보 저장
+            if (data.slide_replacements && data.slide_replacements.length > 0) {
+                setSlideReplacements(data.slide_replacements);
+                console.log("🔄 슬라이드 대체:", data.slide_replacements);
+            } else {
+                setSlideReplacements([]);
+            }
             setCurrentStep('editor');
         } catch (e: any) {
             console.error("❌ 콘텐츠 생성 오류:", e);
@@ -439,7 +456,10 @@ const PresentationOutlineModal: React.FC<Props> = ({
                 },
                 body: JSON.stringify({
                     slides: slidesContent,
-                    output_filename: (sourceContent || '프레젠테이션').slice(0, 30).replace(/[\\/:*?"<>|]/g, '_')
+                    // 🆕 AI 생성 제목 우선 사용, 없으면 사용자 쿼리에서 추출
+                    output_filename: (presentationTitle || sourceContent || '프레젠테이션').slice(0, 50).replace(/[\\/:*?"<>|]/g, '_'),
+                    // 🆕 v3.4: 슬라이드 대체 정보 전달
+                    slide_replacements: slideReplacements.length > 0 ? slideReplacements : undefined
                 })
             });
 
@@ -616,6 +636,22 @@ const PresentationOutlineModal: React.FC<Props> = ({
                                 ({currentSlide?.role || 'content'})
                             </span>
                         </h3>
+
+                        {/* 🆕 v3.4: 슬라이드 대체 알림 */}
+                        {slideReplacements.find(r => r.original === currentSlide?.index) && (
+                            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-3">
+                                <div className="p-1 bg-blue-100 rounded-full mt-0.5">
+                                    <Sparkles size={14} className="text-blue-600" />
+                                </div>
+                                <div>
+                                    <p className="text-sm font-medium text-blue-800">AI 레이아웃 최적화</p>
+                                    <p className="text-xs text-blue-600 mt-0.5">
+                                        {slideReplacements.find(r => r.original === currentSlide?.index)?.reason || 
+                                        "콘텐츠에 더 적합한 레이아웃으로 자동 변경되었습니다."}
+                                    </p>
+                                </div>
+                            </div>
+                        )}
 
                         {(!currentSlide?.elements || currentSlide.elements.length === 0) ? (
                             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">

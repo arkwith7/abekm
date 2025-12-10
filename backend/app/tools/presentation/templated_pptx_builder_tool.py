@@ -270,16 +270,20 @@ class TemplatedPPTXBuilderTool(BaseTool):
                 ))
                 logger.info(f"📋 [TemplatedBuilder] 사용할 템플릿 슬라이드: {used_template_indices}")
             
+            # 🆕 template_metadata 추출 (매핑되지 않은 요소 클리어용)
+            template_metadata = template_details.get('metadata')
+            
             # Build PPTX with mappings
             file_path = templated_ppt_service.build_enhanced_pptx_with_slide_management(
                 spec=spec,
                 file_basename=file_basename,
                 custom_template_path=template_path,
-                user_template_id=template_details.get('dynamic_template_id'),
+                user_template_id=template_details.get('dynamic_template_id') or template_details.get('id'),
                 text_box_mappings=mappings,
                 content_segments=None,
                 slide_management=None,
-                used_template_indices=used_template_indices,  # 🆕 사용할 슬라이드 인덱스 전달
+                used_template_indices=used_template_indices,
+                template_metadata=template_metadata,  # 🆕 메타데이터 직접 전달
             )
             
             logger.info(f"✅ [TemplatedBuilder] 완료: {file_path}")

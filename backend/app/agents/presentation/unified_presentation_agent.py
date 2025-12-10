@@ -38,6 +38,11 @@ from app.tools.presentation.visualization_tool import visualization_tool
 from app.tools.presentation.ppt_quality_validator_tool import ppt_quality_validator_tool
 from app.tools.presentation.template_ppt_comparator_tool import template_ppt_comparator_tool
 
+# AI-First Tools (신규)
+from app.tools.presentation.ai_direct_mapping_tool import AIDirectMappingTool
+from app.services.presentation.simple_ppt_builder import SimplePPTBuilder
+from app.services.presentation.ai_ppt_builder import AIPPTBuilder, build_ppt_from_ai_mappings
+
 
 class PresentationMode(str, Enum):
     """프레젠테이션 생성 모드"""
@@ -1093,14 +1098,17 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         session_id: Optional[str] = None,
         container_ids: Optional[List[str]] = None,
         use_rag: bool = True,
+        use_ai_first: bool = True,  # 🆕 AI-First 모드 (기본값: True)
     ) -> Dict[str, Any]:
         """
         UI 편집용 콘텐츠 생성 (Agent 통제 하에 실행).
         
-        Agent가 다음 도구들을 순차적으로 실행:
-        1. template_analyzer_tool: 템플릿 구조 분석
-        2. outline_generation_tool: 콘텐츠 아웃라인 생성 (RAG 포함)
-        3. content_mapping_tool: 템플릿 요소에 콘텐츠 매핑
+        use_ai_first=True (기본): AI-First 파이프라인
+        - 단일 AI 호출로 모든 element_id ↔ content 매핑 생성
+        - 간단하고 정확한 결과
+        
+        use_ai_first=False: 기존 4-Tool 파이프라인
+        - template_analyzer → outline_generation → slide_type_matcher → content_mapping
         
         Args:
             template_id: 템플릿 ID
@@ -1110,19 +1118,33 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             session_id: 채팅 세션 ID (RAG용)
             container_ids: RAG 검색 범위
             use_rag: RAG 검색 활성화 여부
+            use_ai_first: AI-First 모드 사용 여부 (기본값: True)
             
         Returns:
             UI 편집 가능한 슬라이드 콘텐츠 구조
         """
         logger.info(
             f"🎨 [{self.name}] 콘텐츠 생성 시작: template={template_id}, "
-            f"query='{user_query[:50]}', use_rag={use_rag}"
+            f"query='{user_query[:50]}', use_rag={use_rag}, use_ai_first={use_ai_first}"
         )
         
         self._init_execution()
         self._user_id = int(user_id) if user_id else None
         
         try:
+            # 🆕 AI-First 모드: 단일 AI 호출로 모든 매핑 생성
+            if use_ai_first:
+                return await self._generate_content_ai_first(
+                    template_id=template_id,
+                    user_query=user_query,
+                    context=context,
+                    user_id=user_id,
+                    session_id=session_id,
+                    container_ids=container_ids,
+                    use_rag=use_rag,
+                )
+            
+            # 기존 4-Tool 파이프라인
             # Step 1: 템플릿 분석
             logger.info(f"📋 Step 1: 템플릿 분석 - {template_id}")
             template_result = await self.tools["template_analyzer_tool"]._arun(
@@ -1231,11 +1253,15 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         deck_spec: Optional[Dict[str, Any]] = None,
         slide_matches: Optional[List[Dict[str, Any]]] = None,
         mappings: Optional[List[Dict[str, Any]]] = None,
+        use_ai_builder: bool = True,  # 🆕 SimplePPTBuilder 사용 (기본값 True로 변경)
+        slide_replacements: Optional[List[Dict[str, Any]]] = None,  # 🆕 v3.4
     ) -> Dict[str, Any]:
         """
         UI 편집 데이터로 PPT 생성 (Agent 통제 하에 실행).
         
-        Agent가 templated_pptx_builder_tool을 사용하여 PPT 생성.
+        Args:
+            use_ai_builder: True면 새 AIPPTBuilder 사용 (절충형 아키텍처)
+                Agent가 templated_pptx_builder_tool을 사용하여 PPT 생성.
         
         Args:
             template_id: 템플릿 ID
@@ -1245,6 +1271,7 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             deck_spec: 원본 deck_spec (generate_content_for_template에서 반환)
             slide_matches: 슬라이드 매칭 정보
             mappings: 콘텐츠 매핑 정보
+            slide_replacements: 슬라이드 대체 정보 (🆕 v3.4)
             
         Returns:
             PPT 파일 경로 및 정보
@@ -1280,15 +1307,35 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
                 mappings = self._generate_mappings_from_slides_data(slides_data)
                 logger.info(f"📋 slides_data에서 {len(mappings)}개 매핑 생성")
             
-            # templated_pptx_builder_tool 실행
-            build_result = await self.tools["templated_pptx_builder_tool"]._arun(
-                deck_spec=updated_deck_spec,
-                template_id=template_id,
+            # 🆕 매핑에 originalName 추가 (메타데이터 참조)
+            mappings = await self._enrich_mappings_with_original_names(
                 mappings=mappings,
-                slide_matches=slide_matches,
-                file_basename=output_filename,
-                user_id=self._user_id,
+                template_id=template_id,
+                user_id=str(self._user_id) if self._user_id else None,
             )
+            
+            # 🆕 AI-First 매핑 형식 변환 (snake_case -> camelCase)
+            normalized_mappings = self._normalize_mappings_format(mappings)
+            
+            # 🆕 절충형 AIPPTBuilder 사용 옵션
+            if use_ai_builder:
+                build_result = await self._build_with_ai_ppt_builder(
+                    template_id=template_id,
+                    mappings=normalized_mappings,
+                    output_filename=output_filename,
+                    user_id=self._user_id,
+                    slide_replacements=slide_replacements,  # 🆕 v3.4
+                )
+            else:
+                # 기존 templated_pptx_builder_tool 실행
+                build_result = await self.tools["templated_pptx_builder_tool"]._arun(
+                    deck_spec=updated_deck_spec,
+                    template_id=template_id,
+                    mappings=normalized_mappings,
+                    slide_matches=slide_matches,
+                    file_basename=output_filename,
+                    user_id=self._user_id,
+                )
             
             if not build_result.get("success", False):
                 raise ValueError(f"PPT 빌드 실패: {build_result.get('error', 'Unknown error')}")
@@ -1325,6 +1372,83 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
     # Helper Methods for UI 편집 경로
     # =========================================================================
     
+    async def _build_with_ai_ppt_builder(
+        self,
+        template_id: str,
+        mappings: List[Dict[str, Any]],
+        output_filename: str,
+        user_id: Optional[int] = None,
+        slide_replacements: Optional[List[Dict[str, Any]]] = None,  # 🆕 v3.4
+    ) -> Dict[str, Any]:
+        """
+        🆕 절충형 AIPPTBuilder를 사용하여 PPT 빌드.
+        
+        기존 EnhancedObjectProcessor 대신 간단한 AIPPTBuilder 사용.
+        original_name 기반 shape 매칭으로 스타일 100% 보존.
+        
+        Args:
+            template_id: 템플릿 ID
+            mappings: AI 매핑 (slideIndex, elementId, originalName, generatedText 포함)
+            output_filename: 출력 파일명
+            user_id: 사용자 ID
+            slide_replacements: 슬라이드 대체 정보 (🆕 v3.4)
+            
+        Returns:
+            빌드 결과 딕셔너리
+        """
+        logger.info(f"🔨 [{self.name}] AIPPTBuilder로 PPT 빌드: template={template_id}, mappings={len(mappings)}개")
+        if slide_replacements:
+            logger.info(f"  🔄 슬라이드 대체: {len(slide_replacements)}개")
+        
+        try:
+            # 1. 템플릿 경로 가져오기
+            template_path = await self._get_template_path(template_id, str(user_id) if user_id else None)
+            
+            if not template_path:
+                return {
+                    "success": False,
+                    "error": f"템플릿을 찾을 수 없습니다: {template_id}",
+                    "file_path": None,
+                    "file_name": None,
+                }
+            
+            logger.info(f"  📄 템플릿 경로: {template_path}")
+            
+            # 2. 프레젠테이션 제목 추출 (첫 번째 슬라이드의 main_title)
+            presentation_title = None
+            for m in mappings:
+                if m.get('elementRole') == 'main_title' and m.get('generatedText'):
+                    presentation_title = m.get('generatedText')
+                    break
+            
+            if not presentation_title:
+                presentation_title = output_filename
+            
+            # 3. AIPPTBuilder로 PPT 생성 (🆕 v3.4: slide_replacements 전달)
+            result = build_ppt_from_ai_mappings(
+                template_path=template_path,
+                mappings=mappings,
+                output_filename=output_filename,
+                presentation_title=presentation_title,
+                slide_replacements=slide_replacements,
+            )
+            
+            # slide_count 추가 (통계에서)
+            if result.get("success"):
+                stats = result.get("stats", {})
+                result["slide_count"] = stats.get("applied", 0) + stats.get("skipped", 0)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ [{self.name}] AIPPTBuilder 빌드 실패: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "file_path": None,
+                "file_name": None,
+            }
+    
     async def _validate_template_ppt_quality(
         self,
         generated_path: str,
@@ -1352,18 +1476,28 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             template_path = None
             metadata_path = None
             
-            # 시스템 템플릿 확인
-            template_info = template_manager.get_template(template_id)
+            # 시스템 템플릿 확인 (get_template_details 사용)
+            template_info = template_manager.get_template_details(template_id)
             if template_info:
                 template_path = template_info.get("path")
                 metadata_path = template_info.get("metadata_path")
             
-            # 사용자 템플릿 확인
+            # 사용자 템플릿 확인 (get_template_details 사용)
             if not template_path and user_id:
-                user_template_info = user_template_manager.get_template(str(user_id), template_id)
+                user_template_info = user_template_manager.get_template_details(str(user_id), template_id)
                 if user_template_info:
                     template_path = user_template_info.get("path")
-                    metadata_path = user_template_info.get("metadata_path")
+                    # 🆕 v3.4: metadata_path가 없으면 직접 구성
+                    if not metadata_path and template_path:
+                        import os
+                        from pathlib import Path
+                        template_dir = Path(template_path).parent
+                        metadata_dir = template_dir / "metadata"
+                        template_stem = Path(template_path).stem.replace(' ', '_')
+                        possible_metadata = metadata_dir / f"{template_stem}_metadata.json"
+                        if possible_metadata.exists():
+                            metadata_path = str(possible_metadata)
+                            logger.debug(f"  메타데이터 경로 구성: {metadata_path}")
             
             if not template_path:
                 logger.warning(f"⚠️ 템플릿 파일을 찾을 수 없어 품질 검증 생략: {template_id}")
@@ -1414,6 +1548,351 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             
         except Exception as e:
             logger.warning(f"⚠️ [{self.name}] 품질 검증 중 오류 (무시하고 계속): {e}")
+            return None
+    
+    # =========================================================================
+    # AI-First 파이프라인 (신규)
+    # =========================================================================
+    
+    async def _generate_content_ai_first(
+        self,
+        template_id: str,
+        user_query: str,
+        context: str = "",
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        container_ids: Optional[List[str]] = None,
+        use_rag: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        AI-First 파이프라인: 단일 AI 호출로 모든 매핑 생성.
+        
+        기존 4-Tool 파이프라인의 복잡성을 제거하고,
+        AI가 직접 element_id ↔ content 매핑을 생성.
+        """
+        logger.info(f"🚀 [{self.name}] AI-First 파이프라인 시작")
+        
+        try:
+            # Step 1: 템플릿 메타데이터 로드
+            template_metadata = await self._load_template_metadata_direct(template_id, user_id)
+            if not template_metadata:
+                raise ValueError(f"템플릿 메타데이터를 찾을 수 없습니다: {template_id}")
+            
+            slides_info = template_metadata.get("slides", [])
+            logger.info(f"  📋 템플릿 로드 완료: {len(slides_info)} 슬라이드")
+            
+            # Step 2: RAG 컨텍스트 수집 (use_rag=True인 경우)
+            enriched_context = context
+            if use_rag:
+                try:
+                    rag_context = await self._perform_rag_search(
+                        query=user_query,
+                        container_ids=container_ids,
+                        session_id=session_id,
+                    )
+                    if rag_context:
+                        enriched_context = f"{context}\n\n## RAG 검색 결과\n{rag_context}"
+                        logger.info(f"  📚 RAG 컨텍스트 수집: {len(rag_context)}자 추가")
+                except Exception as e:
+                    logger.warning(f"RAG 검색 실패 (계속 진행): {e}")
+            
+            # Step 3: AI Direct Mapping Tool 실행
+            logger.info(f"  🤖 AI Direct Mapping 실행 중...")
+            ai_mapping_tool = AIDirectMappingTool()
+            mapping_result = await ai_mapping_tool._arun(
+                user_query=user_query,
+                template_metadata=template_metadata,
+                additional_context=enriched_context,
+            )
+            
+            if not mapping_result.get("success", False):
+                raise ValueError(f"AI Mapping 실패: {mapping_result.get('error', 'Unknown error')}")
+            
+            mappings = mapping_result.get("mappings", [])
+            slide_replacements = mapping_result.get("slide_replacements", [])  # 🆕 v3.4
+            
+            logger.info(f"  ✅ AI Mapping 완료: {len(mappings)} 매핑")
+            if slide_replacements:
+                logger.info(f"  🔄 슬라이드 대체 요청: {len(slide_replacements)}개")
+            
+            # Step 4: 매핑을 UI 형식으로 변환
+            ui_slides = self._convert_ai_mappings_to_ui_format(
+                slides_info=slides_info,
+                mappings=mappings,
+            )
+            
+            # deck_spec 생성 (기존 UI와 호환성 유지)
+            deck_spec = self._create_deck_spec_from_mappings(
+                topic=user_query,
+                slides_info=slides_info,
+                mappings=mappings,
+            )
+            
+            # slide_matches 생성 (1:1 매핑)
+            slide_matches = [
+                {"ai_slide_idx": i, "template_index": i + 1}
+                for i in range(len(slides_info))
+            ]
+            
+            # 🆕 프레젠테이션 제목 추출 (첫 번째 슬라이드의 main_title)
+            presentation_title = self._extract_presentation_title(mappings, user_query)
+            
+            logger.info(f"✅ [{self.name}] AI-First 콘텐츠 생성 완료: {len(ui_slides)} 슬라이드")
+            logger.info(f"  📌 프레젠테이션 제목: '{presentation_title}'")
+            
+            return {
+                "success": True,
+                "slides": ui_slides,
+                "template_id": template_id,
+                "deck_spec": deck_spec,
+                "slide_matches": slide_matches,
+                "mappings": mappings,
+                "slide_replacements": slide_replacements,  # 🆕 v3.4
+                "pipeline": "ai_first",  # 파이프라인 구분자
+                "presentation_title": presentation_title,  # 🆕 파일명용 제목
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ [{self.name}] AI-First 파이프라인 실패: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "slides": [],
+            }
+    
+    def _convert_ai_mappings_to_ui_format(
+        self,
+        slides_info: List[Dict[str, Any]],
+        mappings: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        AI 매핑을 UI 편집 가능한 형식으로 변환.
+        
+        기존 UI와 호환되는 형식으로 변환:
+        {
+            "index": 1,  # 1-based
+            "role": "content",
+            "elements": [
+                {"id": "textbox-0-0", "text": "AI 생성 내용", "role": "body", "original_text": "원본"}
+            ],
+            "note": ""
+        }
+        """
+        # elementId를 키로 하는 매핑 딕셔너리 (AI Tool은 camelCase 사용)
+        mapping_dict = {}
+        for m in mappings:
+            # camelCase (elementId) 또는 snake_case (element_id) 모두 지원
+            elem_id = m.get("elementId") or m.get("element_id", "")
+            if elem_id:
+                mapping_dict[elem_id] = m
+        
+        logger.debug(f"📋 매핑 딕셔너리 키: {list(mapping_dict.keys())[:10]}...")
+        
+        ui_slides = []
+        for slide_idx, slide in enumerate(slides_info, start=1):
+            shapes = slide.get("shapes", [])
+            editable_elements = slide.get("editable_elements", [])
+            elements_meta = slide.get("elements", [])  # 기존 메타데이터의 elements
+            
+            # elements 메타데이터에서 ID 매핑
+            elements_by_id = {e.get("id"): e for e in elements_meta}
+            shapes_by_name = {s.get("name"): s for s in shapes}
+            
+            ui_elements = []
+            
+            # 🔧 elements_meta를 우선 사용 (textbox-X-X 형식의 표준화된 ID)
+            for elem in elements_meta:
+                elem_id = elem.get("id", "")
+                if not elem_id:
+                    continue
+                
+                # AI 매핑에서 찾기 (textbox-0-0 형식)
+                mapping = mapping_dict.get(elem_id)
+                
+                # 원본 텍스트
+                original_text = elem.get("content", "")
+                
+                # AI 콘텐츠 (매핑이 없으면 원본 유지)
+                # 🔧 FIX: generatedText가 AI 매핑의 실제 키
+                new_content = original_text
+                if mapping:
+                    new_content = mapping.get("generatedText") or mapping.get("newContent") or mapping.get("new_content", original_text)
+                
+                # element_role
+                elem_role = elem.get("element_role", "body")
+                
+                ui_elements.append({
+                    "id": elem_id,
+                    "text": new_content,
+                    "role": elem_role,
+                    "original_text": original_text,
+                })
+            
+            # elements_meta가 비어있으면 shapes에서 생성 (fallback)
+            if not ui_elements and shapes:
+                for shape in shapes:
+                    shape_name = shape.get("name", "")
+                    if not shape_name:
+                        continue
+                    
+                    # AI 매핑에서 찾기
+                    mapping = mapping_dict.get(shape_name)
+                    
+                    # 원본 텍스트 추출
+                    text_info = shape.get("text", {})
+                    if isinstance(text_info, dict):
+                        original_text = text_info.get("raw", "")
+                    else:
+                        original_text = str(text_info) if text_info else ""
+                    
+                    # AI 콘텐츠
+                    # 🔧 FIX: generatedText가 AI 매핑의 실제 키
+                    new_content = original_text
+                    if mapping:
+                        new_content = mapping.get("generatedText") or mapping.get("newContent") or mapping.get("new_content", original_text)
+                    
+                    ui_elements.append({
+                        "id": shape_name,
+                        "text": new_content,
+                        "role": shape.get("element_role", "body"),
+                        "original_text": original_text,
+                    })
+            
+            ui_slides.append({
+                "index": slide_idx,
+                "role": slide.get("slide_type", slide.get("role", "content")),
+                "elements": ui_elements,
+                "note": "",  # AI-First는 speaker notes 미생성
+            })
+        
+        return ui_slides
+    
+    def _create_deck_spec_from_mappings(
+        self,
+        topic: str,
+        slides_info: List[Dict[str, Any]],
+        mappings: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """AI 매핑에서 deck_spec 생성 (기존 PPT 빌더와 호환성 유지)"""
+        slides = []
+        
+        # 슬라이드별 매핑 그룹화 (camelCase/snake_case 모두 지원)
+        mapping_by_slide = {}
+        for m in mappings:
+            # slideIndex (camelCase) 또는 slide_index (snake_case)
+            slide_idx = m.get("slideIndex", m.get("slide_index", 0))
+            # slideIndex는 0-based, slide_index는 1-based일 수 있음
+            if "slideIndex" in m:
+                slide_idx = slide_idx + 1  # 0-based → 1-based
+            
+            if slide_idx not in mapping_by_slide:
+                mapping_by_slide[slide_idx] = []
+            mapping_by_slide[slide_idx].append(m)
+        
+        for slide_idx, slide in enumerate(slides_info, start=1):
+            slide_mappings = mapping_by_slide.get(slide_idx, [])
+            
+            # 제목 찾기 (첫 번째 매핑 또는 슬라이드 타입에서 추론)
+            title = ""
+            content_items = []
+            
+            for m in slide_mappings:
+                # generatedText (camelCase) 또는 newContent (legacy) 또는 new_content (snake_case)
+                new_content = m.get("generatedText") or m.get("newContent") or m.get("new_content", "")
+                if not title and new_content:
+                    title = new_content
+                else:
+                    content_items.append({"text": new_content})
+            
+            slides.append({
+                "slide_index": slide_idx,
+                "slide_type": slide.get("slide_type", "content"),
+                "title": title,
+                "content": content_items,
+            })
+        
+        return {
+            "topic": topic,
+            "total_slides": len(slides_info),
+            "slides": slides,
+        }
+    
+    def _normalize_mappings_format(
+        self,
+        mappings: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """
+        AI-First 매핑 형식을 기존 빌더 형식으로 변환.
+        
+        AI-First 형식 (snake_case):
+        {
+            "slide_index": 1,
+            "element_id": "s1_shape_0",
+            "original_text": "...",
+            "new_content": "..."
+        }
+        
+        기존 빌더 형식 (camelCase):
+        {
+            "slideIndex": 0,
+            "elementId": "textbox-0-0",
+            "newContent": "..."
+        }
+        """
+        normalized = []
+        
+        for m in mappings:
+            # snake_case 키가 있는 경우 (AI-First 형식)
+            if "slide_index" in m:
+                normalized.append({
+                    "slideIndex": m.get("slide_index", 1) - 1,  # 1-based → 0-based
+                    "elementId": m.get("element_id", ""),
+                    "newContent": m.get("new_content", ""),
+                    "originalName": m.get("original_name", ""),
+                    "objectType": m.get("object_type", "textbox"),
+                    "isEnabled": m.get("is_enabled", True),
+                    "metadata": m.get("metadata", {}),
+                })
+            # camelCase 키가 있는 경우 (기존 형식 - 그대로 전달)
+            elif "slideIndex" in m:
+                normalized.append(m)
+            # 그 외 (혼합 형식 등)
+            else:
+                logger.warning(f"⚠️ 알 수 없는 매핑 형식: {m}")
+                normalized.append(m)
+        
+        logger.info(f"📋 매핑 형식 정규화: {len(mappings)} → {len(normalized)} 매핑")
+        return normalized
+    
+    async def _get_template_path(
+        self,
+        template_id: str,
+        user_id: Optional[str] = None,
+    ) -> Optional[str]:
+        """템플릿 파일 경로 반환"""
+        try:
+            from app.services.presentation.ppt_template_manager import template_manager
+            from app.services.presentation.user_template_manager import user_template_manager
+            
+            # 시스템 템플릿
+            path = template_manager.get_template_path(template_id)
+            if path:
+                return path
+            
+            # 사용자 템플릿
+            if user_id:
+                path = user_template_manager.get_template_path(user_id, template_id)
+                if path:
+                    return path
+            
+            # owner 찾기
+            owner_id = user_template_manager.find_template_owner(template_id)
+            if owner_id:
+                return user_template_manager.get_template_path(owner_id, template_id)
+            
+            return None
+        except Exception as e:
+            logger.warning(f"템플릿 경로 조회 실패: {e}")
             return None
     
     async def _load_template_metadata_direct(
@@ -1709,6 +2188,68 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         
         return ui_slides
     
+    def _extract_presentation_title(
+        self,
+        mappings: List[Dict[str, Any]],
+        user_query: str,
+    ) -> str:
+        """
+        AI 매핑에서 프레젠테이션 제목 추출.
+        
+        우선순위:
+        1. 첫 번째 슬라이드(slideIndex=0)의 main_title 역할 요소
+        2. 첫 번째 슬라이드의 title 역할 요소
+        3. 사용자 쿼리에서 요청 표현 제거한 버전
+        """
+        if not mappings:
+            return self._refine_output_filename(user_query)
+        
+        # 슬라이드 0(표지)의 매핑만 필터
+        cover_mappings = [
+            m for m in mappings 
+            if m.get("slideIndex", m.get("slide_index", -1)) == 0
+        ]
+        
+        # 1. main_title 역할 찾기
+        for m in cover_mappings:
+            role = m.get("elementRole", m.get("element_role", ""))
+            if role == "main_title":
+                generated_text = m.get("generatedText", m.get("generated_text", ""))
+                if generated_text and len(generated_text.strip()) >= 3:
+                    title = generated_text.strip()
+                    # 너무 긴 제목은 자르기 (파일명 제한)
+                    if len(title) > 50:
+                        title = title[:47] + "..."
+                    logger.info(f"📌 프레젠테이션 제목 추출 (main_title): '{title}'")
+                    return title
+        
+        # 2. title 역할 찾기
+        for m in cover_mappings:
+            role = m.get("elementRole", m.get("element_role", ""))
+            if role == "title":
+                generated_text = m.get("generatedText", m.get("generated_text", ""))
+                if generated_text and len(generated_text.strip()) >= 3:
+                    title = generated_text.strip()
+                    if len(title) > 50:
+                        title = title[:47] + "..."
+                    logger.info(f"📌 프레젠테이션 제목 추출 (title): '{title}'")
+                    return title
+        
+        # 3. 첫 번째 슬라이드의 아무 요소라도 (길이 5자 이상)
+        for m in cover_mappings:
+            generated_text = m.get("generatedText", m.get("generated_text", ""))
+            if generated_text and len(generated_text.strip()) >= 5:
+                title = generated_text.strip()
+                if len(title) > 50:
+                    title = title[:47] + "..."
+                logger.info(f"📌 프레젠테이션 제목 추출 (fallback): '{title}'")
+                return title
+        
+        # 4. 최종 폴백: 사용자 쿼리 정제
+        refined = self._refine_output_filename(user_query)
+        logger.info(f"📌 프레젠테이션 제목 (사용자 쿼리): '{refined}'")
+        return refined
+    
     def _refine_output_filename(self, filename: str) -> str:
         """파일명에서 요청 표현을 제거하고 명사형으로 축약.
         
@@ -1833,6 +2374,65 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             "slides": slides,
             "max_slides": len(slides),
         }
+    
+    async def _enrich_mappings_with_original_names(
+        self,
+        mappings: List[Dict[str, Any]],
+        template_id: str,
+        user_id: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        매핑에 originalName 추가 (메타데이터 참조).
+        
+        UI 편집 데이터에는 originalName이 없으므로,
+        메타데이터에서 elementId → originalName 매핑을 조회하여 추가.
+        
+        Args:
+            mappings: elementId 기반 매핑 리스트
+            template_id: 템플릿 ID
+            user_id: 사용자 ID
+            
+        Returns:
+            originalName이 추가된 매핑 리스트
+        """
+        # 이미 모든 매핑에 originalName이 있으면 그대로 반환
+        if all(m.get("originalName") for m in mappings):
+            return mappings
+        
+        # 메타데이터 로드
+        try:
+            metadata = await self._load_template_metadata_direct(template_id, user_id)
+            if not metadata:
+                logger.warning(f"⚠️ 메타데이터 로드 실패: {template_id}, originalName 추가 스킵")
+                return mappings
+            
+            # elementId → originalName 매핑 생성
+            element_to_name = {}
+            for slide in metadata.get("slides", []):
+                for elem in slide.get("elements", []):
+                    elem_id = elem.get("id", "")
+                    original_name = elem.get("original_name", "")
+                    if elem_id and original_name:
+                        element_to_name[elem_id] = original_name
+            
+            logger.info(f"📋 메타데이터에서 {len(element_to_name)}개 elementId→originalName 매핑 로드")
+            
+            # 매핑에 originalName 추가
+            enriched = []
+            for m in mappings:
+                elem_id = m.get("elementId", "")
+                if not m.get("originalName") and elem_id in element_to_name:
+                    m["originalName"] = element_to_name[elem_id]
+                enriched.append(m)
+            
+            enriched_count = sum(1 for m in enriched if m.get("originalName"))
+            logger.info(f"✅ originalName 추가 완료: {enriched_count}/{len(enriched)} 매핑")
+            
+            return enriched
+            
+        except Exception as e:
+            logger.warning(f"⚠️ originalName 추가 실패: {e}")
+            return mappings
     
     def _generate_mappings_from_slides_data(
         self,

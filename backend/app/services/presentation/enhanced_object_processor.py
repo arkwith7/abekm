@@ -118,11 +118,16 @@ class EnhancedPPTObjectProcessor:
                 # assignedContent를 사용하는 구버전 입력을 newContent로 정규화
                 if 'assignedContent' in m and not m.get('newContent'):
                     m = {**m, 'newContent': m.get('assignedContent')}
-                # 빈 문자열 교체는 건너뜀 (원본 보존)
+                # 🆕 빈 문자열 교체도 허용 (템플릿 원본 내용 클리어용)
+                # action이 'clear_content'이거나 target_role이 있으면 빈 문자열도 허용
                 new_content = m.get('newContent')
                 if m.get('action', 'replace_content') == 'replace_content' and isinstance(new_content, str) and new_content.strip() == "":
-                    self.logger.info(f"⏭️ 빈 내용 교체 스킵: elementId={m.get('elementId')}")
-                    continue
+                    # target_role이 있으면 (TOC 등) 빈 문자열도 허용하여 원본 클리어
+                    if not m.get('target_role'):
+                        self.logger.info(f"⏭️ 빈 내용 교체 스킵: elementId={m.get('elementId')}")
+                        continue
+                    else:
+                        self.logger.info(f"🧹 빈 내용으로 클리어: elementId={m.get('elementId')}, target_role={m.get('target_role')}")
                 active_mappings.append(m)
             self.logger.info(f"활성화된 매핑: {len(active_mappings)}개")
             
@@ -216,10 +221,11 @@ class EnhancedPPTObjectProcessor:
                     self.logger.warning(f"⚠️ elementId가 없는 매핑 건너뜀")
                     continue
                 
-                # 타겟 shape 찾기
-                target_shape = self._find_shape_by_id(slide, element_id)
+                # 타겟 shape 찾기 (originalName 우선 사용)
+                original_name = mapping.get('originalName', '')
+                target_shape = self._find_shape_by_id(slide, element_id, original_name)
                 if not target_shape:
-                    self.logger.warning(f"Shape not found: {element_id}")
+                    self.logger.warning(f"Shape not found: {element_id} (originalName={original_name})")
                     continue
                 
                 self.logger.info(f"🎯 액션 실행: {element_id} -> {action}")
@@ -267,22 +273,28 @@ class EnhancedPPTObjectProcessor:
         
         return original_id
 
-    def _find_shape_by_id(self, slide, element_id: str):
-        """슬라이드에서 element_id로 shape 찾기"""
+    def _find_shape_by_id(self, slide, element_id: str, original_name: str = ''):
+        """슬라이드에서 element_id 또는 original_name으로 shape 찾기
+        
+        Args:
+            slide: PPT 슬라이드 객체
+            element_id: 메타데이터에서 부여된 ID (예: textbox-0-2, shape-0-3)
+            original_name: PPT 내부 shape.name 속성 (예: 'TextBox 1', '둥근 모서리 직사각형 5')
+        """
         try:
-            self.logger.info(f"🔍 Shape 찾기 시작: element_id='{element_id}'")
+            self.logger.info(f"🔍 Shape 찾기 시작: element_id='{element_id}', original_name='{original_name}'")
             
             # 복사된 오브젝트 ID 처리 (예: 표 4_copy_1756367342492_2tojx4o4d_3 -> 표 4)
             original_element_id = self._extract_original_id(element_id)
             if original_element_id != element_id:
                 self.logger.info(f"🔄 복사된 ID 감지: {element_id} -> {original_element_id}")
                 # 원본 ID로 먼저 시도
-                result = self._find_shape_by_id(slide, original_element_id)
+                result = self._find_shape_by_id(slide, original_element_id, original_name)
                 if result:
                     return result
                 # 원본 ID로 찾지 못하면 복사된 ID로 계속 진행
             
-            # 다양한 방식으로 shape 찾기
+            # 다양한 방식으로 shape 찾기 - 디버깅용 목록 출력
             for i, shape in enumerate(slide.shapes):
                 shape_name = getattr(shape, 'name', '(no name)')
                 shape_type = self._get_shape_type(shape)
@@ -297,10 +309,17 @@ class EnhancedPPTObjectProcessor:
                 
                 self.logger.info(f"  - Shape {i}: name='{shape_name}', type='{shape_type}', text='{text_content}'")
             
-            # 1차: name 속성으로 매칭 (정확한 매칭 우선)
+            # ★ 0차: original_name으로 매칭 (가장 신뢰할 수 있는 방법)
+            if original_name:
+                for i, shape in enumerate(slide.shapes):
+                    if hasattr(shape, 'name') and shape.name == original_name:
+                        self.logger.info(f"✅ Shape 매칭 성공 (original_name): element_id='{element_id}', original_name='{original_name}' -> Shape {i}")
+                        return shape
+            
+            # 1차: element_id와 name 속성으로 매칭 (정확한 매칭)
             for i, shape in enumerate(slide.shapes):
                 if hasattr(shape, 'name') and shape.name == element_id:
-                    self.logger.info(f"✅ Shape 매칭 성공 (name): {element_id} -> Shape {i}")
+                    self.logger.info(f"✅ Shape 매칭 성공 (name==element_id): {element_id} -> Shape {i}")
                     return shape
             
             # 표 오브젝트인 경우 특별 처리

@@ -1835,6 +1835,7 @@ class GenerateContentRequest(BaseModel):
     session_id: Optional[str] = None  # 채팅 세션 ID (컨텍스트 수집용)
     container_ids: Optional[List[str]] = None  # 문서 컨테이너 IDs (RAG 검색용)
     use_rag: bool = True  # RAG 검색 활성화 여부
+    use_ai_first: bool = True  # 🆕 AI-First 파이프라인 사용 여부 (기본값: True)
 
 class SlideElementData(BaseModel):
     id: str
@@ -1846,9 +1847,16 @@ class SlideContentData(BaseModel):
     elements: List[SlideElementData]
     note: Optional[str] = None
 
+# 🆕 v3.4: 슬라이드 대체 정보
+class SlideReplacementData(BaseModel):
+    original: int  # 원본 슬라이드 번호 (1-based)
+    replacement: int  # 대체 슬라이드 번호 (1-based)
+    reason: Optional[str] = None  # 대체 사유
+
 class BuildFromDataRequest(BaseModel):
     slides: List[SlideContentData]
     output_filename: Optional[str] = "presentation"
+    slide_replacements: Optional[List[SlideReplacementData]] = None  # 🆕 v3.4
 
 @router.post("/agent/presentation/templates/{template_id}/generate-content")
 async def generate_template_content(
@@ -1868,7 +1876,7 @@ async def generate_template_content(
     try:
         user_id = str(current_user.emp_no) if hasattr(current_user, 'emp_no') else str(current_user.id)
         
-        logger.info(f"📊 PPT 콘텐츠 생성 요청 (Agent): template={template_id}, user={user_id}, use_rag={request.use_rag}")
+        logger.info(f"📊 PPT 콘텐츠 생성 요청 (Agent): template={template_id}, user={user_id}, use_rag={request.use_rag}, use_ai_first={request.use_ai_first}")
         
         # Agent 아키텍처로 전환: unified_presentation_agent 사용
         result = await unified_presentation_agent.generate_content_for_template(
@@ -1878,7 +1886,8 @@ async def generate_template_content(
             user_id=user_id,
             session_id=request.session_id,
             container_ids=request.container_ids,
-            use_rag=request.use_rag
+            use_rag=request.use_rag,
+            use_ai_first=request.use_ai_first,  # 🆕 AI-First 파이프라인 옵션
         )
         
         if not result.get("success", False):
@@ -1917,12 +1926,19 @@ async def build_ppt_from_data(
         
         logger.info(f"🏗️ PPT 빌드 요청 (Agent): template={template_id}, user={user_id}, slides={len(slides_data)}")
         
+        # 🆕 v3.4: slide_replacements 처리
+        slide_replacements = None
+        if request.slide_replacements:
+            slide_replacements = [sr.dict() for sr in request.slide_replacements]
+            logger.info(f"  🔄 슬라이드 대체 요청: {len(slide_replacements)}개")
+        
         # Agent 아키텍처로 전환: unified_presentation_agent 사용
         result = await unified_presentation_agent.build_ppt_from_ui_data(
             template_id=template_id,
             slides_data=slides_data,
             output_filename=request.output_filename,
             user_id=user_id,
+            slide_replacements=slide_replacements,  # 🆕 v3.4
         )
         
         if not result.get("success", False):

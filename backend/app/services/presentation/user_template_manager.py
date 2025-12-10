@@ -76,6 +76,10 @@ class UserTemplateManager:
             # clean_ 접두사 파일은 스킵 (원본의 정리된 버전)
             if pptx_file.name.startswith('clean_'):
                 continue
+            
+            # _with_ids 파일은 스킵 (내부 처리용 복사본)
+            if '_with_ids' in pptx_file.stem:
+                continue
                 
             template_id = pptx_file.stem.lower().replace(' ', '_')
             template_name = pptx_file.stem.replace('_', ' ').title()
@@ -236,30 +240,22 @@ class UserTemplateManager:
         user_config = self._load_user_config(user_id)
         return user_config.get('default_template_id')
     
-    def get_template_path(self, user_id: str, template_id: str, prefer_with_ids: bool = True) -> Optional[str]:
+    def get_template_path(self, user_id: str, template_id: str) -> Optional[str]:
         """
-        템플릿 파일 경로 반환
+        템플릿 파일 경로 반환 (원본 파일)
         
         Args:
             user_id: 사용자 ID
             template_id: 템플릿 ID
-            prefer_with_ids: True이면 ID가 포함된 복사본(_with_ids.pptx)을 우선 반환
-                           (PPT 생성 시 shape.name 기반 매핑에 필요)
         """
         user_dir = self._get_user_dir(user_id)
         
         for pptx_file in user_dir.glob('*.pptx'):
-            # _with_ids 버전은 건너뛰기 (아래에서 별도 처리)
+            # _with_ids 버전은 건너뛰기
             if '_with_ids' in pptx_file.stem:
                 continue
                 
             if pptx_file.stem.lower().replace(' ', '_') == template_id:
-                # prefer_with_ids가 True면 _with_ids 버전 우선 반환
-                if prefer_with_ids:
-                    with_ids_path = pptx_file.parent / f"{pptx_file.stem}_with_ids{pptx_file.suffix}"
-                    if with_ids_path.exists():
-                        return str(with_ids_path)
-                
                 return str(pptx_file)
         
         return None

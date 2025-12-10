@@ -157,6 +157,7 @@ class TemplateAnalyzerTool(BaseTool):
                             text_boxes.append({
                                 'slide_index': idx,
                                 'element_id': element_id or element_name or f'element_{idx}',
+                                'original_name': element.get('original_name', ''),  # PPT 내부 shape.name
                                 'element_role': element.get('element_role', 'unknown'),  # AI Agent용 역할 정보
                                 'content': content,
                                 'position': {

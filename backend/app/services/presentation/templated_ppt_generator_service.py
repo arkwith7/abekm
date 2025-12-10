@@ -685,7 +685,8 @@ class TemplatedPPTGeneratorService:
                                                  text_box_mappings: Optional[List[Dict[str, Any]]] = None,
                                                  content_segments: Optional[List[Dict[str, Any]]] = None,
                                                  slide_management: Optional[List[Dict[str, Any]]] = None,
-                                                 used_template_indices: Optional[List[int]] = None) -> str:
+                                                 used_template_indices: Optional[List[int]] = None,
+                                                 template_metadata: Optional[Dict[str, Any]] = None) -> str:
         """슬라이드 관리가 포함된 Enhanced PPT 빌드 (enhanced 서비스와 호환)
         
         Args:
@@ -699,17 +700,39 @@ class TemplatedPPTGeneratorService:
             content_segments: 콘텐츠 세그먼트
             slide_management: 슬라이드 관리 정보
             used_template_indices: 🆕 사용할 템플릿 슬라이드 인덱스 (slide_type_matcher 결과)
+            template_metadata: 🆕 템플릿 메타데이터 (매핑되지 않은 요소 클리어용)
         """
         
         logger.info(f"🏗️ Enhanced PPT 빌드 시작: {len(spec.slides)}개 슬라이드")
         logger.info(f"📋 매핑 정보: text_box_mappings={len(text_box_mappings or [])}, content_segments={len(content_segments or [])}, slide_management={len(slide_management or [])}")
         if used_template_indices:
             logger.info(f"📋 사용할 템플릿 슬라이드: {used_template_indices}")
+        if template_metadata:
+            logger.info(f"📋 템플릿 메타데이터 제공됨: {len(template_metadata.get('slides', []))}개 슬라이드")
         
         try:
             # 커스텀 템플릿 경로가 있으면 템플릿 기반 빌드 사용
             if custom_template_path and os.path.exists(custom_template_path):
                 logger.info(f"📄 커스텀 템플릿 사용: {custom_template_path}")
+                
+                # 🆕 템플릿 메타데이터: 파라미터로 전달된 것이 없으면 로드 시도
+                if not template_metadata:
+                    try:
+                        from app.services.presentation.user_template_manager import user_template_manager
+                        # user_template_id가 있으면 해당 템플릿의 메타데이터 로드
+                        if user_template_id:
+                            # 경로에서 user_id 추출 시도
+                            import re
+                            match = re.search(r'/users/(\d+)/', custom_template_path)
+                            if match:
+                                owner_id = match.group(1)
+                                template_metadata = user_template_manager.get_template_metadata(owner_id, user_template_id)
+                                if template_metadata:
+                                    logger.info(f"📋 템플릿 메타데이터 로드됨: {len(template_metadata.get('slides', []))}개 슬라이드")
+                    except Exception as meta_e:
+                        logger.warning(f"⚠️ 템플릿 메타데이터 로드 실패 (무시): {meta_e}")
+                else:
+                    logger.info(f"📋 전달된 메타데이터 사용: {len(template_metadata.get('slides', []))}개 슬라이드")
                 
                 # 🆕 매핑 또는 used_template_indices가 있으면 _build_with_mappings 사용
                 # (used_template_indices가 있으면 Strategy C: 슬라이드 복제/삭제 필요)
@@ -725,6 +748,7 @@ class TemplatedPPTGeneratorService:
                         text_box_mappings=text_box_mappings,
                         content_segments=content_segments,
                         slide_management=slide_management,
+                        template_metadata=template_metadata,  # 🆕 메타데이터 전달
                         used_template_indices=used_template_indices,
                     )
                 else:
@@ -955,6 +979,13 @@ class TemplatedPPTGeneratorService:
                         text_box_mappings = updated_mappings
                         logger.info(f"📋 업데이트된 매핑 수: {len(text_box_mappings)}개")
             
+            # 🆕 매핑되지 않은 요소들을 클리어하기 위한 추가 매핑 생성
+            if template_metadata and text_box_mappings:
+                clear_mappings = self._generate_clear_mappings(template_metadata, text_box_mappings, len(prs.slides))
+                if clear_mappings:
+                    logger.info(f"🧹 매핑되지 않은 요소 클리어 매핑 추가: {len(clear_mappings)}개")
+                    text_box_mappings = text_box_mappings + clear_mappings
+            
             # Enhanced Object Processor로 매핑 적용
             if hasattr(self, 'object_processor') and text_box_mappings:
                 logger.info(f"🔧 Enhanced Object Processor로 {len(text_box_mappings)}개 매핑 적용")
@@ -976,6 +1007,80 @@ class TemplatedPPTGeneratorService:
         except Exception as e:
             logger.error(f"매핑 기반 PPT 빌드 실패: {e}")
             raise
+
+    def _generate_clear_mappings(
+        self, 
+        template_metadata: Dict[str, Any], 
+        existing_mappings: List[Dict[str, Any]],
+        slide_count: int
+    ) -> List[Dict[str, Any]]:
+        """매핑되지 않은 is_fixed=False 요소들을 클리어하는 매핑 생성
+        
+        Args:
+            template_metadata: 템플릿 메타데이터
+            existing_mappings: 기존 매핑 리스트
+            slide_count: 현재 PPT 슬라이드 수
+            
+        Returns:
+            클리어 매핑 리스트
+        """
+        clear_mappings = []
+        
+        if not template_metadata:
+            return clear_mappings
+        
+        # 기존 매핑된 element_id와 originalName 수집
+        mapped_element_ids = set()
+        mapped_original_names = set()
+        for m in existing_mappings:
+            if m.get('elementId'):
+                mapped_element_ids.add(m.get('elementId'))
+            if m.get('originalName'):
+                mapped_original_names.add(m.get('originalName'))
+        
+        logger.info(f"🔍 클리어 매핑 생성: 매핑된 요소 {len(mapped_element_ids)}개, 원본이름 {len(mapped_original_names)}개")
+        
+        # 메타데이터의 각 슬라이드 요소 확인
+        for slide_meta in template_metadata.get('slides', []):
+            slide_idx = slide_meta.get('index', 1) - 1  # 1-based to 0-based
+            
+            # 슬라이드 범위 확인
+            if slide_idx >= slide_count:
+                continue
+            
+            for element in slide_meta.get('elements', []):
+                element_id = element.get('id', '')
+                original_name = element.get('original_name', '')
+                is_fixed = element.get('is_fixed', False)
+                element_role = element.get('element_role', '')
+                
+                # is_fixed=True인 요소는 클리어하지 않음 (Company Name, Logo 등)
+                if is_fixed:
+                    continue
+                
+                # 이미 매핑된 요소는 클리어하지 않음
+                if element_id in mapped_element_ids or original_name in mapped_original_names:
+                    continue
+                
+                # 클리어 대상이 아닌 역할 제외 (이미지 플레이스홀더 등)
+                skip_roles = ['image_placeholder', 'chart_placeholder', 'diagram', 'decorative']
+                if element_role in skip_roles:
+                    continue
+                
+                # 클리어 매핑 생성
+                clear_mappings.append({
+                    'slideIndex': slide_idx,
+                    'elementId': element_id,
+                    'originalName': original_name,
+                    'objectType': 'textbox',
+                    'action': 'replace_content',
+                    'newContent': '',  # 빈 문자열로 클리어
+                    'isEnabled': True,
+                    'target_role': f'clear_{element_role}'  # target_role 설정하여 빈 문자열 클리어 허용
+                })
+                logger.debug(f"🧹 클리어 대상: slide[{slide_idx}] {element_id} ({original_name}) role={element_role}")
+        
+        return clear_mappings
 
     def _copy_font_style(self, src_font, dst_font):
         """폰트 스타일 복사 (완전한 스타일 보존)"""

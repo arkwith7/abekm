@@ -225,7 +225,8 @@ def extract_shapes_recursive(shape, slide_idx: int, counters: Dict,
         counters['table'] += 1
         
         original_name = shape.name
-        shape.name = element_id
+        # 원본 파일 보존: shape.name을 변경하지 않음
+        # shape.name = element_id  # REMOVED - 원본 보존
         
         position = {
             "left": emu_to_px(shape.left), "top": emu_to_px(shape.top),
@@ -282,7 +283,8 @@ def extract_shapes_recursive(shape, slide_idx: int, counters: Dict,
             element_type = "auto_shape"
         
         original_name = shape.name
-        shape.name = element_id
+        # 원본 파일 보존: shape.name을 변경하지 않음
+        # shape.name = element_id  # REMOVED - 원본 보존
         
         position = {
             "left": emu_to_px(shape.left), "top": emu_to_px(shape.top),
@@ -415,8 +417,18 @@ def classify_element_role(element: Dict, slide_role: str, slide_width_px: float,
     if re.match(r'^[\•\-\*\◦\▪\●\○🔹🔸💎⭐]', text):
         return "bullet_item"
     
-    if re.match(r'^[📱🔄🏥🛡️🔍📊💡✅❌➜→]', text):
-        return "icon_text"
+    # 🆕 v3.2: 이모지+텍스트 카드 vs 순수 아이콘 구분
+    # 이모지로 시작하는 경우: 실질적 텍스트 길이에 따라 분류
+    emoji_start_pattern = r'^[📱🔄🏥🛡️🔍📊💡✅❌➜→🎯📈📋🚀💻🔒🌐⚡🔧🎨📞📧🏢👥💰📦🔬🎓🏆🌟💼📊📈📉📌📍🔗]'
+    if re.match(emoji_start_pattern, text):
+        # 이모지 제거 후 실질적 텍스트 길이 계산
+        text_without_emoji = re.sub(r'[📱🔄🏥🛡️🔍📊💡✅❌➜→🎯📈📋🚀💻🔒🌐⚡🔧🎨📞📧🏢👥💰📦🔬🎓🏆🌟💼📊📈📉📌📍🔗\s]', '', text)
+        if len(text_without_emoji) >= 15:
+            # 실질적 콘텐츠가 있는 카드 → 편집 가능
+            return "icon_card"
+        else:
+            # 아이콘만 있거나 짧은 라벨 → 고정
+            return "icon_text"
     
     if font_size and font_size <= 12 and len(text) < 50:
         return "caption"
@@ -431,22 +443,58 @@ def classify_element_role(element: Dict, slide_role: str, slide_width_px: float,
 
 
 def is_fixed_element(element: Dict, slide_width_px: float, slide_height_px: float) -> Tuple[bool, str]:
-    """요소가 고정 요소인지 판단 (v3.0: 콘텐츠는 최대한 편집 가능으로)"""
+    """요소가 고정 요소인지 판단 (v3.1: 빈 요소, 아이콘, placeholder 고정 처리)"""
     text = element.get("content", "").strip()
     text_lower = text.lower()
     position = element.get("position", {})
     element_role = element.get("element_role", "")
+    original_name = element.get("original_name", "").lower()
     
+    # 🆕 v3.1: 텍스트가 없는 요소는 고정 (장식용 도형)
     if not text:
-        return (False, "editable:placeholder")
+        return (True, "fixed:empty_content")
+    
+    # 🆕 v3.1: 아이콘/이모지만 있는 요소 고정
+    emoji_only = all(ord(c) > 127 or c in '→←↑↓↔•●○▶▷►◀◁◄' or c.isspace() for c in text)
+    if emoji_only and len(text.strip()) <= 3:
+        return (True, "fixed:icon_only")
+    
+    # 🆕 v3.1: 화살표, 특수문자만 있는 요소 고정
+    special_chars_only = {'→', '←', '↑', '↓', '|', '/', '-', '•', '▶', '▷', '►', '◀', '◁', '◄', '»', '«', '>>', '<<'}
+    if text.strip() in special_chars_only:
+        return (True, "fixed:special_char")
+    
+    # 🆕 v3.1: placeholder 텍스트 고정
+    placeholder_patterns = {'제품 이미지', '이미지', 'image', 'placeholder', '사진', '그림', 'photo', 'picture'}
+    if text_lower.strip() in placeholder_patterns:
+        return (True, "fixed:placeholder_text")
+    
+    # 🆕 v3.1: 장식용 도형 이름 패턴 (대괄호, 화살표 등)
+    decoration_name_patterns = ['대괄호', '괄호', 'bracket', '화살표', 'arrow', '타원', 'ellipse', '선', 'line', 'connector']
+    for pattern in decoration_name_patterns:
+        if pattern in original_name:
+            # 단, 내용이 있는 경우는 편집 가능으로 (예: 타원 안에 번호가 있는 경우)
+            if len(text) > 3 and not emoji_only:
+                break  # 편집 가능 검사 계속
+            return (True, f"fixed:decoration:{pattern}")
     
     editable_roles = [
         "main_title", "subtitle", "slide_title", "key_message", "body_content", "bullet_item",
-        "numbered_card", "icon_text", "toc_item", "toc_number", "thanks_message", "content_item",
-        "spec_table", "comparison_table", "data_table", "info_table"  # 테이블 역할 추가
+        "numbered_card", "toc_item", "toc_number", "thanks_message", "content_item",
+        "spec_table", "comparison_table", "data_table", "info_table",  # 테이블 역할
+        "icon_card",  # 🆕 v3.2: 아이콘+실질적 텍스트 카드 (편집 가능)
     ]
+    # 🆕 v3.1: icon_text는 편집 가능에서 제외 (아이콘만 있거나 짧은 텍스트)
     if element_role in editable_roles:
         return (False, f"editable:role:{element_role}")
+    
+    # 🆕 v3.1: label 역할은 짧은 경우 고정 (도식 내 라벨)
+    if element_role == 'label' and len(text) <= 15:
+        return (True, "fixed:short_label")
+    
+    # 🆕 v3.1: icon_text 역할은 고정
+    if element_role == 'icon_text':
+        return (True, "fixed:icon_text")
     
     for keyword in FIXED_ELEMENT_KEYWORDS:
         if keyword in text_lower and len(text) <= 25:
@@ -579,21 +627,11 @@ def extract_template_metadata(path: str, output_path: str) -> str:
     - 완전한 스타일 정보 보존
     - 그룹 내 텍스트 요소 재귀 추출
     
-    주의: 원본 템플릿 파일을 수정하지 않고, 복사본을 생성하여 shape.name을 업데이트합니다.
+    중요: 원본 템플릿 파일은 절대 수정하지 않습니다.
+          메타데이터만 추출하여 JSON으로 저장합니다.
     """
-    import shutil
-    from pathlib import Path as PathLib
-    
-    # 원본 파일 복사 (shape.name 업데이트용)
-    original_path = PathLib(path)
-    backup_suffix = "_with_ids"
-    updated_path = original_path.parent / f"{original_path.stem}{backup_suffix}{original_path.suffix}"
-    
-    # 복사본 생성
-    shutil.copy(path, updated_path)
-    
-    # 복사본에서 작업
-    prs = Presentation(str(updated_path))
+    # 원본 파일을 직접 읽기 (수정하지 않음)
+    prs = Presentation(path)
     slide_width_px = emu_to_px(prs.slide_width)
     slide_height_px = emu_to_px(prs.slide_height)
     total_slides = len(prs.slides)
@@ -678,11 +716,9 @@ def extract_template_metadata(path: str, output_path: str) -> str:
         result["summary"]["visualization_styles"][style_name] = result["summary"]["visualization_styles"].get(style_name, 0) + 1
         result["slides"].append(slide_info)
 
-    try:
-        prs.save(str(updated_path))
-        print(f"✅ 템플릿 복사본 업데이트됨 (ID 포함): {updated_path}")
-    except Exception as e:
-        print(f"⚠️ 템플릿 복사본 저장 실패: {e}")
+    # 원본 파일은 수정하지 않음 - prs.save() 호출 제거
+    # 메타데이터에 element_id (textbox-0-0 등)가 저장되어 있고,
+    # PPT 생성 시 메타데이터의 position 정보로 shape를 찾아 매핑함
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
