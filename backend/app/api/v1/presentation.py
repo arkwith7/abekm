@@ -1857,6 +1857,8 @@ class BuildFromDataRequest(BaseModel):
     slides: List[SlideContentData]
     output_filename: Optional[str] = "presentation"
     slide_replacements: Optional[List[SlideReplacementData]] = None  # 🆕 v3.4
+    content_plan: Optional[Dict[str, Any]] = None  # 🆕 v3.8: 동적 슬라이드
+    dynamic_slides: Optional[Dict[str, Any]] = None  # 🆕 v3.8: 동적 슬라이드 (mode, add_slides, remove_slides)
 
 @router.post("/agent/presentation/templates/{template_id}/generate-content")
 async def generate_template_content(
@@ -1932,6 +1934,16 @@ async def build_ppt_from_data(
             slide_replacements = [sr.dict() for sr in request.slide_replacements]
             logger.info(f"  🔄 슬라이드 대체 요청: {len(slide_replacements)}개")
         
+        # 🆕 v3.8: dynamic_slides 처리
+        dynamic_slides = None
+        if request.dynamic_slides:
+            dynamic_slides = request.dynamic_slides
+            # 딕셔너리인 경우에만 get 사용
+            if isinstance(dynamic_slides, dict):
+                logger.info(f"  📐 동적 슬라이드 요청: mode={dynamic_slides.get('mode')}")
+            else:
+                logger.info(f"  📐 동적 슬라이드 요청: {type(dynamic_slides)}")
+        
         # Agent 아키텍처로 전환: unified_presentation_agent 사용
         result = await unified_presentation_agent.build_ppt_from_ui_data(
             template_id=template_id,
@@ -1939,6 +1951,8 @@ async def build_ppt_from_data(
             output_filename=request.output_filename,
             user_id=user_id,
             slide_replacements=slide_replacements,  # 🆕 v3.4
+            content_plan=request.content_plan,      # 🆕 v3.8
+            dynamic_slides=dynamic_slides,          # 🆕 v3.8
         )
         
         if not result.get("success", False):

@@ -39,6 +39,7 @@ class AIPPTBuilder:
         output_filename: Optional[str] = None,
         presentation_title: Optional[str] = None,
         slide_replacements: Optional[List[Dict[str, Any]]] = None,  # 🆕 v3.4
+        dynamic_slide_ops: Optional[Dict[str, Any]] = None,         # 🆕 v3.7
     ) -> Dict[str, Any]:
         """
         AI 매핑을 적용하여 PPT 생성.
@@ -48,6 +49,9 @@ class AIPPTBuilder:
             output_filename: 출력 파일명 (없으면 presentation_title 또는 자동 생성)
             presentation_title: 프레젠테이션 제목 (파일명 생성용)
             slide_replacements: 슬라이드 대체 정보 (🆕 v3.4)
+            dynamic_slide_ops: 동적 슬라이드 연산 정보 (🆕 v3.7)
+                - mode: 'expand' | 'reduce'
+                - operations: 추가/삭제할 슬라이드 정보 리스트
         
         Returns:
             빌드 결과 딕셔너리
@@ -55,6 +59,8 @@ class AIPPTBuilder:
         logger.info(f"🔨 [AIPPTBuilder] 시작: {len(mappings)}개 매핑")
         if slide_replacements:
             logger.info(f"  🔄 슬라이드 대체: {len(slide_replacements)}개")
+        if dynamic_slide_ops:
+            logger.info(f"  📐 동적 슬라이드: mode={dynamic_slide_ops.get('mode')}")
         
         try:
             # 파일명 결정
@@ -77,11 +83,12 @@ class AIPPTBuilder:
             
             logger.info(f"  📋 변환된 매핑: {len(builder_mappings)}개")
             
-            # SimplePPTBuilder로 빌드 (🆕 v3.4: slide_replacements 전달)
+            # SimplePPTBuilder로 빌드 (🆕 v3.4: slide_replacements 전달, v3.7: dynamic_slide_ops)
             result = self._builder.build(
                 builder_mappings, 
                 output_filename,
-                slide_replacements=slide_replacements
+                slide_replacements=slide_replacements,
+                dynamic_slide_ops=dynamic_slide_ops,  # 🆕 v3.7
             )
             
             if result.get("success"):
@@ -97,6 +104,11 @@ class AIPPTBuilder:
                 
                 # file_name 추가
                 result["file_name"] = output_filename
+                
+                # 🆕 v3.7: 동적 슬라이드 처리 결과 추가
+                if dynamic_slide_ops:
+                    result["dynamic_slides_applied"] = True
+                    result["dynamic_slides_mode"] = dynamic_slide_ops.get('mode')
             
             return result
             
@@ -178,6 +190,7 @@ def build_ppt_from_ai_mappings(
     presentation_title: Optional[str] = None,
     output_dir: str = "uploads",
     slide_replacements: Optional[List[Dict[str, Any]]] = None,  # 🆕 v3.4
+    dynamic_slide_ops: Optional[Dict[str, Any]] = None,         # 🆕 v3.7
 ) -> Dict[str, Any]:
     """
     편의 함수: AI 매핑으로 PPT 생성
@@ -189,9 +202,12 @@ def build_ppt_from_ai_mappings(
         presentation_title: 프레젠테이션 제목
         output_dir: 출력 디렉토리
         slide_replacements: 슬라이드 대체 정보 (🆕 v3.4)
+        dynamic_slide_ops: 동적 슬라이드 연산 정보 (🆕 v3.7)
+            - mode: 'expand' | 'reduce'
+            - operations: 추가/삭제할 슬라이드 정보 리스트
     
     Returns:
         빌드 결과 딕셔너리
     """
     builder = AIPPTBuilder(template_path, output_dir)
-    return builder.build(mappings, output_filename, presentation_title, slide_replacements)
+    return builder.build(mappings, output_filename, presentation_title, slide_replacements, dynamic_slide_ops)

@@ -46,7 +46,8 @@ class SimplePPTBuilder:
         self, 
         mappings: List[Dict[str, Any]], 
         output_filename: Optional[str] = None,
-        slide_replacements: Optional[List[Dict[str, Any]]] = None  # 🆕 v3.4
+        slide_replacements: Optional[List[Dict[str, Any]]] = None,  # 🆕 v3.4
+        dynamic_slide_ops: Optional[Dict[str, Any]] = None,         # 🆕 v3.7
     ) -> Dict[str, Any]:
         """
         매핑을 적용하여 새 PPT 생성.
@@ -57,16 +58,26 @@ class SimplePPTBuilder:
             output_filename: 출력 파일명 (없으면 자동 생성)
             slide_replacements: 슬라이드 대체 정보 (🆕 v3.4)
                 [{'original': 6, 'replacement': 7, 'reason': '...'}, ...]
+            dynamic_slide_ops: 동적 슬라이드 연산 정보 (🆕 v3.7)
+                - mode: 'expand' | 'reduce'
+                - operations: 추가/삭제할 슬라이드 정보 리스트
         
         Returns:
             {'success': True, 'file_path': '...', 'applied_count': N}
         """
         
         logger.info(f"🔨 [SimplePPTBuilder] 시작: {len(mappings)}개 매핑")
+        if dynamic_slide_ops:
+            logger.info(f"  📐 동적 슬라이드: mode={dynamic_slide_ops.get('mode')}")
         
         try:
             # 1. 템플릿 복사
             prs = Presentation(self.template_path)
+            
+            # 🆕 v3.7: 동적 슬라이드 처리 (대체보다 먼저 실행)
+            slide_index_offset = {}  # 원본 인덱스 → 조정된 인덱스
+            if dynamic_slide_ops:
+                prs, slide_index_offset = self._apply_dynamic_slide_ops(prs, dynamic_slide_ops)
             
             # 🆕 v3.4: 슬라이드 대체 처리
             slide_idx_mapping = {}  # 원본 인덱스 → 대체 인덱스
@@ -81,6 +92,11 @@ class SimplePPTBuilder:
             mappings_by_slide = {}
             for m in mappings:
                 slide_idx = m.get('slideIndex', 0)
+                
+                # 🆕 v3.7: 동적 슬라이드로 인한 인덱스 조정
+                if slide_idx in slide_index_offset:
+                    slide_idx = slide_index_offset[slide_idx]
+                
                 # 🆕 v3.4: 대체된 슬라이드 인덱스 조정
                 if slide_idx in slide_idx_mapping:
                     slide_idx = slide_idx_mapping[slide_idx]
@@ -122,13 +138,21 @@ class SimplePPTBuilder:
             logger.info(f"✅ [SimplePPTBuilder] 완료: {applied_count}개 적용, {failed_count}개 실패")
             logger.info(f"📄 저장: {output_path}")
             
-            return {
+            result = {
                 "success": True,
                 "file_path": output_path,
                 "applied_count": applied_count,
                 "failed_count": failed_count,
                 "total_mappings": len(mappings)
             }
+            
+            # 🆕 v3.7: 동적 슬라이드 처리 결과 추가
+            if dynamic_slide_ops:
+                result["dynamic_slides_applied"] = True
+                result["dynamic_slides_mode"] = dynamic_slide_ops.get('mode')
+                result["slide_count"] = len(prs.slides)
+            
+            return result
             
         except Exception as e:
             logger.error(f"❌ [SimplePPTBuilder] 실패: {e}", exc_info=True)
@@ -186,6 +210,186 @@ class SimplePPTBuilder:
         logger.debug(f"✅ 적용: {original_name} <- '{new_content[:30]}...'")
         return True
     
+    def _apply_dynamic_slide_ops(
+        self,
+        prs: Presentation,
+        dynamic_ops: Dict[str, Any]
+    ) -> tuple:
+        """
+        🆕 v3.7: 동적 슬라이드 연산 적용
+        
+        콘텐츠 양에 따라 슬라이드를 추가/삭제합니다.
+        - expand: 슬라이드 복제 (콘텐츠가 많을 때)
+        - reduce: 슬라이드 삭제 (콘텐츠가 적을 때)
+        
+        Args:
+            prs: Presentation 객체
+            dynamic_ops: 동적 슬라이드 연산 정보
+                - mode: 'expand' | 'reduce'
+                - add_slides / remove_slides: 연산 리스트
+        
+        Returns:
+            (modified_prs, slide_index_offset)
+        """
+        mode = dynamic_ops.get('mode', 'fixed')
+        
+        if mode == 'fixed':
+            return prs, {}
+        
+        slide_index_offset = {}  # 원본 인덱스 → 조정된 인덱스
+        total_slides_before = len(prs.slides)
+        
+        try:
+            if mode == 'expand':
+                operations = dynamic_ops.get('add_slides', [])
+                if not operations:
+                    return prs, {}
+                    
+                # 슬라이드 복제 (뒤에서부터 처리하여 인덱스 영향 최소화)
+                sorted_ops = sorted(operations, key=lambda x: x.get('source_slide', 0), reverse=True)
+                
+                for op in sorted_ops:
+                    source_idx = op.get('source_slide', 0) - 1  # 1-based → 0-based
+                    insert_after = op.get('insert_after', source_idx + 1) - 1  # 1-based → 0-based
+                    count = op.get('count', 1)
+                    
+                    if source_idx < 0 or source_idx >= len(prs.slides):
+                        logger.warning(f"⚠️ 복제 소스 슬라이드 범위 초과: {source_idx + 1}")
+                        continue
+                    
+                    logger.info(f"📐 슬라이드 복제: {source_idx + 1}번 → {count}개 추가")
+                    
+                    # python-pptx에서 슬라이드 복제
+                    for i in range(count):
+                        try:
+                            source_slide = prs.slides[source_idx]
+                            slide_layout = source_slide.slide_layout
+                            
+                            # 새 슬라이드 추가 (동일 레이아웃)
+                            new_slide = prs.slides.add_slide(slide_layout)
+                            
+                            # 소스 슬라이드의 shape 복사 (텍스트만)
+                            self._copy_slide_content(source_slide, new_slide)
+                            
+                            # 슬라이드 위치 이동 (insert_after + i + 1 위치로)
+                            target_idx = insert_after + i + 1
+                            if target_idx < len(prs.slides) - 1:
+                                self._move_slide(prs, len(prs.slides) - 1, target_idx)
+                            
+                        except Exception as copy_err:
+                            logger.warning(f"⚠️ 슬라이드 복제 실패: {copy_err}")
+                
+                # 인덱스 오프셋 계산
+                added_count = len(prs.slides) - total_slides_before
+                if added_count > 0:
+                    logger.info(f"📐 슬라이드 {added_count}개 추가됨 (총 {len(prs.slides)}장)")
+            
+            elif mode == 'reduce':
+                operations = dynamic_ops.get('remove_slides', [])
+                if not operations:
+                    return prs, {}
+                
+                # 🆕 v3.8: 정수 리스트와 객체 리스트 모두 지원
+                # AI가 [6, 7, 8, 9] 또는 [{'slide_index': 6, 'reason': '...'}] 형태로 반환할 수 있음
+                normalized_ops = []
+                for op in operations:
+                    if isinstance(op, int):
+                        # 정수인 경우 객체로 변환
+                        normalized_ops.append({'slide_index': op, 'reason': 'AI 콘텐츠 계획에 따른 삭제'})
+                    elif isinstance(op, dict):
+                        normalized_ops.append(op)
+                    else:
+                        logger.warning(f"⚠️ 알 수 없는 삭제 연산 형식: {op}")
+                
+                # 슬라이드 삭제 (뒤에서부터 처리하여 인덱스 영향 최소화)
+                sorted_ops = sorted(normalized_ops, key=lambda x: x.get('slide_index', 0), reverse=True)
+                deleted_count = 0
+                
+                for op in sorted_ops:
+                    slide_idx = op.get('slide_index', 0) - 1  # 1-based → 0-based
+                    reason = op.get('reason', '')
+                    
+                    current_slide_count = len(prs.slides)
+                    
+                    if slide_idx < 0 or slide_idx >= current_slide_count:
+                        logger.warning(f"⚠️ 삭제 슬라이드 범위 초과: {slide_idx + 1} (현재 {current_slide_count}장)")
+                        continue
+                    
+                    # 고정 슬라이드(표지, 목차, 마무리)는 삭제 불가
+                    # 표지: 0, 목차: 1, 마무리: 마지막
+                    if slide_idx == 0:
+                        logger.warning(f"⚠️ 표지 슬라이드는 삭제 불가: {slide_idx + 1}")
+                        continue
+                    if slide_idx == 1:
+                        logger.warning(f"⚠️ 목차 슬라이드는 삭제 불가: {slide_idx + 1}")
+                        continue
+                    if slide_idx == current_slide_count - 1:
+                        logger.warning(f"⚠️ 마무리 슬라이드는 삭제 불가: {slide_idx + 1}")
+                        continue
+                    
+                    logger.info(f"📐 슬라이드 삭제: {slide_idx + 1}번 ({reason})")
+                    
+                    try:
+                        # python-pptx에서 슬라이드 삭제
+                        slide_id = prs.slides._sldIdLst[slide_idx].rId
+                        prs.part.drop_rel(slide_id)
+                        del prs.slides._sldIdLst[slide_idx]
+                        deleted_count += 1
+                            
+                    except Exception as del_err:
+                        logger.warning(f"⚠️ 슬라이드 삭제 실패: {del_err}")
+                
+                if deleted_count > 0:
+                    logger.info(f"📐 슬라이드 {deleted_count}개 삭제됨 (총 {len(prs.slides)}장)")
+                    
+                    # 삭제 후 인덱스 오프셋 계산
+                    # 삭제된 슬라이드 이후의 모든 매핑은 인덱스 조정 필요
+                    # 하지만 뒤에서부터 삭제했으므로 복잡한 오프셋 계산 대신 
+                    # 빌드 단계에서 슬라이드 수에 맞게 자동 조정
+            
+            logger.info(f"✅ 동적 슬라이드 처리 완료: mode={mode}, 최종 {len(prs.slides)}장")
+            
+        except Exception as e:
+            logger.error(f"❌ 동적 슬라이드 처리 실패: {e}", exc_info=True)
+        
+        return prs, slide_index_offset
+    
+    def _copy_slide_content(self, source_slide, target_slide) -> None:
+        """
+        소스 슬라이드의 텍스트 콘텐츠를 타겟 슬라이드로 복사.
+        
+        주의: python-pptx에서 완전한 shape 복제는 제한적입니다.
+        텍스트 콘텐츠만 복사하고, 레이아웃은 동일 템플릿을 사용합니다.
+        """
+        # 같은 이름의 shape 찾아서 텍스트 복사
+        source_shapes = {shape.name: shape for shape in source_slide.shapes if hasattr(shape, 'name')}
+        
+        for target_shape in target_slide.shapes:
+            if not hasattr(target_shape, 'name'):
+                continue
+            
+            if target_shape.name in source_shapes:
+                source_shape = source_shapes[target_shape.name]
+                
+                # 텍스트 프레임이 있는 경우 텍스트 복사
+                if hasattr(source_shape, 'text_frame') and hasattr(target_shape, 'text_frame'):
+                    try:
+                        for s_para, t_para in zip(source_shape.text_frame.paragraphs, 
+                                                   target_shape.text_frame.paragraphs):
+                            for s_run, t_run in zip(s_para.runs, t_para.runs):
+                                t_run.text = s_run.text
+                    except Exception:
+                        pass  # 스타일 차이로 인한 오류 무시
+    
+    def _move_slide(self, prs: Presentation, from_idx: int, to_idx: int) -> None:
+        """슬라이드 위치 이동"""
+        try:
+            slide_id = prs.slides._sldIdLst[from_idx]
+            prs.slides._sldIdLst.remove(slide_id)
+            prs.slides._sldIdLst.insert(to_idx, slide_id)
+        except Exception as e:
+            logger.warning(f"⚠️ 슬라이드 이동 실패: {e}")
+
     def _apply_slide_replacements(
         self, 
         prs: Presentation, 

@@ -43,6 +43,9 @@ from app.tools.presentation.ai_direct_mapping_tool import AIDirectMappingTool
 from app.services.presentation.simple_ppt_builder import SimplePPTBuilder
 from app.services.presentation.ai_ppt_builder import AIPPTBuilder, build_ppt_from_ai_mappings
 
+# 🆕 v3.7: 동적 슬라이드 관리
+from app.services.presentation.dynamic_slide_manager import DynamicSlideManager
+
 
 class PresentationMode(str, Enum):
     """프레젠테이션 생성 모드"""
@@ -1255,6 +1258,8 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         mappings: Optional[List[Dict[str, Any]]] = None,
         use_ai_builder: bool = True,  # 🆕 SimplePPTBuilder 사용 (기본값 True로 변경)
         slide_replacements: Optional[List[Dict[str, Any]]] = None,  # 🆕 v3.4
+        content_plan: Optional[Dict[str, Any]] = None,              # 🆕 v3.7
+        dynamic_slides: Optional[Dict[str, Any]] = None,            # 🆕 v3.7
     ) -> Dict[str, Any]:
         """
         UI 편집 데이터로 PPT 생성 (Agent 통제 하에 실행).
@@ -1272,6 +1277,8 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             slide_matches: 슬라이드 매칭 정보
             mappings: 콘텐츠 매핑 정보
             slide_replacements: 슬라이드 대체 정보 (🆕 v3.4)
+            content_plan: 콘텐츠 계획 (🆕 v3.7) - 필요 섹션, TOC 항목 등
+            dynamic_slides: 동적 슬라이드 설정 (🆕 v3.7) - mode, add_slides, remove_slides
             
         Returns:
             PPT 파일 경로 및 정보
@@ -1325,6 +1332,8 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
                     output_filename=output_filename,
                     user_id=self._user_id,
                     slide_replacements=slide_replacements,  # 🆕 v3.4
+                    content_plan=content_plan,              # 🆕 v3.7
+                    dynamic_slides=dynamic_slides,          # 🆕 v3.7
                 )
             else:
                 # 기존 templated_pptx_builder_tool 실행
@@ -1379,6 +1388,8 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         output_filename: str,
         user_id: Optional[int] = None,
         slide_replacements: Optional[List[Dict[str, Any]]] = None,  # 🆕 v3.4
+        content_plan: Optional[Dict[str, Any]] = None,              # 🆕 v3.7
+        dynamic_slides: Optional[Dict[str, Any]] = None,            # 🆕 v3.7
     ) -> Dict[str, Any]:
         """
         🆕 절충형 AIPPTBuilder를 사용하여 PPT 빌드.
@@ -1386,12 +1397,18 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         기존 EnhancedObjectProcessor 대신 간단한 AIPPTBuilder 사용.
         original_name 기반 shape 매칭으로 스타일 100% 보존.
         
+        🆕 v3.7: 동적 슬라이드 관리 지원
+        - content_plan: 콘텐츠 계획 (필요 섹션, TOC 항목 등)
+        - dynamic_slides: 동적 슬라이드 설정 (mode, add_slides, remove_slides)
+        
         Args:
             template_id: 템플릿 ID
             mappings: AI 매핑 (slideIndex, elementId, originalName, generatedText 포함)
             output_filename: 출력 파일명
             user_id: 사용자 ID
             slide_replacements: 슬라이드 대체 정보 (🆕 v3.4)
+            content_plan: 콘텐츠 계획 (🆕 v3.7)
+            dynamic_slides: 동적 슬라이드 설정 (🆕 v3.7)
             
         Returns:
             빌드 결과 딕셔너리
@@ -1399,6 +1416,9 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         logger.info(f"🔨 [{self.name}] AIPPTBuilder로 PPT 빌드: template={template_id}, mappings={len(mappings)}개")
         if slide_replacements:
             logger.info(f"  🔄 슬라이드 대체: {len(slide_replacements)}개")
+        if dynamic_slides:
+            ds_mode = dynamic_slides.get('mode') if isinstance(dynamic_slides, dict) else dynamic_slides
+            logger.info(f"  📐 동적 슬라이드: mode={ds_mode}")
         
         try:
             # 1. 템플릿 경로 가져오기
@@ -1424,19 +1444,85 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             if not presentation_title:
                 presentation_title = output_filename
             
-            # 3. AIPPTBuilder로 PPT 생성 (🆕 v3.4: slide_replacements 전달)
+            # 🆕 v3.8: dynamic_slides가 문자열인 경우 JSON 파싱
+            if dynamic_slides and isinstance(dynamic_slides, str):
+                try:
+                    import json
+                    dynamic_slides = json.loads(dynamic_slides)
+                    logger.info(f"  📐 dynamic_slides 문자열 파싱 완료: {type(dynamic_slides)}")
+                except json.JSONDecodeError as e:
+                    logger.warning(f"  ⚠️ dynamic_slides JSON 파싱 실패: {e}")
+                    dynamic_slides = None
+            
+            # 🆕 v3.8: content_plan이 문자열인 경우 JSON 파싱
+            if content_plan and isinstance(content_plan, str):
+                try:
+                    import json
+                    content_plan = json.loads(content_plan)
+                    logger.info(f"  📐 content_plan 문자열 파싱 완료")
+                except json.JSONDecodeError as e:
+                    logger.warning(f"  ⚠️ content_plan JSON 파싱 실패: {e}")
+                    content_plan = None
+            
+            # 🆕 v3.7: 동적 슬라이드 처리 (build 전)
+            adjusted_mappings = mappings
+            dynamic_slide_ops = None
+            
+            if dynamic_slides and isinstance(dynamic_slides, dict) and dynamic_slides.get('mode') and dynamic_slides.get('mode') != 'fixed':
+                logger.info(f"  📐 동적 슬라이드 관리 시작: mode={dynamic_slides.get('mode')}")
+                
+                try:
+                    dynamic_manager = DynamicSlideManager(template_path)
+                    
+                    if dynamic_slides.get('mode') == 'expand':
+                        add_ops = dynamic_slides.get('add_slides', [])
+                        if add_ops:
+                            # 슬라이드 추가 연산 준비
+                            dynamic_slide_ops = {
+                                'mode': 'expand',
+                                'add_slides': add_ops  # 🔧 v3.8: 'operations' → 'add_slides'
+                            }
+                            # 매핑 인덱스 조정 (나중에 빌더에서 처리)
+                            logger.info(f"    추가 대상: {len(add_ops)}개 슬라이드")
+                    
+                    elif dynamic_slides.get('mode') == 'reduce':
+                        remove_ops = dynamic_slides.get('remove_slides', [])
+                        if remove_ops:
+                            dynamic_slide_ops = {
+                                'mode': 'reduce',
+                                'remove_slides': remove_ops  # 🔧 v3.8: 'operations' → 'remove_slides'
+                            }
+                            logger.info(f"    삭제 대상: {len(remove_ops)}개 슬라이드")
+                    
+                    # TOC 조정이 필요한 경우
+                    if content_plan and content_plan.get('toc_items'):
+                        toc_items = content_plan.get('toc_items', [])
+                        logger.info(f"    TOC 항목 수: {len(toc_items)}개")
+                        # TOC 조정은 SimplePPTBuilder 또는 별도 로직에서 처리
+                        
+                except Exception as dm_error:
+                    logger.warning(f"  ⚠️ 동적 슬라이드 관리 실패, 기본 모드로 진행: {dm_error}")
+                    dynamic_slide_ops = None
+            
+            # 3. AIPPTBuilder로 PPT 생성 (🆕 v3.4: slide_replacements 전달, v3.7: dynamic_slide_ops)
             result = build_ppt_from_ai_mappings(
                 template_path=template_path,
-                mappings=mappings,
+                mappings=adjusted_mappings,
                 output_filename=output_filename,
                 presentation_title=presentation_title,
                 slide_replacements=slide_replacements,
+                dynamic_slide_ops=dynamic_slide_ops,  # 🆕 v3.7
             )
             
             # slide_count 추가 (통계에서)
             if result.get("success"):
                 stats = result.get("stats", {})
                 result["slide_count"] = stats.get("applied", 0) + stats.get("skipped", 0)
+                
+                # 🆕 v3.7: 동적 슬라이드 처리 결과 추가
+                if dynamic_slide_ops:
+                    result["dynamic_slides_applied"] = True
+                    result["dynamic_slides_mode"] = dynamic_slide_ops.get('mode')
             
             return result
             
@@ -1610,10 +1696,14 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             
             mappings = mapping_result.get("mappings", [])
             slide_replacements = mapping_result.get("slide_replacements", [])  # 🆕 v3.4
+            content_plan = mapping_result.get("content_plan", {})              # 🆕 v3.8: 동적 슬라이드
+            dynamic_slides = mapping_result.get("dynamic_slides", {"mode": "fixed"})  # 🆕 v3.8: 동적 슬라이드
             
             logger.info(f"  ✅ AI Mapping 완료: {len(mappings)} 매핑")
             if slide_replacements:
                 logger.info(f"  🔄 슬라이드 대체 요청: {len(slide_replacements)}개")
+            if dynamic_slides and dynamic_slides.get("mode") != "fixed":
+                logger.info(f"  📐 동적 슬라이드: mode={dynamic_slides.get('mode')}")
             
             # =================================================================
             # 🆕 v3.6: Quality Guard & 부분 재생성 (Agentic AI)
@@ -1710,6 +1800,8 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
                 "slide_matches": slide_matches,
                 "mappings": mappings,
                 "slide_replacements": slide_replacements,  # 🆕 v3.4
+                "content_plan": content_plan,              # 🆕 v3.8: 동적 슬라이드
+                "dynamic_slides": dynamic_slides,          # 🆕 v3.8: 동적 슬라이드
                 "pipeline": "ai_first",  # 파이프라인 구분자
                 "presentation_title": presentation_title,  # 🆕 파일명용 제목
             }

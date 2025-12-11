@@ -86,29 +86,65 @@ class AIDirectMappingTool(BaseTool):
         logger.info(f"🎯 [AIDirectMapping] 시작: query='{user_query[:50]}...'")
         
         try:
+            # 🆕 v3.8: 사용자 슬라이드 수 요청 파싱
+            template_slide_count = len(template_metadata.get('slides', []))
+            requested_slides = self._parse_requested_slide_count(user_query)
+            slide_count_hint = None
+            
+            if requested_slides:
+                logger.info(f"📐 [AIDirectMapping] 사용자 요청 슬라이드 수: {requested_slides}, 템플릿: {template_slide_count}")
+                if requested_slides < template_slide_count:
+                    slide_count_hint = {
+                        'requested': requested_slides,
+                        'template': template_slide_count,
+                        'action': 'reduce',
+                        'remove_count': template_slide_count - requested_slides
+                    }
+                elif requested_slides > template_slide_count:
+                    slide_count_hint = {
+                        'requested': requested_slides,
+                        'template': template_slide_count,
+                        'action': 'expand',
+                        'add_count': requested_slides - template_slide_count
+                    }
+            
             # 1. 템플릿 구조를 AI에게 전달할 형식으로 변환
             template_spec = self._create_template_spec(template_metadata)
             
-            # 2. AI 프롬프트 생성
-            prompt = self._create_prompt(user_query, template_spec, additional_context)
+            # 2. AI 프롬프트 생성 (🆕 v3.8: slide_count_hint 전달)
+            prompt = self._create_prompt(user_query, template_spec, additional_context, slide_count_hint)
             
             # 3. AI 호출
             response = await self._call_llm(prompt)
             
-            # 4. 응답 파싱 (매핑 + 슬라이드 대체 정보)
+            # 4. 응답 파싱 (매핑 + 슬라이드 대체 정보 + 동적 슬라이드 정보)
             parse_result = self._parse_response(response, template_metadata)
             mappings = parse_result.get('mappings', [])
             slide_replacements = parse_result.get('slide_replacements', [])
+            content_plan = parse_result.get('content_plan', {})      # 🆕 v3.7
+            dynamic_slides = parse_result.get('dynamic_slides', {})  # 🆕 v3.7
+            
+            # 🆕 v3.8: AI가 동적 슬라이드를 지정하지 않았지만 사용자가 요청한 경우
+            if slide_count_hint and (not dynamic_slides or dynamic_slides.get('mode') == 'fixed'):
+                logger.info(f"📐 [AIDirectMapping] AI가 동적 슬라이드 미지정 → 자동 적용")
+                dynamic_slides = self._auto_generate_dynamic_slides(
+                    slide_count_hint, 
+                    template_metadata
+                )
             
             logger.info(f"✅ [AIDirectMapping] 완료: {len(mappings)}개 매핑 생성")
             if slide_replacements:
                 logger.info(f"🔄 [AIDirectMapping] 슬라이드 대체: {len(slide_replacements)}개")
+            if dynamic_slides.get('mode') and dynamic_slides.get('mode') != 'fixed':
+                logger.info(f"📐 [AIDirectMapping] 동적 슬라이드 모드: {dynamic_slides.get('mode')}")
             
             return {
                 "success": True,
                 "mappings": mappings,
                 "mapping_count": len(mappings),
-                "slide_replacements": slide_replacements,  # 🆕 v3.4
+                "slide_replacements": slide_replacements,   # 🆕 v3.4
+                "content_plan": content_plan,               # 🆕 v3.7: 콘텐츠 계획
+                "dynamic_slides": dynamic_slides,           # 🆕 v3.7: 동적 슬라이드
                 "message": "AI 직접 매핑 완료. simple_ppt_builder로 PPT를 생성하세요."
             }
             
@@ -120,6 +156,103 @@ class AIDirectMappingTool(BaseTool):
                 "mappings": []
             }
     
+    def _parse_requested_slide_count(self, query: str) -> Optional[int]:
+        """
+        🆕 v3.8: 사용자 질의에서 슬라이드 수 요청 파싱
+        
+        지원 패턴:
+        - "5장", "5개", "5페이지"
+        - "슬라이드 5장", "슬라이드 5개"
+        - "5장의 PPT", "5장 PPT"
+        - "5 slides"
+        """
+        import re
+        
+        # 한글 패턴: N장, N개, N페이지
+        patterns = [
+            r'슬라이드\s*(\d+)\s*(?:장|개|페이지)',  # 슬라이드 5장
+            r'(\d+)\s*(?:장|개|페이지)\s*(?:의\s*)?(?:PPT|ppt|슬라이드|발표)',  # 5장의 PPT
+            r'(\d+)\s*(?:장|개)\s*(?:로|으로)\s*(?:작성|구성|만들)',  # 5장으로 작성
+            r'(\d+)\s*slides?',  # 5 slides
+            r'(\d+)\s*(?:장|개)$',  # 문장 끝에 5장
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, query, re.IGNORECASE)
+            if match:
+                count = int(match.group(1))
+                # 합리적인 범위 체크 (2~30)
+                if 2 <= count <= 30:
+                    return count
+        
+        return None
+    
+    def _auto_generate_dynamic_slides(
+        self, 
+        slide_count_hint: Dict[str, Any],
+        template_metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        🆕 v3.8: 슬라이드 수 요청에 따른 동적 슬라이드 설정 자동 생성
+        
+        고정 슬라이드(표지, 목차, 마무리)는 유지하고 본문 슬라이드만 조정
+        """
+        action = slide_count_hint.get('action')
+        slides = template_metadata.get('slides', [])
+        
+        # 슬라이드 타입별 분류
+        fixed_indices = []  # 고정 (표지, 목차, 마무리)
+        content_indices = []  # 조정 가능 (본문, 섹션)
+        
+        for i, slide in enumerate(slides):
+            role = slide.get('role', 'content').lower()
+            if role in ['title', 'toc', 'thanks', 'closing', 'end']:
+                fixed_indices.append(i + 1)  # 1-based
+            else:
+                content_indices.append(i + 1)  # 1-based
+        
+        if action == 'reduce':
+            remove_count = slide_count_hint.get('remove_count', 0)
+            
+            # 뒤에서부터 본문 슬라이드 삭제 (마무리 직전까지)
+            removable = [idx for idx in content_indices if idx not in fixed_indices]
+            # 뒤에서부터 삭제
+            removable.sort(reverse=True)
+            to_remove = removable[:remove_count]
+            
+            logger.info(f"📐 [AutoDynamic] reduce 모드: 삭제 대상 슬라이드 {to_remove}")
+            
+            return {
+                'mode': 'reduce',
+                'remove_slides': [
+                    {'slide_index': idx, 'reason': '사용자 요청에 따른 슬라이드 수 축소'}
+                    for idx in to_remove
+                ]
+            }
+        
+        elif action == 'expand':
+            add_count = slide_count_hint.get('add_count', 0)
+            
+            # 마지막 본문 슬라이드를 복제 대상으로 선정
+            if content_indices:
+                source_slide = content_indices[-1]
+                
+                logger.info(f"📐 [AutoDynamic] expand 모드: 슬라이드 {source_slide}을 {add_count}개 복제")
+                
+                return {
+                    'mode': 'expand',
+                    'add_slides': [
+                        {
+                            'source_slide': source_slide,
+                            'insert_after': source_slide,
+                            'count': add_count,
+                            'reason': '사용자 요청에 따른 슬라이드 수 확장'
+                        }
+                    ]
+                }
+        
+        return {'mode': 'fixed'}
+
     def _is_decoration_element(self, elem: Dict[str, Any]) -> bool:
         """장식용/아이콘/placeholder 요소인지 판단"""
         elem_role = elem.get('element_role', '')
@@ -518,7 +651,8 @@ JSON만 출력하세요."""
         self, 
         user_query: str, 
         template_spec: str,
-        additional_context: Optional[str]
+        additional_context: Optional[str],
+        slide_count_hint: Optional[Dict[str, Any]] = None  # 🆕 v3.8
     ) -> str:
         """AI 프롬프트 생성 - 프롬프트 파일에서 로드"""
         
@@ -529,6 +663,32 @@ JSON만 출력하세요."""
         additional_section = ""
         if additional_context:
             additional_section = f"## 추가 참고 자료\n{additional_context}"
+        
+        # 🆕 v3.8: 슬라이드 수 힌트 추가
+        if slide_count_hint:
+            action = slide_count_hint.get('action')
+            requested = slide_count_hint.get('requested')
+            template_count = slide_count_hint.get('template')
+            
+            slide_hint_section = f"""
+## ⚠️ 중요: 슬라이드 수 조정 요청
+사용자가 **{requested}장**의 슬라이드를 요청했습니다.
+현재 템플릿은 {template_count}장입니다.
+
+dynamic_slides 설정에서:
+- mode: "{action}"
+"""
+            if action == 'reduce':
+                remove_count = slide_count_hint.get('remove_count', 0)
+                slide_hint_section += f"""- remove_slides: 본문/섹션 슬라이드 중 {remove_count}개를 삭제 대상으로 지정
+  (표지, 목차, 마무리 슬라이드는 삭제하지 마세요)
+"""
+            elif action == 'expand':
+                add_count = slide_count_hint.get('add_count', 0)
+                slide_hint_section += f"""- add_slides: 본문 슬라이드를 {add_count}개 복제
+"""
+            
+            additional_section = slide_hint_section + "\n" + additional_section
         
         # 템플릿 변수 치환
         prompt = prompt_template.format(
@@ -558,6 +718,114 @@ JSON만 출력하세요."""
         
         return response.get('response', '')
     
+    def _repair_json(self, json_str: str) -> str:
+        """
+        🆕 v3.8: 불완전한 JSON 복구
+        
+        AI 응답이 중간에 잘리는 경우 JSON을 유효하게 만들기 위해 시도
+        """
+        import re
+        
+        json_str = json_str.strip()
+        
+        # 1. 불완전한 마지막 요소 제거 및 배열/객체 닫기
+        # 잘린 문자열의 끝 부분 탐색
+        
+        # 스택을 사용하여 열린 괄호 추적
+        stack = []
+        last_valid_pos = 0
+        in_string = False
+        escape_next = False
+        
+        for i, char in enumerate(json_str):
+            if escape_next:
+                escape_next = False
+                continue
+            
+            if char == '\\':
+                escape_next = True
+                continue
+            
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            
+            if in_string:
+                continue
+            
+            if char in '{[':
+                stack.append(char)
+                last_valid_pos = i + 1
+            elif char in '}]':
+                if stack:
+                    expected = '{' if char == '}' else '['
+                    if stack[-1] == expected:
+                        stack.pop()
+                        last_valid_pos = i + 1
+        
+        # 2. 스택에 닫히지 않은 괄호가 있으면 복구 시도
+        if stack:
+            # 마지막으로 불완전한 요소(진행 중인 객체/배열)를 잘라내기
+            # 마지막 완전한 요소 이후의 콤마와 불완전 데이터 제거
+            
+            # 잘린 위치에서 역으로 탐색하여 완전한 요소를 찾음
+            repair_str = json_str
+            
+            # 마지막 완전한 요소 찾기 (마지막 } 또는 ] 또는 " 다음)
+            # 불완전한 객체가 시작된 위치 찾기
+            for i in range(len(json_str) - 1, -1, -1):
+                char = json_str[i]
+                if char in '},]"':
+                    # 이 지점 이후의 불완전한 데이터 제거
+                    repair_str = json_str[:i+1]
+                    
+                    # 필요한 닫는 괄호 추가
+                    # 남은 열린 괄호 수 재계산
+                    temp_stack = []
+                    temp_in_string = False
+                    temp_escape = False
+                    
+                    for c in repair_str:
+                        if temp_escape:
+                            temp_escape = False
+                            continue
+                        if c == '\\':
+                            temp_escape = True
+                            continue
+                        if c == '"':
+                            temp_in_string = not temp_in_string
+                            continue
+                        if temp_in_string:
+                            continue
+                        if c in '{[':
+                            temp_stack.append(c)
+                        elif c in '}]':
+                            if temp_stack:
+                                temp_stack.pop()
+                    
+                    # 닫는 괄호 추가
+                    closers = []
+                    for bracket in reversed(temp_stack):
+                        if bracket == '{':
+                            closers.append('}')
+                        else:
+                            closers.append(']')
+                    
+                    repair_str += ''.join(closers)
+                    
+                    # JSON 유효성 검증
+                    try:
+                        json.loads(repair_str)
+                        logger.info(f"✅ JSON 복구 위치: {i}, 추가된 닫는 괄호: {''.join(closers)}")
+                        return repair_str
+                    except:
+                        continue
+            
+            # 모든 복구 시도 실패 시
+            raise ValueError("JSON 복구 불가")
+        
+        return json_str
+    
     def _parse_response(
         self, 
         response: str, 
@@ -569,7 +837,9 @@ JSON만 출력하세요."""
         Returns:
             {
                 'mappings': [...],
-                'slide_replacements': [...]  # 🆕 v3.4
+                'slide_replacements': [...],  # 🆕 v3.4
+                'content_plan': {...},        # 🆕 v3.7: 동적 슬라이드
+                'dynamic_slides': {...}       # 🆕 v3.7: 동적 슬라이드
             }
         """
         
@@ -580,17 +850,44 @@ JSON만 출력하세요."""
         elif "```" in response:
             json_str = response.split("```")[1].split("```")[0]
         
+        data = None
+        
         try:
             data = json.loads(json_str.strip())
         except json.JSONDecodeError as e:
-            logger.error(f"JSON 파싱 실패: {e}")
-            logger.error(f"응답: {response[:500]}")
-            raise ValueError(f"AI 응답 JSON 파싱 실패: {e}")
+            logger.warning(f"JSON 파싱 실패 (첫 번째 시도): {e}")
+            
+            # 🆕 v3.8: JSON 복구 시도 - 불완전한 JSON 수정
+            try:
+                repaired_json = self._repair_json(json_str)
+                data = json.loads(repaired_json)
+                logger.info("✅ JSON 복구 성공")
+            except Exception as repair_err:
+                logger.error(f"JSON 복구 실패: {repair_err}")
+                logger.error(f"응답: {response[:500]}")
+                raise ValueError(f"AI 응답 JSON 파싱 실패: {e}")
+        
+        if not data:
+            raise ValueError("AI 응답이 비어있습니다")
         
         # 🆕 v3.4: 슬라이드 대체 정보 추출
         slide_replacements = data.get('slide_replacements', [])
         if slide_replacements:
             logger.info(f"📋 슬라이드 대체 요청: {slide_replacements}")
+        
+        # 🆕 v3.7: 동적 슬라이드 정보 추출
+        content_plan = data.get('content_plan', {})
+        dynamic_slides = data.get('dynamic_slides', {'mode': 'fixed'})
+        
+        if content_plan:
+            required_sections = content_plan.get('required_sections', 0)
+            toc_items = content_plan.get('toc_items', [])
+            logger.info(f"📋 콘텐츠 계획: {required_sections}개 섹션, TOC {len(toc_items)}개")
+        
+        if dynamic_slides.get('mode') != 'fixed':
+            add_slides = dynamic_slides.get('add_slides', [])
+            remove_slides = dynamic_slides.get('remove_slides', [])
+            logger.info(f"📋 동적 슬라이드: mode={dynamic_slides.get('mode')}, 추가={len(add_slides)}, 삭제={len(remove_slides)}")
         
         # element_id → 상세 정보 매핑 테이블 생성
         id_to_info = {}
@@ -740,10 +1037,12 @@ JSON만 출력하세요."""
         if unmapped_tables:
             logger.error(f"🚨 AI가 테이블 {len(unmapped_tables)}개를 매핑하지 않음 (원본 유지): {unmapped_tables}")
         
-        # 🆕 v3.4: 매핑과 슬라이드 대체 정보 함께 반환
+        # 🆕 v3.7: 매핑, 슬라이드 대체 정보, 동적 슬라이드 정보 함께 반환
         return {
             'mappings': mappings,
-            'slide_replacements': slide_replacements
+            'slide_replacements': slide_replacements,
+            'content_plan': content_plan,      # 🆕 v3.7: 콘텐츠 계획
+            'dynamic_slides': dynamic_slides   # 🆕 v3.7: 동적 슬라이드 관리
         }
     
     async def regenerate_elements(

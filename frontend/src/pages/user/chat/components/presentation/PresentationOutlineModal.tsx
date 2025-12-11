@@ -111,6 +111,9 @@ const PresentationOutlineModal: React.FC<Props> = ({
     const [presentationTitle, setPresentationTitle] = useState<string | null>(null);  // 🆕 AI 생성 제목
     // 🆕 v3.4: 슬라이드 대체 정보 (도식 레이아웃이 주제와 맞지 않을 때)
     const [slideReplacements, setSlideReplacements] = useState<Array<{original: number; replacement: number; reason?: string}>>([]);
+    // 🆕 v3.8: 동적 슬라이드 정보 (콘텐츠 양에 따라 슬라이드 추가/삭제)
+    const [dynamicSlides, setDynamicSlides] = useState<{mode: string; add_slides?: any[]; remove_slides?: any[]} | null>(null);
+    const [contentPlan, setContentPlan] = useState<any>(null);
 
     const [error, setError] = useState<string | null>(null);
     const [loadingMessage, setLoadingMessage] = useState<string>("");
@@ -150,6 +153,8 @@ const PresentationOutlineModal: React.FC<Props> = ({
             setError(null);
             setSlidesContent([]);
             setSlideReplacements([]);  // 🆕 v3.4: 슬라이드 대체 정보 초기화
+            setDynamicSlides(null);    // 🆕 v3.8: 동적 슬라이드 초기화
+            setContentPlan(null);      // 🆕 v3.8: 콘텐츠 계획 초기화
             setIsGenerating(false);  // 🔧 생성 상태 초기화
             isGeneratingRef.current = false;  // 🔧 ref도 초기화
             // sourceContent(채팅 원본 질의)는 props에서 직접 사용
@@ -388,6 +393,19 @@ const PresentationOutlineModal: React.FC<Props> = ({
             } else {
                 setSlideReplacements([]);
             }
+            // 🆕 v3.8: 동적 슬라이드 정보 저장
+            if (data.dynamic_slides) {
+                setDynamicSlides(data.dynamic_slides);
+                console.log("📐 동적 슬라이드:", data.dynamic_slides);
+            } else {
+                setDynamicSlides(null);
+            }
+            if (data.content_plan) {
+                setContentPlan(data.content_plan);
+                console.log("📋 콘텐츠 계획:", data.content_plan);
+            } else {
+                setContentPlan(null);
+            }
             setCurrentStep('editor');
         } catch (e: any) {
             console.error("❌ 콘텐츠 생성 오류:", e);
@@ -459,7 +477,10 @@ const PresentationOutlineModal: React.FC<Props> = ({
                     // 🆕 AI 생성 제목 우선 사용, 없으면 사용자 쿼리에서 추출
                     output_filename: (presentationTitle || sourceContent || '프레젠테이션').slice(0, 50).replace(/[\\/:*?"<>|]/g, '_'),
                     // 🆕 v3.4: 슬라이드 대체 정보 전달
-                    slide_replacements: slideReplacements.length > 0 ? slideReplacements : undefined
+                    slide_replacements: slideReplacements.length > 0 ? slideReplacements : undefined,
+                    // 🆕 v3.8: 동적 슬라이드 정보 전달 (슬라이드 추가/삭제)
+                    dynamic_slides: dynamicSlides || undefined,
+                    content_plan: contentPlan || undefined
                 })
             });
 
