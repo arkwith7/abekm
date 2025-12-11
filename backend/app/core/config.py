@@ -304,7 +304,7 @@ class Settings(BaseSettings):
     # 로깅 설정
     log_level: str = "INFO"
     log_format: str = "json"
-    log_dir: str = "logs"
+    log_dir: str = "/home/admin/Dev/abekm/backend/logs"
     log_file_name: str = "backend.log"
     log_max_bytes: int = 5 * 1024 * 1024  # 5MB
     log_backup_count: int = 5

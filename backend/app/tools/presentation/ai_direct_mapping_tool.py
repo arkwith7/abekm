@@ -608,7 +608,9 @@ JSON만 출력하세요."""
                     'slide_index': slide_idx,
                     'element_role': elem.get('element_role', ''),
                     'is_fixed': is_fixed,
-                    'type': elem_type
+                    'type': elem_type,
+                    # 🆕 v3.6: QualityGuard용 원본 텍스트 저장
+                    'original_content': elem.get('content', ''),
                 }
                 
                 # 🆕 v3.3: 테이블 정보 저장 (미매핑 시 구조 활용)
@@ -617,6 +619,8 @@ JSON만 출력하세요."""
                     elem_info['table_data'] = table_data
                     elem_info['rows'] = table_data.get('rows', 0)
                     elem_info['cols'] = table_data.get('cols', 0)
+                    # 🆕 v3.6: 테이블 원본 셀 데이터 (QualityGuard 비교용)
+                    elem_info['original_table_cells'] = table_data.get('cells', [])
                 
                 id_to_info[elem_id] = elem_info
                 
@@ -649,18 +653,23 @@ JSON만 출력하세요."""
                 headers = content[0] if content else []
                 rows = content[1:] if len(content) > 1 else []
                 
+                # 🆕 v3.6: 테이블 셀 텍스트를 generatedText에 저장 (QualityGuard 검사용)
+                table_text_for_guard = ' | '.join([' | '.join(row) if isinstance(row, list) else str(row) for row in content])
+                
                 mappings.append({
                     'slideIndex': info.get('slide_index', 0),
                     'elementId': elem_id,
                     'originalName': info.get('original_name', ''),
                     'objectType': 'table',
                     'action': 'replace_content',
-                    'generatedText': '',  # 표는 텍스트가 아닌 tableData 사용
+                    'generatedText': table_text_for_guard,  # 🆕 v3.6: QualityGuard 검사용 텍스트
+                    'originalText': info.get('original_content', ''),  # 🆕 v3.6: 원본 텍스트
                     'metadata': {
                         'tableData': {
                             'headers': headers,
                             'rows': rows
-                        }
+                        },
+                        'originalTableCells': info.get('original_table_cells', [])  # 🆕 v3.6
                     },
                     'isEnabled': is_enabled,
                     'elementRole': info.get('element_role', '')
@@ -673,6 +682,7 @@ JSON만 출력하세요."""
                     'objectType': 'textbox',
                     'action': 'replace_content',
                     'generatedText': content if isinstance(content, str) else str(content),
+                    'originalText': info.get('original_content', ''),  # 🆕 v3.6: 원본 텍스트
                     'isEnabled': is_enabled,
                     'elementRole': info.get('element_role', '')
                 })
@@ -735,6 +745,281 @@ JSON만 출력하세요."""
             'mappings': mappings,
             'slide_replacements': slide_replacements
         }
+    
+    async def regenerate_elements(
+        self,
+        user_query: str,
+        template_metadata: Dict[str, Any],
+        target_element_ids: List[str],
+        existing_mappings: List[Dict[str, Any]],
+        additional_context: Optional[str] = None,
+        quality_issues: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """
+        🆕 v3.6: 특정 element만 부분 재생성
+        
+        전체 매핑을 재생성하는 대신 문제가 있는 element만 타겟팅하여 재생성합니다.
+        이렇게 하면 이미 정상적으로 생성된 콘텐츠는 보존됩니다.
+        
+        Args:
+            user_query: 원본 사용자 요청
+            template_metadata: 템플릿 메타데이터
+            target_element_ids: 재생성 대상 elementId 리스트
+            existing_mappings: 기존 매핑 (정상 콘텐츠 참고용)
+            additional_context: 추가 컨텍스트
+            quality_issues: QualityGuard가 감지한 품질 이슈 (프롬프트 힌트용)
+            
+        Returns:
+            {
+                "success": bool,
+                "regenerated_mappings": List[Dict],  # 재생성된 매핑만
+                "regenerated_count": int
+            }
+        """
+        logger.info(f"🔄 [AIDirectMapping] 부분 재생성 시작: {len(target_element_ids)}개 요소")
+        
+        if not target_element_ids:
+            return {
+                "success": True,
+                "regenerated_mappings": [],
+                "regenerated_count": 0,
+                "message": "재생성 대상 요소 없음"
+            }
+        
+        try:
+            # 1. 대상 요소만 포함하는 축소된 템플릿 스펙 생성
+            partial_spec = self._create_partial_template_spec(
+                metadata=template_metadata,
+                target_element_ids=target_element_ids,
+                existing_mappings=existing_mappings
+            )
+            
+            # 2. 품질 이슈 기반 힌트 생성
+            quality_hint = ""
+            if quality_issues:
+                hints = []
+                for issue in quality_issues:
+                    reason = issue.get('reason', '')
+                    elem_id = issue.get('elementId', '')
+                    if reason == 'same_as_template':
+                        hints.append(f"- {elem_id}: 템플릿 원본 텍스트 그대로임. 주제에 맞게 새로 작성 필요")
+                    elif reason == 'table_template_data':
+                        hints.append(f"- {elem_id}: 테이블에 템플릿 원본 데이터 잔존. 주제 관련 데이터로 교체 필요")
+                    elif reason == 'domain_mismatch':
+                        domain = issue.get('detected_domain', '')
+                        keywords = issue.get('keywords_found', [])
+                        hints.append(f"- {elem_id}: '{domain}' 도메인 키워드 감지({keywords}). 현재 주제와 무관한 내용임")
+                
+                if hints:
+                    quality_hint = "\n## ⚠️ 품질 이슈 (반드시 수정 필요)\n" + "\n".join(hints)
+            
+            # 3. 부분 재생성 전용 프롬프트 생성
+            prompt = self._create_partial_regeneration_prompt(
+                user_query=user_query,
+                partial_spec=partial_spec,
+                additional_context=additional_context,
+                quality_hint=quality_hint
+            )
+            
+            # 4. AI 호출
+            response = await self._call_llm(prompt)
+            
+            # 5. 응답 파싱 (간소화된 버전)
+            regenerated = self._parse_partial_response(response, template_metadata, target_element_ids)
+            
+            logger.info(f"✅ [AIDirectMapping] 부분 재생성 완료: {len(regenerated)}개 매핑")
+            
+            return {
+                "success": True,
+                "regenerated_mappings": regenerated,
+                "regenerated_count": len(regenerated)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ [AIDirectMapping] 부분 재생성 실패: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "regenerated_mappings": []
+            }
+    
+    def _create_partial_template_spec(
+        self,
+        metadata: Dict[str, Any],
+        target_element_ids: List[str],
+        existing_mappings: List[Dict[str, Any]]
+    ) -> str:
+        """대상 요소만 포함하는 축소된 템플릿 스펙 생성"""
+        
+        # 기존 매핑을 elementId로 인덱싱
+        existing_by_id = {m.get('elementId'): m for m in existing_mappings}
+        
+        lines = ["=== 재생성 대상 요소 ==="]
+        lines.append(f"총 {len(target_element_ids)}개 요소의 콘텐츠를 새로 생성해주세요.")
+        lines.append("")
+        
+        for slide in metadata.get('slides', []):
+            slide_idx = slide.get('index', 0)
+            slide_elements = []
+            
+            for elem in slide.get('elements', []):
+                elem_id = elem.get('id', '')
+                if elem_id not in target_element_ids:
+                    continue
+                
+                elem_type = elem.get('type', '')
+                elem_role = elem.get('element_role', '')
+                current_content = elem.get('content', '')
+                
+                # 기존에 생성된 (문제가 있는) 콘텐츠 참고용
+                existing = existing_by_id.get(elem_id, {})
+                existing_text = existing.get('generatedText', '')
+                
+                elem_info = {
+                    'id': elem_id,
+                    'role': elem_role,
+                    'type': elem_type,
+                    'template_text': current_content[:50],
+                    'current_generated': existing_text[:50] if existing_text else '(없음)'
+                }
+                
+                # 테이블인 경우 추가 정보
+                if elem_type == 'table':
+                    table_data = elem.get('table_data', {})
+                    elem_info['table_rows'] = table_data.get('rows', 0)
+                    elem_info['table_cols'] = table_data.get('cols', 0)
+                
+                slide_elements.append(elem_info)
+            
+            if slide_elements:
+                lines.append(f"## 슬라이드 {slide_idx}")
+                for e in slide_elements:
+                    lines.append(f"  - {e['id']} | {e['role']} | type={e['type']}")
+                    lines.append(f"    템플릿 원본: \"{e['template_text']}...\"")
+                    lines.append(f"    현재 생성값 (문제있음): \"{e['current_generated']}...\"")
+                    if e.get('table_rows'):
+                        lines.append(f"    ⚠️ 테이블 ({e['table_rows']}x{e['table_cols']}): JSON 2D 배열로 생성")
+                lines.append("")
+        
+        return "\n".join(lines)
+    
+    def _create_partial_regeneration_prompt(
+        self,
+        user_query: str,
+        partial_spec: str,
+        additional_context: Optional[str],
+        quality_hint: str
+    ) -> str:
+        """부분 재생성 전용 프롬프트"""
+        
+        context_section = ""
+        if additional_context:
+            context_section = f"\n## 참고 자료\n{additional_context[:2000]}"
+        
+        return f"""당신은 프레젠테이션 콘텐츠 전문가입니다.
+이전에 생성된 콘텐츠 중 일부에 품질 문제가 발견되었습니다.
+해당 요소들만 주제에 맞게 새로 생성해주세요.
+
+## 사용자 요청 (주제)
+{user_query}
+
+{partial_spec}
+
+{quality_hint}
+{context_section}
+
+## 중요 지침
+1. 위에 나열된 요소들만 새로 생성하세요.
+2. 템플릿 원본 텍스트나 현재 생성값과 완전히 다른 내용으로 작성하세요.
+3. 반드시 사용자 요청(주제)과 관련된 내용이어야 합니다.
+4. 테이블은 JSON 2D 배열로 생성하세요: [["헤더1", "헤더2"], ["데이터1", "데이터2"]]
+
+## 출력 형식 (JSON)
+```json
+{{
+  "mappings": [
+    {{"element_id": "...", "content": "새로 생성된 내용"}},
+    ...
+  ]
+}}
+```
+
+JSON만 출력하세요."""
+    
+    def _parse_partial_response(
+        self,
+        response: str,
+        metadata: Dict[str, Any],
+        target_element_ids: List[str]
+    ) -> List[Dict[str, Any]]:
+        """부분 재생성 응답 파싱"""
+        
+        # JSON 추출
+        json_str = response
+        if "```json" in response:
+            json_str = response.split("```json")[1].split("```")[0]
+        elif "```" in response:
+            json_str = response.split("```")[1].split("```")[0]
+        
+        try:
+            data = json.loads(json_str.strip())
+        except json.JSONDecodeError as e:
+            logger.error(f"부분 재생성 JSON 파싱 실패: {e}")
+            return []
+        
+        # element_id → 상세 정보 매핑
+        id_to_info = {}
+        for slide in metadata.get('slides', []):
+            slide_idx = slide.get('index', 1) - 1
+            for elem in slide.get('elements', []):
+                elem_id = elem.get('id', '')
+                id_to_info[elem_id] = {
+                    'original_name': elem.get('original_name', ''),
+                    'slide_index': slide_idx,
+                    'element_role': elem.get('element_role', ''),
+                    'type': elem.get('type', '')
+                }
+        
+        # 매핑 생성
+        mappings = []
+        for item in data.get('mappings', []):
+            elem_id = item.get('element_id', '')
+            content = item.get('content', '')
+            
+            # 타겟 요소만 처리
+            if elem_id not in target_element_ids:
+                continue
+            
+            info = id_to_info.get(elem_id, {})
+            elem_type = info.get('type', 'textbox')
+            
+            mapping = {
+                'slideIndex': info.get('slide_index', 0),
+                'elementId': elem_id,
+                'originalName': info.get('original_name', ''),
+                'objectType': elem_type if elem_type == 'table' else 'textbox',
+                'action': 'replace_content',
+                'isEnabled': True,
+                'elementRole': info.get('element_role', '')
+            }
+            
+            # 테이블 처리
+            if elem_type == 'table' and isinstance(content, list):
+                headers = content[0] if content else []
+                rows = content[1:] if len(content) > 1 else []
+                mapping['generatedText'] = ''
+                mapping['metadata'] = {
+                    'tableData': {
+                        'headers': headers,
+                        'rows': rows
+                    }
+                }
+            else:
+                mapping['generatedText'] = str(content)
+            
+            mappings.append(mapping)
+        
+        return mappings
 
 
 # 싱글톤 인스턴스

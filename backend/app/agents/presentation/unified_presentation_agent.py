@@ -1615,6 +1615,68 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             if slide_replacements:
                 logger.info(f"  🔄 슬라이드 대체 요청: {len(slide_replacements)}개")
             
+            # =================================================================
+            # 🆕 v3.6: Quality Guard & 부분 재생성 (Agentic AI)
+            # 
+            # 품질 이슈가 있는 요소만 타겟팅하여 부분 재생성합니다.
+            # 기존 정상 콘텐츠는 보존됩니다.
+            # =================================================================
+            from app.tools.presentation.quality_guard_tool import QualityGuard
+            quality_guard = QualityGuard()
+            
+            # 품질 검증
+            completeness_result = quality_guard.check_completeness(mappings)
+            stagnation_result = quality_guard.check_data_stagnation(mappings, user_query)
+            
+            is_complete = completeness_result["is_complete"]
+            is_clean = stagnation_result["is_clean"]
+            
+            if is_complete and is_clean:
+                logger.info(f"  ✨ [QualityGuard] 모든 품질 검증 통과")
+            else:
+                # 품질 이슈가 있는 경우: 부분 재생성 시도
+                log_messages = []
+                if not is_complete:
+                    missing_items = completeness_result["missing_items"]
+                    log_messages.append(f"누락 {len(missing_items)}건")
+                if not is_clean:
+                    stagnant_count = len(stagnation_result.get("stagnant_items", []))
+                    mismatch_count = len(stagnation_result.get("domain_mismatch_items", []))
+                    if stagnant_count > 0:
+                        log_messages.append(f"데이터 정체 {stagnant_count}건")
+                    if mismatch_count > 0:
+                        log_messages.append(f"도메인 불일치 {mismatch_count}건")
+                
+                logger.warning(f"  🚨 [QualityGuard] 품질 이슈 감지 ({', '.join(log_messages)}) -> 부분 재생성 시도")
+                
+                # 문제가 있는 elementId 목록 추출
+                stagnant_element_ids = quality_guard.get_stagnant_element_ids(stagnation_result)
+                
+                if stagnant_element_ids:
+                    # 품질 이슈 정보 수집 (프롬프트 힌트용)
+                    quality_issues = stagnation_result.get("stagnant_items", []) + stagnation_result.get("domain_mismatch_items", [])
+                    
+                    # 부분 재생성 실행
+                    regen_result = await ai_mapping_tool.regenerate_elements(
+                        user_query=user_query,
+                        template_metadata=template_metadata,
+                        target_element_ids=stagnant_element_ids,
+                        existing_mappings=mappings,
+                        additional_context=enriched_context,
+                        quality_issues=quality_issues
+                    )
+                    
+                    if regen_result.get("success") and regen_result.get("regenerated_mappings"):
+                        regenerated = regen_result["regenerated_mappings"]
+                        logger.info(f"  🔄 [QualityGuard] 부분 재생성 완료: {len(regenerated)}개 매핑 갱신")
+                        
+                        # elementId 기준으로 기존 매핑 갱신 (덮어쓰기)
+                        mappings = self._merge_mappings(mappings, regenerated)
+                    else:
+                        logger.warning(f"  ⚠️ [QualityGuard] 부분 재생성 실패 또는 결과 없음")
+            
+            # =================================================================
+            
             # Step 4: 매핑을 UI 형식으로 변환
             ui_slides = self._convert_ai_mappings_to_ui_format(
                 slides_info=slides_info,
@@ -2406,27 +2468,35 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
                 logger.warning(f"⚠️ 메타데이터 로드 실패: {template_id}, originalName 추가 스킵")
                 return mappings
             
-            # elementId → originalName 매핑 생성
-            element_to_name = {}
+            # elementId → (originalName, originalText) 매핑 생성
+            element_info = {}
             for slide in metadata.get("slides", []):
                 for elem in slide.get("elements", []):
                     elem_id = elem.get("id", "")
                     original_name = elem.get("original_name", "")
-                    if elem_id and original_name:
-                        element_to_name[elem_id] = original_name
+                    original_text = elem.get("content", "")
+                    if elem_id:
+                        element_info[elem_id] = {
+                            "name": original_name,
+                            "text": original_text
+                        }
             
-            logger.info(f"📋 메타데이터에서 {len(element_to_name)}개 elementId→originalName 매핑 로드")
+            logger.info(f"📋 메타데이터에서 {len(element_info)}개 요소 정보 로드")
             
-            # 매핑에 originalName 추가
+            # 매핑에 originalName, originalText 추가
             enriched = []
             for m in mappings:
                 elem_id = m.get("elementId", "")
-                if not m.get("originalName") and elem_id in element_to_name:
-                    m["originalName"] = element_to_name[elem_id]
+                if elem_id in element_info:
+                    info = element_info[elem_id]
+                    if not m.get("originalName"):
+                        m["originalName"] = info["name"]
+                    if not m.get("originalText"):
+                        m["originalText"] = info["text"]
                 enriched.append(m)
             
             enriched_count = sum(1 for m in enriched if m.get("originalName"))
-            logger.info(f"✅ originalName 추가 완료: {enriched_count}/{len(enriched)} 매핑")
+            logger.info(f"✅ 요소 정보(Name/Text) 추가 완료: {enriched_count}/{len(enriched)} 매핑")
             
             return enriched
             
@@ -2516,6 +2586,48 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         
         logger.debug(f"📋 생성된 매핑: {len(mappings)}개 (textbox: {sum(1 for m in mappings if m['objectType']=='textbox')}, shape: {sum(1 for m in mappings if m['objectType']=='shape')}, 기타: {sum(1 for m in mappings if m['objectType'] not in ['textbox', 'shape'])})")
         return mappings
+    
+    def _merge_mappings(
+        self,
+        original_mappings: List[Dict[str, Any]],
+        regenerated_mappings: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        🆕 v3.6: elementId 기준으로 기존 매핑에 재생성된 매핑을 병합
+        
+        기존 매핑에서 재생성된 elementId의 항목을 새 값으로 교체합니다.
+        이렇게 하면 정상 콘텐츠는 보존되고 문제 요소만 갱신됩니다.
+        
+        Args:
+            original_mappings: 기존 매핑 리스트
+            regenerated_mappings: 재생성된 매핑 리스트 (문제 요소만)
+            
+        Returns:
+            병합된 매핑 리스트
+        """
+        if not regenerated_mappings:
+            return original_mappings
+        
+        # 재생성된 매핑을 elementId로 인덱싱
+        regen_by_id = {m.get('elementId'): m for m in regenerated_mappings}
+        
+        # 기존 매핑에서 재생성된 항목 교체
+        merged = []
+        replaced_count = 0
+        
+        for orig in original_mappings:
+            elem_id = orig.get('elementId')
+            if elem_id in regen_by_id:
+                # 재생성된 매핑으로 교체
+                merged.append(regen_by_id[elem_id])
+                replaced_count += 1
+            else:
+                # 기존 매핑 유지
+                merged.append(orig)
+        
+        logger.info(f"  📋 [MergeMappings] {replaced_count}개 매핑 갱신, 총 {len(merged)}개")
+        
+        return merged
 
 
 # Singleton instance

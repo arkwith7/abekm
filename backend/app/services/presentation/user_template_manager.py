@@ -263,13 +263,25 @@ class UserTemplateManager:
     def get_template_metadata(self, user_id: str, template_id: str) -> Optional[Dict[str, Any]]:
         """템플릿 메타데이터 반환"""
         user_dir = self._get_user_dir(user_id)
-        metadata_file = user_dir / 'metadata' / f"{template_id}_metadata.json"
+        
+        # 템플릿 ID 정규화: 공백을 언더스코어로 변환
+        normalized_id = template_id.replace(' ', '_')
+        metadata_file = user_dir / 'metadata' / f"{normalized_id}_metadata.json"
         
         if metadata_file.exists():
             try:
                 return json.loads(metadata_file.read_text(encoding='utf-8'))
             except Exception as e:
                 logger.error(f"메타데이터 로드 실패: {e}")
+        
+        # 원본 템플릿 ID로도 시도
+        if normalized_id != template_id:
+            original_file = user_dir / 'metadata' / f"{template_id}_metadata.json"
+            if original_file.exists():
+                try:
+                    return json.loads(original_file.read_text(encoding='utf-8'))
+                except Exception as e:
+                    logger.error(f"메타데이터 로드 실패 (원본 ID): {e}")
         
         return None
     

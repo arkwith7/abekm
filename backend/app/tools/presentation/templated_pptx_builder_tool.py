@@ -205,8 +205,10 @@ class TemplatedPPTXBuilderTool(BaseTool):
         Returns:
             Dict with file path and metadata
         """
+        # 템플릿 ID 정규화: 공백을 언더스코어로 변환, 소문자
+        normalized_template_id = template_id.lower().replace(' ', '_')
         logger.info(
-            f"🏗️ [TemplatedBuilder] 시작: template_id='{template_id}', "
+            f"🏗️ [TemplatedBuilder] 시작: template_id='{template_id}' → '{normalized_template_id}', "
             f"mappings={len(mappings) if mappings else 0}, "
             f"slide_matches={len(slide_matches) if slide_matches else 0}, user_id={user_id}"
         )
@@ -219,22 +221,22 @@ class TemplatedPPTXBuilderTool(BaseTool):
             
             # Strategy 1: user_id가 주어진 경우, 해당 사용자의 템플릿 확인
             if user_id:
-                template_details = user_template_manager.get_template_details(str(user_id), template_id)
+                template_details = user_template_manager.get_template_details(str(user_id), normalized_template_id)
                 if template_details:
                     logger.info(f"🏗️ [TemplatedBuilder] Found template in user {user_id}'s directory")
             
             # Strategy 2: 못 찾으면 템플릿 소유자 검색 (다른 사용자 템플릿)
             if not template_details:
-                owner_id = user_template_manager.find_template_owner(template_id)
+                owner_id = user_template_manager.find_template_owner(normalized_template_id)
                 if owner_id:
-                    template_details = user_template_manager.get_template_details(owner_id, template_id)
+                    template_details = user_template_manager.get_template_details(owner_id, normalized_template_id)
                     if template_details:
                         logger.info(f"🏗️ [TemplatedBuilder] Found template owned by user {owner_id}")
             
             # Strategy 3: 시스템 템플릿 매니저에서 검색 (legacy)
             if not template_details:
                 from app.services.presentation.ppt_template_manager import template_manager
-                template_details = template_manager.get_template_details(template_id)
+                template_details = template_manager.get_template_details(normalized_template_id)
                 if template_details:
                     logger.info(f"🏗️ [TemplatedBuilder] Found template in system templates")
             

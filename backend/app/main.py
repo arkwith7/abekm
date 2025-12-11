@@ -134,6 +134,59 @@ def configure_logging():
     logging.getLogger("pdfminer.pdfinterp").setLevel(logging.WARNING)
     logging.getLogger("pdfminer.pdfdocument").setLevel(logging.WARNING)
 
+    # =========================================================================
+    # 🆕 Loguru Integration (Intercept Standard Logging)
+    # =========================================================================
+    import sys
+    from loguru import logger as loguru_logger
+
+    class InterceptHandler(logging.Handler):
+        def emit(self, record):
+            # Get corresponding Loguru level if it exists
+            try:
+                level = loguru_logger.level(record.levelname).name
+            except ValueError:
+                level = record.levelno
+
+            # Find caller from where originated the logged message
+            frame, depth = logging.currentframe(), 2
+            while frame.f_code.co_filename == logging.__file__:
+                frame = frame.f_back
+                depth += 1
+
+            loguru_logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+    # 1. Remove default Loguru handler
+    loguru_logger.remove()
+
+    # 2. Add File Handler (JSON or Plain)
+    # Note: We use the same format as standard logging for consistency if needed,
+    # but Loguru's power is in its own formatting. Here we align with settings.
+    loguru_logger.add(
+        settings.log_file_path(),
+        rotation=settings.log_max_bytes,  # Pass int directly for bytes
+        retention=settings.log_backup_count,
+        level=settings.log_level.upper(),
+        encoding="utf-8",
+        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}"
+    )
+
+    # 3. Add Console Handler
+    loguru_logger.add(
+        sys.stderr,
+        level=settings.log_level.upper(),
+        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
+    )
+
+    # 4. Intercept Standard Logging
+    # Replace handlers on the root logger
+    logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
+    
+    # Ensure Uvicorn logs are also intercepted
+    for logger_name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+        logging_logger = logging.getLogger(logger_name)
+        logging_logger.handlers = [InterceptHandler()]
+
 configure_logging()
 
 # 로거 설정 (이 모듈 전용)

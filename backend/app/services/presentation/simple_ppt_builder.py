@@ -251,6 +251,13 @@ class SimplePPTBuilder:
         metadata = mapping.get('metadata', {})
         table_data = metadata.get('tableData', {})
         
+        # 🆕 v3.6: generatedText에서 테이블 데이터 파싱 시도
+        if not table_data or (not table_data.get('headers') and not table_data.get('rows')):
+            generated_text = mapping.get('generatedText', '') or mapping.get('newContent', '')
+            if generated_text and '|' in str(generated_text):
+                table_data = self._parse_text_to_table_data(generated_text, len(table.rows), len(table.columns))
+                logger.info(f"📊 테이블 텍스트 파싱: {shape.name} -> {len(table_data.get('rows', []))+1}행")
+        
         if not table_data:
             # newContent에서 2D 배열 시도
             new_content = mapping.get('newContent', '')
@@ -422,6 +429,76 @@ class SimplePPTBuilder:
                 run.font.color.rgb = style['color_rgb']
             elif style.get('color_theme'):
                 run.font.color.theme_color = style['color_theme']
+
+    def _parse_text_to_table_data(self, text: str, target_rows: int, target_cols: int) -> Dict[str, Any]:
+        """
+        🆕 v3.6: 파이프(|) 구분 텍스트를 테이블 데이터로 변환
+        
+        입력 예시 1 (2열 테이블, 행 구분자가 있는 경우):
+          "항목 | 사양\n검색 DB | USPTO, EPO"
+          
+        입력 예시 2 (모든 셀이 파이프로 연결된 경우):
+          "항목 | 내용 | 검색 DB | USPTO | 검색 기간 | 최근 20년"
+          
+        Args:
+            text: 파이프 구분 텍스트
+            target_rows: 대상 테이블 행 수
+            target_cols: 대상 테이블 열 수
+            
+        Returns:
+            {'headers': [...], 'rows': [[...], ...]}
+        """
+        if not text or '|' not in text:
+            return {}
+        
+        # 개행 또는 파이프로 분할
+        text = str(text).strip()
+        
+        # 방법 1: 개행으로 행 구분이 되어 있는 경우
+        if '\n' in text:
+            lines = [line.strip() for line in text.split('\n') if line.strip()]
+            if lines and '|' in lines[0]:
+                parsed_rows = []
+                for line in lines:
+                    cells = [cell.strip() for cell in line.split('|')]
+                    # 빈 셀 제거 (앞뒤 | 때문에 생기는 빈 문자열)
+                    cells = [c for c in cells if c]
+                    if cells:
+                        parsed_rows.append(cells)
+                
+                if parsed_rows:
+                    return {
+                        'headers': parsed_rows[0] if parsed_rows else [],
+                        'rows': parsed_rows[1:] if len(parsed_rows) > 1 else []
+                    }
+        
+        # 방법 2: 모든 셀이 한 줄에 파이프로 연결된 경우
+        # target_cols에 맞춰 행으로 분할
+        all_cells = [cell.strip() for cell in text.split('|') if cell.strip()]
+        
+        if all_cells and target_cols > 0:
+            # 셀을 target_cols 개씩 나눠서 행으로 만듦
+            parsed_rows = []
+            for i in range(0, len(all_cells), target_cols):
+                row = all_cells[i:i + target_cols]
+                # 부족한 열은 빈 문자열로 채움
+                while len(row) < target_cols:
+                    row.append('')
+                parsed_rows.append(row)
+            
+            # target_rows에 맞춰 조정
+            while len(parsed_rows) < target_rows:
+                parsed_rows.append([''] * target_cols)
+            parsed_rows = parsed_rows[:target_rows]
+            
+            return {
+                'headers': parsed_rows[0] if parsed_rows else [],
+                'rows': parsed_rows[1:] if len(parsed_rows) > 1 else []
+            }
+        
+        return {}
+
+
 def build_ppt_from_mappings(
     template_path: str,
     mappings: List[Dict[str, Any]],
