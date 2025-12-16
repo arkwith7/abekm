@@ -48,11 +48,11 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
-# 환경
-.env
-.env.local
-.env.development
-.env.production
+# 환경 (모든 위치의 .env 파일 제외)
+**/.env
+**/.env.local
+**/.env.development
+**/.env.production
 .env.development.local
 .env.test.local
 .env.production.local
@@ -166,13 +166,12 @@ untitled-*
 # iCloud
 *.icloud
 
-# 환경변수 파일들
-.env.production
-.env.development
-*/.env.production
-*/.env.development
-deployment/docker/environments/.env.production
-deployment/docker/environments/.env.development
+# 환경변수 파일들 (중복 제거됨 - 위의 **/.env 규칙으로 통합)
+# .env.production
+# .env.development
+# backend/.env
+# deployment/docker/environments/.env.production
+# deployment/docker/environments/.env.development
 
 
 # 자동 생성된 알렘빅 파일 패턴
@@ -312,13 +311,17 @@ backend_error.log
 backend/*.log
 
 # ============================================================================
-# 중요: backend 디렉토리의 모든 Python 소스 파일은 포함
+# 중요: backend 디렉토리의 소스 파일은 포함 (환경 파일 제외)
 # ============================================================================
 !backend/**/*.py
 !backend/**/*.txt
 !backend/**/*.sh
 !backend/**/*.json
-!backend/**/*.md.log
+!backend/**/*.md
+# 단, .env 파일과 .pyc 파일은 제외 (보안 및 빌드 아티팩트)
+backend/**/.env
+backend/**/*.pyc
+backend/.env.log
 backend/*.log
 
 # 마크다운 리포트/가이드 (선택적)
