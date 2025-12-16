@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libpng-dev \
     fonts-nanum \
+    poppler-utils \
     libreoffice \
     libreoffice-writer \
     libreoffice-calc \
@@ -46,8 +47,9 @@ RUN mkdir -p uploads dictionaries
 # 사용자 사전 복사
 COPY dictionaries/ dictionaries/
 
-# 초기화 및 시작 스크립트 실행 권한 부여
-RUN chmod +x init_database.sh start_with_init.sh
+# 초기화 및 시작 스크립트 복사
+COPY start_with_init.sh .
+RUN chmod +x start_with_init.sh
 
 # 포트 노출
 EXPOSE 8000

@@ -304,7 +304,9 @@ class Settings(BaseSettings):
     # 로깅 설정
     log_level: str = "INFO"
     log_format: str = "json"
-    log_dir: str = "/home/admin/Dev/abekm/backend/logs"
+    log_dir: str = Field(
+        default_factory=lambda: os.getenv('LOG_DIR', str(Path(__file__).parent.parent.parent / "logs"))
+    )
     log_file_name: str = "backend.log"
     log_max_bytes: int = 5 * 1024 * 1024  # 5MB
     log_backup_count: int = 5
@@ -321,7 +323,10 @@ class Settings(BaseSettings):
     sql_log_sample_rate: float = 0.0  # 0~1 사이, 느린 쿼리 외 임의 샘플 로그 (부하 분석용)
     
     # 프레젠테이션 산출물 저장 경로
-    presentation_output_dir: str = "data/presentations"
+    presentation_output_dir: str = Field(
+        default_factory=lambda: os.getenv('PRESENTATION_OUTPUT_DIR', 
+            str(Path(__file__).parent.parent.parent / "data" / "presentations"))
+    )
     
     # Office Generator Service 설정
     office_generator_url: str = Field(

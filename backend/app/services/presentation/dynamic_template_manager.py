@@ -21,7 +21,8 @@ class DynamicTemplateManager:
         self.metadata_cache: Dict[str, Dict[str, Any]] = {}
         
         # 템플릿 저장소 경로 - uploads/templates 디렉토리 사용
-        base_dir = Path("uploads/templates")
+        backend_root = Path(__file__).parent.parent.parent.parent
+        base_dir = Path(os.getenv('UPLOAD_DIR', str(backend_root / "uploads"))) / "templates"
         self.template_storage_path = base_dir / "user_templates"
         self.metadata_storage_path = base_dir / "metadata"
         

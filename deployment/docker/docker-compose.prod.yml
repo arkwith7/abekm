@@ -10,6 +10,8 @@ services:
   postgres:
     image: ankane/pgvector:latest
     container_name: abkms-postgres-prod
+    env_file:
+      - ./backend/.env
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-wkms}
       POSTGRES_USER: ${POSTGRES_USER:-wkms}
@@ -55,6 +57,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: abkms-backend-prod
+    env_file:
+      - ./backend/.env
     environment:
       # DATABASE_URL: asyncpg URL consumed by app & seeder
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wkms}
@@ -95,6 +99,47 @@ services:
       retries: 3
       start_period: 40s
 
+  # Celery 워커 서비스 (백그라운드 작업 처리)
+  celery-worker:
+    image: abkms-backend:prod
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: abkms-celery-worker-prod
+    env_file:
+      - ./backend/.env
+    command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wkms}
+      - REDIS_URL=redis://redis:6379
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-s3}
+      - AWS_REGION=${AWS_REGION}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
+      - SECRET_KEY=${SECRET_KEY}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DB_HOST=postgres
+      - DB_USER=${POSTGRES_USER:-wkms}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=${POSTGRES_DB:-wkms}
+      - DB_PORT=5432
+    volumes:
+      - abkms_backend_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - abkms-network
+    restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.core.celery_app", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # 프론트엔드 서비스 (프로덕션)
   frontend:
     image: abkms-frontend:prod
@@ -105,6 +150,8 @@ services:
         REACT_APP_API_URL: ${REACT_APP_API_URL}
         REACT_APP_ENV: ${REACT_APP_ENV}
     container_name: abkms-frontend-prod
+    env_file:
+      - ./frontend/.env
     environment:
       - REACT_APP_API_URL=${REACT_APP_API_URL}
       - REACT_APP_ENV=production

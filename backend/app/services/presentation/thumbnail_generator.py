@@ -23,7 +23,9 @@ class ThumbnailGenerator:
     
     def __init__(self):
         # 썸네일 캐시 디렉토리 - uploads/templates 디렉토리 사용
-        self.thumbnail_cache_dir = Path("uploads/templates/thumbnails")
+        backend_root = Path(__file__).parent.parent.parent.parent
+        upload_dir = Path(os.getenv('UPLOAD_DIR', str(backend_root / "uploads")))
+        self.thumbnail_cache_dir = upload_dir / "templates" / "thumbnails"
         self.thumbnail_cache_dir.mkdir(parents=True, exist_ok=True)
         
         # 썸네일 설정

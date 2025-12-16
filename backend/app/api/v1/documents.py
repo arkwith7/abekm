@@ -114,7 +114,7 @@ router = APIRouter(
 )
 
 # ⚙️ 업로드 설정
-UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR = Path(os.getenv('UPLOAD_DIR', str(Path(__file__).parent.parent.parent.parent / "uploads")))
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 # 📏 파일 제한 설정

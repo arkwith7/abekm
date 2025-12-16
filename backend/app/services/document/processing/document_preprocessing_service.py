@@ -49,7 +49,8 @@ class DocumentPreprocessingService:
         
         # 청킹 디버그 로그 설정
         self.chunking_debug = os.getenv('CHUNKING_DEBUG', 'false').lower() == 'true'
-        self.chunking_log_dir = Path('/home/admin/Dev/abekm/backend/logs/chunking')
+        backend_root = Path(__file__).parent.parent.parent.parent.parent
+        self.chunking_log_dir = Path(os.getenv('CHUNKING_LOG_DIR', str(backend_root / 'logs' / 'chunking')))
         if self.chunking_debug:
             self.chunking_log_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"📊 청킹 디버그 모드 활성화: {self.chunking_log_dir}")

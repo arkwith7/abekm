@@ -194,43 +194,49 @@ jupyter_notebook/data/extracted_objects
 # 프로젝트별 임시/테스트 파일
 # ============================================================================
 
-# 테스트/디버그 스크립트 (루트 디렉토리)
-test_*.py
-test_*.sh
-test_*.txt
-check_*.py
-check_*.sh
-check_*.sql
-analyze_*.py
-debug_*.py
-diagnose_*.py
-verify_*.py
-verify_*.sh
-fix_*.py
-fix_*.sh
-update_*.py
+# 테스트/디버그 스크립트 (루트 디렉토리만, backend 제외)
+/test_*.py
+/test_*.sh
+/test_*.txt
+/check_*.py
+/check_*.sh
+/check_*.sql
+/analyze_*.py
+/debug_*.py
+/diagnose_*.py
+/verify_*.py
+/verify_*.sh
+/fix_*.py
+/fix_*.sh
+/update_*.py
 
 # 마이그레이션/백업 SQL
 *.sql
 !backend/alembic/versions/*.sql
+!postgres/init.sql
 migration_*.sql
 backup_*.sql
 reset_*.sql
 complete_*.sql
 
-# 임시 분석 파일
-*_analysis.py
-*_analysis.csv
-*_results.json
-*_results.csv
-document_analysis*.csv
-processing_analysis.py
+# 마이그레이션/백업 SQL (루트 디렉토리만)
+/migration_*.sql
+/backup_*.sql
+/reset_*.sql
+/complete_*.sql
 
-# 개발용 스크립트
-add_*.py
-optimized_*.py
-large_file_*.py
-quick_*.py
+# 임시 분석 파일 (루트 디렉토리만)
+/*_analysis.py
+/*_analysis.csv
+/*_results.json
+/*_results.csv
+/document_analysis*.csv
+/processing_analysis.py
+
+# 개발용 스크립트 (루트 디렉토리만)
+/add_*.py
+/optimized_*.py
+/large_file_*.py
 
 # 임시 쿠키/세션 파일
 cookies.txt
@@ -239,67 +245,80 @@ cookies.txt
 # IPython/Jupyter 노트북 (데이터 제외)
 jupyter_notebook/data/input_docs/
 jupyter_notebook/data/output_texts/
-jupyter_notebook/data/azure_di_output/
-jupyter_notebook/data/opensource_output/
-jupyter_notebook/data/textract_output/
-jupyter_notebook/data/extracted_objects/
-*.ipynb_checkpoints/
+jupyter_noteb (루트 디렉토리만)
+/*_plan.md
+/*_proposal.md
+/*_refactoring_plan.md
+/design_*.py
 
-# 설계 문서 임시 파일
-*_plan.md
-*_proposal.md
-*_refactoring_plan.md
-design_*.py
+# 배포 스크립트 임시 파일 (루트 디렉토리만)
+/dev.sh
+/dev-*.sh
+/deploy-*.sh
 
-# 배포 스크립트 임시 파일
-dev.sh
-dev-*.sh
-deploy-*.sh
-
+# 텍스트 파일 (필요한 것만 추가)
+/test_*.txt
+/*.txt
+!requirements.txt
+!README.txt
+!LICENSE.txt
+# backend 디렉토리의 txt 파일은 포함
+!backend/**/*
 # 텍스트 파일 (필요한 것만 추가)
 test_*.txt
 *.txt
 !requirements.txt
 !README.txt
-!LICENSE.txt
+!LICENSE.txt (루트 디렉토리만)
+/*_iam_policy.json
+/*_comparison_results.json
 
-# AWS/Azure 정책 파일 임시 버전
-*_iam_policy.json
-*_comparison_results.json
-
-# Celery 예제
-celery_implementation_example.py
-celery_requirements.txt
+# Celery 예제 (루트 디렉토리만)
+/celery_implementation_example.py
+/celery_requirements.txt
 
 # 프로젝트별 임시 디렉토리
 kmsapp/
 tmp/
 temp/
 
-# 데이터베이스 덤프
-*.dump
-*.sql.gz
-tb_*.sql
+# 데이터베이스 덤프 (루트 디렉토리만)
+/*.dump
+/*.sql.gz
+/tb_*.sql
 
 # 쉘 스크립트 (필요한 것만 명시적으로 추가)
 *.sh
 !shell-script/**/*.sh
 !deployment/**/*.sh
 !k8s/**/*.sh
-
-# Package 파일 (루트)
-package.json
-package-lock.json
+!backendll-script/**/*.sh
+!deployment/**/*.sh
+!k8s/**/*.sh
+만, backend 제외)
+/package.json
+/package-lock.json
 
 # Docker override
 docker-compose.override.yml
 docker-compose.*.yml
 !docker-compose.yml
 !docker-compose.prod.yml
+!docker-compose.dev.yml
 
 # 백엔드 로그
 backend.log
 backend_error.log
+backend/*.log
+
+# ============================================================================
+# 중요: backend 디렉토리의 모든 Python 소스 파일은 포함
+# ============================================================================
+!backend/**/*.py
+!backend/**/*.txt
+!backend/**/*.sh
+!backend/**/*.json
+!backend/**/*.md.log
 backend/*.log
 
 # 마크다운 리포트/가이드 (선택적)
