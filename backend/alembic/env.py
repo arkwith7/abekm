@@ -10,14 +10,21 @@ from alembic import context
 # access to the values within the .ini file in use.
 config = context.config
 
-# Override sqlalchemy.url with environment variable if available
-db_host = os.getenv('DB_HOST', 'localhost')
-db_user = os.getenv('DB_USER', 'wkms')
-db_password = os.getenv('DB_PASSWORD', 'wkms123')
-db_name = os.getenv('DB_NAME', 'wkms')
-db_port = os.getenv('DB_PORT', '5432')
+# Prefer DATABASE_URL when available (Docker/production). Alembic requires a
+# synchronous driver URL, so convert asyncpg URL if present.
+raw_database_url = (os.getenv("DATABASE_URL") or "").strip()
 
-database_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+if raw_database_url:
+    database_url = raw_database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+else:
+    # Fallback to explicit DB_* vars (or POSTGRES_* vars), defaulting to localhost
+    db_host = os.getenv("DB_HOST") or os.getenv("POSTGRES_HOST") or "localhost"
+    db_user = os.getenv("DB_USER") or os.getenv("POSTGRES_USER") or "wkms"
+    db_password = os.getenv("DB_PASSWORD") or os.getenv("POSTGRES_PASSWORD") or "wkms123"
+    db_name = os.getenv("DB_NAME") or os.getenv("POSTGRES_DB") or "wkms"
+    db_port = os.getenv("DB_PORT") or os.getenv("POSTGRES_PORT") or "5432"
+    database_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
 config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.

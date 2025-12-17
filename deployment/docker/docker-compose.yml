@@ -2,8 +2,8 @@ services:
   # 데이터베이스 서비스
   postgres:
     build:
-      context: ../..
-      dockerfile: postgres/Dockerfile
+      context: ./postgres
+      dockerfile: Dockerfile
     image: abkms-postgres
     container_name: abkms-postgres
     environment:
@@ -59,9 +59,7 @@ services:
       # - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       # - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       # - AWS_S3_BUCKET=${AWS_S3_BUCKET}
-      # Office Generator Service
-      - PPTXGENJS_SERVICE_URL=${PPTXGENJS_SERVICE_URL:-http://office-generator:3001}
-      - PPTXGENJS_API_KEY=${OFFICE_GENERATOR_API_KEY:-}
+      # (선택) Office Generator Service 설정은 backend/.env에서 관리
     volumes:
       - ./backend:/app
       - abkms_backend_uploads:/app/uploads
@@ -70,8 +68,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      office-generator:
-        condition: service_healthy
     networks:
       - abkms-network
     restart: unless-stopped
@@ -86,15 +82,6 @@ services:
     env_file:
       - ./backend/.env
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
-    environment:
-      # DB/Redis 등 핵심 설정은 ./backend/.env (env_file) 를 단일 소스로 사용
-      # AWS 자격증명은 런타임 환경 변수 또는 IAM Role 사용 권장
-      # - AWS_REGION=${AWS_REGION}
-      # - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      # - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      # - AWS_S3_BUCKET=${AWS_S3_BUCKET}
-      - PPTXGENJS_SERVICE_URL=${PPTXGENJS_SERVICE_URL:-http://office-generator:3001}
-      - PPTXGENJS_API_KEY=${OFFICE_GENERATOR_API_KEY:-}
     volumes:
       - ./backend:/app
       - abkms_backend_uploads:/app/uploads
@@ -138,30 +125,6 @@ services:
     networks:
       - abkms-network
     restart: unless-stopped
-
-  # Office Generator Service (Node.js PPTX generator)
-  office-generator:
-    build:
-      context: ./office-generator-service
-      dockerfile: Dockerfile
-    image: abkms-office-generator
-    container_name: abkms-office-generator
-    ports:
-      - "3001:3001"
-    environment:
-      - NODE_ENV=${NODE_ENV:-production}
-      - PORT=3001
-      - API_KEY=${OFFICE_GENERATOR_API_KEY:-}
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-    networks:
-      - abkms-network
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); })"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
 
   # Nginx 리버스 프록시
   nginx:

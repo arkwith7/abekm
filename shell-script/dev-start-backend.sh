@@ -9,6 +9,8 @@
 REPO_ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
 cd "$REPO_ROOT_DIR" || exit 1
 
+set -euo pipefail
+
 echo "==================================================================="
 echo "   WKMS 백엔드 개발 서버 시작 (Docker Compose / reload)"
 echo "==================================================================="
@@ -64,12 +66,57 @@ echo "💡 서버를 중지하려면 Ctrl+C를 누르세요."
 echo ""
 
 # 백그라운드로 띄우고, 로그를 follow (Ctrl+C 시 backend/celery-worker stop)
-"${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --build backend celery-worker
+if ! "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" up -d --build backend celery-worker; then
+    echo ""
+    echo "❌ docker compose up 실패: 위 로그를 확인하세요. (컨테이너를 시작하지 못했습니다)"
+    exit 1
+fi
+
+echo ""
+echo "⏳ backend/celery-worker가 기동될 때까지 잠시 대기합니다..."
+
+wait_for_running() {
+    local container_name="$1"
+    local timeout_seconds="$2"
+    local start_ts
+    start_ts="$(date +%s)"
+
+    while true; do
+        local now_ts elapsed status
+        now_ts="$(date +%s)"
+        elapsed=$((now_ts - start_ts))
+
+        status="$(docker inspect -f '{{.State.Status}}' "$container_name" 2>/dev/null || true)"
+
+        if [[ "$status" == "running" ]]; then
+            return 0
+        fi
+
+        if (( elapsed >= timeout_seconds )); then
+            echo "❌ 타임아웃: $container_name 상태=$status (>${timeout_seconds}s)"
+            return 1
+        fi
+
+        sleep 1
+    done
+}
+
+if ! wait_for_running "abkms-backend" 90; then
+    echo "---- docker compose ps -a ----"
+    "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" ps -a || true
+    exit 1
+fi
+
+if ! wait_for_running "abkms-celery-worker" 90; then
+    echo "---- docker compose ps -a ----"
+    "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" ps -a || true
+    exit 1
+fi
 
 echo ""
 echo "🎉 컨테이너가 시작되었습니다. 로그를 표시합니다:"
 echo "==================================================================="
 "${DOCKER_COMPOSE[@]}" -f "$COMPOSE_FILE" logs -f --tail=100 backend celery-worker
 
-# logs -f 종료 후 정리
-cleanup
+# logs -f가 종료되면(컨테이너가 멈췄거나 로그 스트림이 종료됨) 스크립트도 종료
+exit 0
