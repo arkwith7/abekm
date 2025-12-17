@@ -6,12 +6,10 @@ services:
       dockerfile: postgres/Dockerfile
     image: abkms-postgres
     container_name: abkms-postgres
-    env_file:
-      - ./backend/.env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-wkms}
+      POSTGRES_USER: ${POSTGRES_USER:-wkms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wkms123}
       POSTGRES_INITDB_ROOT_USERNAME: postgres
       POSTGRES_INITDB_ROOT_PASSWORD: postgres
     ports:
@@ -22,7 +20,7 @@ services:
       - abkms-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,20 +50,20 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - REDIS_URL=${REDIS_URL}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - SECRET_KEY=${SECRET_KEY}
-      - CORS_ORIGINS=${CORS_ORIGINS}
-      - ENVIRONMENT=${ENVIRONMENT}
+      # docker-compose 네트워크에서 서비스 이름으로 접속되도록 오버라이드
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD:-wkms123}@postgres:5432/${POSTGRES_DB:-wkms}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-wkms}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-wkms123}
+      - DB_NAME=${POSTGRES_DB:-wkms}
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
       # 데이터 초기화 제어: FORCE_DB_SEED=true 로 설정하면 start_with_init.sh 가 강제 시딩 수행
       # 기본 로직: tb_user, tb_user_roles, tb_user_permissions, tb_knowledge_categories 중 하나라도 비어 있으면 시딩
       - FORCE_DB_SEED=${FORCE_DB_SEED:-false}
-      # 파일 저장소 설정 (local | s3)
-      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
       # AWS 자격증명은 런타임 환경 변수 또는 IAM Role 사용 권장
       # - AWS_REGION=${AWS_REGION}
       # - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
@@ -99,15 +97,16 @@ services:
       - ./backend/.env
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - REDIS_URL=${REDIS_URL}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
-      - SECRET_KEY=${SECRET_KEY}
-      - ENVIRONMENT=${ENVIRONMENT}
-      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD:-wkms123}@postgres:5432/${POSTGRES_DB:-wkms}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${POSTGRES_USER:-wkms}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-wkms123}
+      - DB_NAME=${POSTGRES_DB:-wkms}
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
       # AWS 자격증명은 런타임 환경 변수 또는 IAM Role 사용 권장
       # - AWS_REGION=${AWS_REGION}
       # - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
@@ -140,7 +139,10 @@ services:
       - "3000:3000"
     environment:
       # 환경 변수에서 읽어온 값들 사용
-      - REACT_APP_API_URL=${REACT_APP_API_URL:-http://localhost:8000}
+      # 권장: 클라이언트는 상대경로(/api/...) 사용 → REACT_APP_API_URL은 기본 빈 값
+      - REACT_APP_API_URL=${REACT_APP_API_URL:-}
+      # CRA dev server 프록시 타깃(컨테이너 내부에서만 사용)
+      - API_PROXY_TARGET=${API_PROXY_TARGET:-http://backend:8000}
       - REACT_APP_ENV=${REACT_APP_ENV:-docker-development}
       - REACT_APP_DEBUG=${REACT_APP_DEBUG:-true}
       - REACT_APP_TITLE=${REACT_APP_TITLE:-WKMS (Docker)}

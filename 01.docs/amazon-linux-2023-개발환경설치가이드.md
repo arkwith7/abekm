@@ -546,11 +546,9 @@ docker-compose --version
 
 ```bash
 cd ~/wkms-aws
-source .venv/bin/activate
-pip install -r requirements.txt
 
-# 개발 서버 실행
-./dev-start-backend.sh
+# 개발 서버 실행 (Docker Compose 기반)
+./shell-script/dev-start-backend.sh
 ```
 
 ### 8.2 프론트엔드 실행 (필요시)

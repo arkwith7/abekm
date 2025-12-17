@@ -44,9 +44,6 @@ COPY . .
 # 업로드 및 사전 디렉토리 생성
 RUN mkdir -p uploads dictionaries
 
-# 사용자 사전 복사
-COPY dictionaries/ dictionaries/
-
 # 초기화 및 시작 스크립트 복사
 COPY start_with_init.sh .
 RUN chmod +x start_with_init.sh

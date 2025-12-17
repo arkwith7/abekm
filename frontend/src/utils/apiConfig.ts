@@ -4,6 +4,20 @@
  * 또는 직접 환경변수 사용 (프로덕션환경)
  */
 
+const normalizeApiUrl = (url: string): string => {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  // 말단 슬래시 제거 후, 중복되는 /api 접미어 제거
+  const withoutTrailingSlash = trimmed.replace(/\/+$/, '');
+  if (/\/api$/i.test(withoutTrailingSlash)) {
+    return withoutTrailingSlash.replace(/\/api$/i, '') || '';
+  }
+  return withoutTrailingSlash;
+};
+
 export const getApiBaseUrl = (): string => {
   // Docker 환경에서는 REACT_APP_API_URL 환경변수 사용
   // 환경변수가 설정되어 있으면 사용, 없으면 프록시 경로 사용
@@ -11,7 +25,7 @@ export const getApiBaseUrl = (): string => {
 
   if (apiUrl) {
     // 환경변수가 설정된 경우 (Docker 배포 환경)
-    return apiUrl;
+    return normalizeApiUrl(apiUrl);
   }
 
   // 로컬 개발 환경: setupProxy.js 프록시 사용

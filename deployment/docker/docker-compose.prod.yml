@@ -7,20 +7,24 @@ x-logging: &default-logging
 
 services:
   # 데이터베이스 서비스
+  # 환경 변수 우선순위: docker-compose environment > backend/.env
   postgres:
-    image: ankane/pgvector:latest
+    build:
+      context: ./postgres
+      dockerfile: Dockerfile
+    image: abkms-postgres:prod
     container_name: abkms-postgres-prod
     env_file:
       - ./backend/.env
     environment:
+      # 프로덕션 설정: backend/.env의 값을 환경에 맞게 오버라이드
       POSTGRES_DB: ${POSTGRES_DB:-wkms}
       POSTGRES_USER: ${POSTGRES_USER:-wkms}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wkms123}
     ports:
       - "5432:5432"
     volumes:
       - abkms_postgres_data:/var/lib/postgresql/data
-      - ./database/init:/docker-entrypoint-initdb.d
     networks:
       - abkms-network
     restart: unless-stopped
@@ -60,17 +64,18 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # DATABASE_URL: asyncpg URL consumed by app & seeder
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wkms}
-      - REDIS_URL=redis://redis:6379
-      - STORAGE_BACKEND=${STORAGE_BACKEND:-s3}
-      - AWS_REGION=${AWS_REGION}
-      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
-      - SECRET_KEY=${SECRET_KEY}
+      # 프로덕션 환경 설정 (backend/.env의 값을 오버라이드)
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD:-wkms123}@postgres:5432/${POSTGRES_DB:-wkms}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_URL=redis://redis:6379/0
+      - AWS_REGION=${AWS_REGION:-ap-northeast-2}
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - DB_HOST=postgres
       - DB_USER=${POSTGRES_USER:-wkms}
-      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-wkms123}
       - DB_NAME=${POSTGRES_DB:-wkms}
       - DB_PORT=5432
       # FORCE_DB_SEED=true 로 설정 시 컨테이너 시작마다 init_simple_database.py 강제 실행
@@ -110,16 +115,18 @@ services:
       - ./backend/.env
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-wkms}
-      - REDIS_URL=redis://redis:6379
-      - STORAGE_BACKEND=${STORAGE_BACKEND:-s3}
-      - AWS_REGION=${AWS_REGION}
-      - AWS_S3_BUCKET=${AWS_S3_BUCKET}
-      - SECRET_KEY=${SECRET_KEY}
+      # 프로덕션 환경 설정 (backend/.env의 값을 오버라이드)
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD:-wkms123}@postgres:5432/${POSTGRES_DB:-wkms}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_URL=redis://redis:6379/0
+      - AWS_REGION=${AWS_REGION:-ap-northeast-2}
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - DB_HOST=postgres
       - DB_USER=${POSTGRES_USER:-wkms}
-      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:-wkms123}
       - DB_NAME=${POSTGRES_DB:-wkms}
       - DB_PORT=5432
     volumes:
@@ -147,13 +154,13 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
       args:
-        REACT_APP_API_URL: ${REACT_APP_API_URL}
-        REACT_APP_ENV: ${REACT_APP_ENV}
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-}
+        REACT_APP_ENV: ${REACT_APP_ENV:-production}
     container_name: abkms-frontend-prod
     env_file:
       - ./frontend/.env
     environment:
-      - REACT_APP_API_URL=${REACT_APP_API_URL}
+      - REACT_APP_API_URL=${REACT_APP_API_URL:-}
       - REACT_APP_ENV=production
     depends_on:
       - backend

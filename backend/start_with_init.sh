@@ -17,15 +17,18 @@ echo "⏳ Waiting for PostgreSQL..."
 max_retries=30
 counter=0
 
+# DATABASE_URL에서 postgresql+asyncpg:// 제거 (asyncpg.connect는 순수 postgresql:// 필요)
+DB_URL_PLAIN=$(echo "$DATABASE_URL" | sed 's/postgresql+asyncpg:/postgresql:/')
+
 while ! python3 -c "
 import asyncpg
 import asyncio
 async def check():
     try:
-        conn = await asyncpg.connect('$DATABASE_URL')
+        conn = await asyncpg.connect('$DB_URL_PLAIN')
         await conn.close()
         return True
-    except:
+    except Exception as e:
         return False
 result = asyncio.run(check())
 exit(0 if result else 1)

@@ -1,7 +1,11 @@
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 module.exports = function (app) {
-  const target = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+  // NOTE:
+  // - setupProxy.js runs in the Node dev server (not in the browser bundle)
+  // - Use API_PROXY_TARGET for the proxy destination to avoid leaking internal
+  //   docker hostnames into REACT_APP_* variables.
+  const target = process.env.API_PROXY_TARGET || process.env.REACT_APP_API_URL || 'http://localhost:8000';
   const isDevelopment = process.env.NODE_ENV === 'development';
   const isDebug = process.env.REACT_APP_DEBUG === 'true';
 
@@ -11,18 +15,10 @@ module.exports = function (app) {
   console.log('🔄 REACT_APP_ENV:', process.env.REACT_APP_ENV);
   console.log('🐛 Debug Mode:', isDebug);
 
-  // Docker/프로덕션 환경 감지: REACT_APP_API_URL이 명시적으로 설정된 경우 프록시 비활성화
-  // Nginx가 프록시를 담당하므로 중복 프록시 방지
-  const isExplicitApiUrl = process.env.REACT_APP_API_URL && 
-                          process.env.REACT_APP_API_URL !== 'http://localhost:8000' &&
-                          process.env.REACT_APP_API_URL !== 'http://127.0.0.1:8000';
-  
-  if (isExplicitApiUrl) {
-    console.log('🐳 프로덕션/Docker 환경 감지 - setupProxy 비활성화');
-    console.log('   REACT_APP_API_URL:', process.env.REACT_APP_API_URL);
-    console.log('   (Nginx 또는 직접 연결이 프록시 담당)');
-    console.log('✅ setupProxy.js 설정 완료 (bypass mode)');
-    return; // 프록시 설정하지 않음
+  // CRA dev server에서만 프록시를 구성합니다.
+  // (프로덕션 빌드에서는 setupProxy.js가 실행되지 않음)
+  if (!isDevelopment) {
+    return;
   }
 
   console.log('🔄 Proxy Rule: /api -> ' + target);

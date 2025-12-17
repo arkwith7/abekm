@@ -1,6 +1,7 @@
 import { Download, Maximize2, Minimize2, RotateCw, X, ZoomIn, ZoomOut } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Document } from '../../types/user.types';
+import { getApiUrl } from '../../utils/apiConfig';
 
 interface FileViewerProps {
   isOpen: boolean;
@@ -45,10 +46,9 @@ const FileViewer: React.FC<FileViewerProps> = ({
   };
 
   const getFileViewerUrl = (document: Document): string => {
-    // iframe에서는 프록시를 사용할 수 없으므로 백엔드 URL을 직접 사용
-    // 개발 환경: http://localhost:8000
-    // 프로덕션 환경: REACT_APP_API_URL 또는 빈 문자열 (nginx 프록시)
-    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+    // API base URL은 공용 유틸을 사용 (REACT_APP_API_URL=/api 같은 설정도 안전하게 정규화)
+    // 빈 값이면 상대 경로(/api/...)로 동작하며 nginx 또는 setupProxy가 처리
+    const baseUrl = getApiUrl();
     const fileExt = document.file_extension?.toLowerCase() || '';
 
     // 토큰 가져오기 - 우선순위: ABEKM_token (최신) > access_token > token (오래된)

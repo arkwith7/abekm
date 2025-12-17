@@ -95,4 +95,4 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # Initialization scripts
-COPY postgres/init.sql /docker-entrypoint-initdb.d/20_init.sql
+COPY init.sql /docker-entrypoint-initdb.d/20_init.sql

@@ -42,7 +42,10 @@ services:
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
     environment:
       - DATABASE_URL=postgresql+asyncpg://wkms:wkms123@postgres:5432/wkms
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
       - STORAGE_BACKEND=local
       - ENVIRONMENT=development
       - POSTGRES_USER=wkms

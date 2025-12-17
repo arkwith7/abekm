@@ -35,7 +35,11 @@ import {
 } from './permissionRequestService';
 import { getApiUrl } from '../utils/apiConfig';
 
-const API_BASE_URL = `${getApiUrl()}/api/v1`;
+const getApiBaseUrl = () => {
+  const apiUrl = getApiUrl();
+  return apiUrl ? `${apiUrl}/api/v1` : '/api/v1';
+};
+const API_BASE_URL = getApiBaseUrl();
 
 const mapPermissionRequestDto = (dto: PermissionRequestDTO): ManagerPermissionRequest => {
   // Backend의 새 스키마 필드 우선 사용

@@ -17,7 +17,11 @@ import {
 import { getAuthHeader } from './authService';
 import { getApiUrl } from '../utils/apiConfig';
 
-const API_BASE_URL = `${getApiUrl()}/api/v1/permission-requests`;
+const getApiBaseUrl = () => {
+  const apiUrl = getApiUrl();
+  return apiUrl ? `${apiUrl}/api/v1/permission-requests` : '/api/v1/permission-requests';
+};
+const API_BASE_URL = getApiBaseUrl();
 
 /**
  * 권한 요청 생성

@@ -1,8 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 from typing import List, Optional
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 
 class Settings(BaseSettings):
@@ -37,6 +38,46 @@ class Settings(BaseSettings):
     
     # 디버그 모드 (전역)
     debug: bool = False
+
+    @model_validator(mode="after")
+    def _guard_docker_prod_localhost_dependencies(self):
+        """Fail fast when production runs inside Docker with localhost dependencies.
+
+        In Docker, "localhost" refers to the container itself. If Redis/Postgres are
+        separate services (typical in compose), using localhost will break and cause
+        runtime 500s (e.g., uploads failing when Celery/Redis is unreachable).
+        """
+
+        environment = (os.getenv("ENVIRONMENT") or "").strip().lower()
+        running_in_docker = Path("/.dockerenv").exists()
+
+        if not (running_in_docker and environment in {"production", "prod"}):
+            return self
+
+        def host_from_url(raw_url: str) -> Optional[str]:
+            if not raw_url:
+                return None
+            try:
+                parsed = urlparse(raw_url)
+                return parsed.hostname
+            except Exception:
+                return None
+
+        redis_host = host_from_url(self.redis_url)
+        if redis_host in {"localhost", "127.0.0.1"}:
+            raise ValueError(
+                "Invalid REDIS_URL for production-in-docker: points to localhost. "
+                "Use the compose service name (e.g., redis://redis:6379/0)."
+            )
+
+        db_host = host_from_url(self.database_url)
+        if db_host in {"localhost", "127.0.0.1"}:
+            raise ValueError(
+                "Invalid DATABASE_URL for production-in-docker: points to localhost. "
+                "Use the compose service name (e.g., ...@postgres:5432/...)."
+            )
+
+        return self
     
     # Redis 설정
     redis_host: str = "localhost"

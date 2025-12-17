@@ -51,7 +51,8 @@ export const authService = {
       };
 
       const apiBaseUrl = getApiUrl();
-      const response = await axios.post(`${apiBaseUrl}/api/v1/auth/login`, loginData, {
+      const loginUrl = apiBaseUrl ? `${apiBaseUrl}/api/v1/auth/login` : '/api/v1/auth/login';
+      const response = await axios.post(loginUrl, loginData, {
         headers: {
           'Content-Type': 'application/json'
         },

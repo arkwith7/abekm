@@ -21,10 +21,15 @@ from celery.signals import worker_process_init
 import os
 
 # 환경 변수에서 Redis URL 가져오기
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-REDIS_PORT = os.getenv("REDIS_PORT", "6379")
-REDIS_DB = os.getenv("REDIS_DB", "0")
-REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}"
+# 우선순위:
+# 1) REDIS_URL (컨테이너/운영에서 compose로 주입하기 쉬움)
+# 2) REDIS_HOST/REDIS_PORT/REDIS_DB (로컬 개발/세부 설정용)
+REDIS_URL = os.getenv("REDIS_URL")
+if not REDIS_URL:
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_port = os.getenv("REDIS_PORT", "6379")
+    redis_db = os.getenv("REDIS_DB", "0")
+    REDIS_URL = f"redis://{redis_host}:{redis_port}/{redis_db}"
 
 # Celery 앱 초기화
 celery_app = Celery(

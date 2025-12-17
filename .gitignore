@@ -96,6 +96,9 @@ temp/
 uploads/
 backend/uploads/
 
+# Nginx SSL 인증서 (자체 서명 인증서는 서버별로 생성)
+nginx/ssl/
+
 # 데이터베이스
 *.db
 *.sqlite
@@ -318,11 +321,12 @@ backend/*.log
 !backend/**/*.sh
 !backend/**/*.json
 !backend/**/*.md
-# 단, .env 파일과 .pyc 파일은 제외 (보안 및 빌드 아티팩트)
+# 단, .env 파일, .pyc 파일, .log 파일은 제외 (보안 및 빌드 아티팩트)
 backend/**/.env
 backend/**/*.pyc
-backend/.env.log
-backend/*.log
+backend/**/*.log
+# uploads 디렉토리 제외
+backend/uploads/
 
 # 마크다운 리포트/가이드 (선택적)
 # 필요하면 개별적으로 추가 커밋

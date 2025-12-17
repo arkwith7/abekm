@@ -6,94 +6,68 @@
 
 ### 🚀 빠른 시작
 
-**1. Redis 서버 시작:**
+**1. 백엔드/Celery 서버 시작 (Docker Compose):**
 ```bash
-docker run -d --name redis -p 6379:6379 redis:latest
-```
-
-**2. 백엔드 서버 시작:**
-```bash
-cd /home/wjadmin/Dev/InsightBridge
+cd /home/admin/Dev/abekm
 ./shell-script/dev-start-backend.sh
 ```
 
 ### ✨ 자동 실행 항목
 
-- ✅ 가상환경 자동 활성화
-- ✅ Redis 연결 확인
-- ✅ Celery Worker 백그라운드 시작
-- ✅ FastAPI 서버 시작
-- ✅ Ctrl+C로 모든 서비스 정리
+- ✅ Docker Compose로 `backend`, `celery-worker` 컨테이너 실행
+- ✅ 컨테이너 내부 `uvicorn --reload`로 코드 변경 자동 반영
+- ✅ 의존 서비스(예: Redis/DB)는 Compose 설정에 따라 자동 기동
+- ✅ Ctrl+C로 `backend/celery-worker` 컨테이너 중지
 
 ### 📂 생성되는 파일
 
-- **로그:** `logs/celery.log` - Celery Worker 로그
-- **PID:** `tmp/pids/celery.pid` - Celery Worker PID
-- **PID:** `tmp/pids/fastapi.pid` - FastAPI 서버 PID
+- 별도 PID/로그 파일을 생성하지 않습니다.
+- 로그는 Compose로 확인합니다: `docker compose logs -f backend celery-worker`
 
 ### 🌐 접속 주소
 
 - **API 서버:** http://localhost:8000
 - **Swagger UI:** http://localhost:8000/docs
 - **ReDoc:** http://localhost:8000/redoc
-- **Flower (선택):** http://localhost:5555
-  ```bash
-  cd backend
-  celery -A app.core.celery_app flower
-  ```
 
-### �� 서버 종료
+### 🌸 Flower (선택)
+
+프로세스 모니터링이 필요하면 로컬에서 Flower를 따로 띄울 수 있습니다.
+
+```bash
+docker compose exec backend bash -lc "celery -A app.core.celery_app flower --port=5555"
+```
+
+### 🛑 서버 종료
 
 **방법 1: 자동 정리 (권장)**
 ```
-Ctrl+C를 누르면 모든 서비스가 자동으로 종료됩니다.
+Ctrl+C를 누르면 backend/celery-worker 컨테이너가 중지됩니다.
 ```
 
 **방법 2: 수동 종료**
 ```bash
-# Celery Worker 종료
-kill $(cat tmp/pids/celery.pid)
-
-# FastAPI 서버 종료
-kill $(cat tmp/pids/fastapi.pid)
-
-# PID 파일 삭제
-rm -f tmp/pids/*.pid
+docker compose stop backend celery-worker
 ```
-
-### ⚠️ Redis 없이 실행
-
-Redis가 실행되지 않은 경우:
-- 스크립트가 Redis 연결 실패를 감지합니다.
-- 계속 진행 여부를 묻습니다.
-- Redis 없이 실행 시 **비동기 업로드가 비활성화**됩니다.
 
 ### 🔍 로그 확인
 
-**Celery Worker 로그:**
+**backend / celery-worker 로그:**
 ```bash
-tail -f logs/celery.log
+docker compose logs -f --tail=100 backend celery-worker
 ```
-
-**FastAPI 로그:**
-스크립트 실행 시 실시간으로 표시됩니다.
 
 ### 🐛 문제 해결
 
 **1. Redis 연결 실패**
 ```bash
-# Redis 상태 확인
-redis-cli ping
-
-# Docker Redis 재시작
-docker restart redis
+docker compose ps
+docker compose logs --tail=200 redis
 ```
 
 **2. Celery Worker 시작 실패**
 ```bash
-# 수동으로 Celery 시작 시도
-cd backend
-celery -A app.core.celery_app worker --loglevel=info
+docker compose logs --tail=300 celery-worker
 ```
 
 **3. 포트 이미 사용 중**
@@ -107,8 +81,8 @@ kill <PID>
 
 **4. 이전 PID 파일 남아있음**
 ```bash
-# 모든 PID 파일 정리
-rm -f tmp/pids/*.pid
+# Compose 컨테이너 재기동
+docker compose up -d --build backend celery-worker
 ```
 
 ### 📖 관련 문서
