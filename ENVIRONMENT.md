@@ -2,15 +2,18 @@
 
 This repository is simplified to two environments:
 
-- Development: `.env.development` + `docker-compose.yml`
-- Production: `.env.production` + `docker-compose.prod.yml`
+- Development: `docker-compose.yml` + `backend/.env`
+- Production: `docker-compose.prod.yml` + `backend/.env`
 
-Helper scripts (now organized under `./shell-script/`, legacy wrappers kept at root for compatibility):
-- `./shell-script/dev.sh up|down|logs SERVICE` – run local dev stack
-- `./shell-script/deploy.sh up|down|restart|logs SERVICE` – run production stack on server
+Helper scripts (kept minimal under `./shell-script/`):
+- `./shell-script/dev-start-backend.sh` – run backend + celery-worker (dev)
+- `./shell-script/dev-start-frontend.sh` – run frontend (dev)
+- `./shell-script/deploy.sh up|down|restart|rebuild|logs SERVICE|ps` – run production stack on server
+
+See `shell-script/GUIDE.md` for the canonical usage.
 
 Frontend build uses `frontend/Dockerfile.prod` and reads `REACT_APP_*` from the environment at build time.
 
 Log tips:
-- `./shell-script/check-logs.sh backend --since 10m --tail 200`
-- `./shell-script/check-logs.sh nginx --since 10m --tail 200`
+- `docker compose -f docker-compose.prod.yml logs -f --tail=200 backend`
+- `docker compose -f docker-compose.prod.yml logs -f --tail=200 nginx`

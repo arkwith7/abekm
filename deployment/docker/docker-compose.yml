@@ -50,17 +50,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # docker-compose 네트워크에서 서비스 이름으로 접속되도록 오버라이드
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD:-wkms123}@postgres:5432/${POSTGRES_DB:-wkms}
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER:-wkms}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-wkms123}
-      - DB_NAME=${POSTGRES_DB:-wkms}
-      - REDIS_URL=redis://redis:6379/0
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
+      # DB/Redis 등 핵심 설정은 ./backend/.env (env_file) 를 단일 소스로 사용
       # 데이터 초기화 제어: FORCE_DB_SEED=true 로 설정하면 start_with_init.sh 가 강제 시딩 수행
       # 기본 로직: tb_user, tb_user_roles, tb_user_permissions, tb_knowledge_categories 중 하나라도 비어 있으면 시딩
       - FORCE_DB_SEED=${FORCE_DB_SEED:-false}
@@ -97,16 +87,7 @@ services:
       - ./backend/.env
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD:-wkms123}@postgres:5432/${POSTGRES_DB:-wkms}
-      - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_USER=${POSTGRES_USER:-wkms}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-wkms123}
-      - DB_NAME=${POSTGRES_DB:-wkms}
-      - REDIS_URL=redis://redis:6379/0
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
+      # DB/Redis 등 핵심 설정은 ./backend/.env (env_file) 를 단일 소스로 사용
       # AWS 자격증명은 런타임 환경 변수 또는 IAM Role 사용 권장
       # - AWS_REGION=${AWS_REGION}
       # - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}

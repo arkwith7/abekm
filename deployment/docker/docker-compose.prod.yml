@@ -16,11 +16,7 @@ services:
     container_name: abkms-postgres-prod
     env_file:
       - ./backend/.env
-    environment:
-      # 프로덕션 설정: backend/.env의 값을 환경에 맞게 오버라이드
-      POSTGRES_DB: ${POSTGRES_DB:-wkms}
-      POSTGRES_USER: ${POSTGRES_USER:-wkms}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wkms123}
+    # DB 계정/비밀번호는 backend/.env (env_file) 를 단일 소스로 사용
     ports:
       - "5432:5432"
     volumes:
@@ -64,20 +60,8 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      # 프로덕션 환경 설정 (backend/.env의 값을 오버라이드)
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD:-wkms123}@postgres:5432/${POSTGRES_DB:-wkms}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - REDIS_URL=redis://redis:6379/0
-      - AWS_REGION=${AWS_REGION:-ap-northeast-2}
-      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - DB_HOST=postgres
-      - DB_USER=${POSTGRES_USER:-wkms}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-wkms123}
-      - DB_NAME=${POSTGRES_DB:-wkms}
-      - DB_PORT=5432
+      # 핵심 설정(DB/Redis/Secret/AWS 등)은 backend/.env (env_file) 를 단일 소스로 사용
+      - ENVIRONMENT=production
       # FORCE_DB_SEED=true 로 설정 시 컨테이너 시작마다 init_simple_database.py 강제 실행
       - FORCE_DB_SEED=${FORCE_DB_SEED:-false}
     volumes:
@@ -115,20 +99,8 @@ services:
       - ./backend/.env
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=4
     environment:
-      # 프로덕션 환경 설정 (backend/.env의 값을 오버라이드)
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wkms}:${POSTGRES_PASSWORD:-wkms123}@postgres:5432/${POSTGRES_DB:-wkms}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_DB=0
-      - REDIS_URL=redis://redis:6379/0
-      - AWS_REGION=${AWS_REGION:-ap-northeast-2}
-      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - DB_HOST=postgres
-      - DB_USER=${POSTGRES_USER:-wkms}
-      - DB_PASSWORD=${POSTGRES_PASSWORD:-wkms123}
-      - DB_NAME=${POSTGRES_DB:-wkms}
-      - DB_PORT=5432
+      # 핵심 설정(DB/Redis/Secret/AWS 등)은 backend/.env (env_file) 를 단일 소스로 사용
+      - ENVIRONMENT=production
     volumes:
       - abkms_backend_uploads:/app/uploads
     depends_on:
