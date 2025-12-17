@@ -1,4 +1,218 @@
-# 별첨07 - ABEKM 컨테이너 배포 체크리스트 및 가이드
+# 별첨04 - 도메인(HTTPS) 배포 및 컨테이너 배포 체크리스트
+
+> 본 문서는 기존 문서 2종을 통합한 단일 운영 문서입니다. (통합 후 기존 파일은 제거)
+
+---
+
+## 목차
+
+1. 도메인(HTTPS) 적용 배포 가이드
+2. 컨테이너 배포 체크리스트 및 가이드
+
+---
+
+## 1. 도메인(HTTPS) 적용 배포 가이드
+
+### 도메인(HTTPS) 적용 배포 가이드
+
+이 프로젝트의 운영 배포 구조는 다음을 전제로 합니다.
+
+- 외부 트래픽(80/443) → `nginx` 컨테이너가 수신
+- `nginx`가 `/api/*`를 `backend:8000`으로 프록시
+- `nginx`가 나머지 요청을 `frontend`(정적서버)로 프록시
+- TLS 인증서는 호스트의 `nginx/ssl/` 폴더를 컨테이너 `/etc/nginx/ssl`로 **읽기전용 마운트**하여 사용
+
+따라서, 도메인 적용 시 바꿔야 하는 핵심은 3가지입니다.
+
+1) DNS(도메인 → 서버 IP)
+2) TLS 인증서 준비(파일을 `nginx/ssl/`에 배치)
+3) Nginx 설정의 `server_name` 및 백엔드 CORS 허용 도메인
+
+---
+
+## 1) DNS 설정
+
+예: `wkms.example.com` 를 운영 도메인으로 쓴다고 가정합니다.
+
+- DNS 제공자에서 A 레코드 생성
+  - Host/Name: `wkms`
+  - Type: `A`
+  - Value: 서버 Public IP
+  - TTL: 기본값
+- (선택) `www.wkms.example.com`도 쓸 경우 `CNAME` 또는 A 레코드 추가
+
+서버에서 80/443 방화벽(보안그룹) 오픈이 필요합니다.
+
+- TCP 80 (HTTP)
+- TCP 443 (HTTPS)
+
+---
+
+## 2) TLS 인증서 준비
+
+현재 Nginx 설정은 아래 경로를 기대합니다.
+
+- 인증서(체인 포함): `nginx/ssl/cert.pem` → 컨테이너 `/etc/nginx/ssl/cert.pem`
+- 개인키: `nginx/ssl/key.pem` → 컨테이너 `/etc/nginx/ssl/key.pem`
+
+### 옵션 A) 보유 인증서(상용/사내) 사용
+
+인증서 파일을 다음 이름으로 배치합니다.
+
+- `nginx/ssl/cert.pem` (일반적으로 fullchain/chain 포함 권장)
+- `nginx/ssl/key.pem`
+
+그 다음 Nginx만 재시작하면 됩니다.
+
+```bash
+./shell-script/deploy.sh restart
+# 또는
+./shell-script/deploy.sh logs nginx
+```
+
+> `docker-compose.prod.yml`에서 `nginx/ssl`을 read-only로 마운트하므로, 파일 업데이트는 “호스트에서” 해야 합니다.
+
+### 옵션 B) Let’s Encrypt(certbot) 사용 (권장)
+
+컨테이너 기반 Nginx를 쓰는 환경에서 가장 단순한 방법은 **호스트에 certbot 설치 후 standalone 모드로 발급**하고,
+발급된 파일을 `nginx/ssl/cert.pem`, `nginx/ssl/key.pem`으로 복사하는 방식입니다.
+
+1) Nginx가 80/443을 잡고 있으면 certbot standalone이 실패할 수 있으니, 발급 시점에 Nginx를 잠깐 내립니다.
+
+```bash
+docker compose -f docker-compose.prod.yml stop nginx
+```
+
+2) certbot 설치/발급(배포 OS에 맞게 설치)
+
+```bash
+# Ubuntu/Debian 예시
+sudo apt-get update
+sudo apt-get install -y certbot
+
+# 발급 (이메일/도메인 값은 실제값으로 변경)
+sudo certbot certonly --standalone \
+  -d wkms.example.com \
+  --agree-tos -m admin@example.com \
+  --non-interactive
+```
+
+3) 인증서 파일을 프로젝트 폴더로 복사
+
+```bash
+sudo mkdir -p nginx/ssl
+sudo cp /etc/letsencrypt/live/wkms.example.com/fullchain.pem nginx/ssl/cert.pem
+sudo cp /etc/letsencrypt/live/wkms.example.com/privkey.pem nginx/ssl/key.pem
+
+# 권한(예시): 소유/권한은 서버 운영 정책에 맞게 조정
+sudo chmod 600 nginx/ssl/key.pem
+```
+
+4) Nginx 재기동
+
+```bash
+docker compose -f docker-compose.prod.yml up -d nginx
+```
+
+5) 자동 갱신(권장)
+
+Let’s Encrypt는 주기적 갱신이 필요합니다. 갱신 후 위 복사/재시작을 자동으로 수행하도록 cron/systemd 타이머를 추가하는 방식이 안전합니다.
+
+---
+
+## 3) Nginx 서버 도메인 적용(server_name)
+
+현재 [nginx/nginx.conf](../nginx/nginx.conf)에는 `server_name localhost;`가 80/443 서버 블록에 모두 들어있습니다.
+
+- 운영 도메인을 적용하려면 `localhost`를 실제 도메인으로 바꿉니다.
+- 예: `server_name wkms.example.com;`
+- `www`도 함께 쓰면: `server_name wkms.example.com www.wkms.example.com;`
+
+변경 후에는 Nginx 이미지가 설정 파일을 COPY하므로 **rebuild가 필요**합니다.
+
+```bash
+./shell-script/deploy.sh rebuild
+```
+
+> 인증서 파일만 교체한 경우(nginx.conf 변경 없음)는 rebuild 없이 `restart`만으로 반영됩니다.
+
+---
+
+## 4) 백엔드 CORS 도메인 추가
+
+브라우저에서 `https://wkms.example.com`으로 접근할 때, 백엔드가 CORS로 허용해야 합니다.
+
+[backend/.env](../backend/.env) 의 `CORS_ORIGINS`에 도메인을 추가합니다.
+
+예:
+
+```env
+CORS_ORIGINS=[
+  "http://localhost:3000",
+  "https://wkms.example.com",
+  "https://www.wkms.example.com"
+]
+```
+
+변경 후에는 backend/celery-worker가 해당 env를 읽도록 재시작합니다.
+
+```bash
+./shell-script/deploy.sh restart
+```
+
+---
+
+## 5) 프론트엔드 API URL(권장 설정)
+
+운영에서 동일 도메인 + Nginx 프록시(`/api`)를 쓰는 구조라면,
+프론트는 `REACT_APP_API_URL`을 **빈 값으로 유지하는 것이 권장**입니다.
+
+- 프론트 요청: `/api/v1/...`
+- Nginx가 `backend`로 프록시
+- 별도의 CORS 이슈가 줄어듭니다.
+
+즉, [frontend/.env](../frontend/.env) 의 아래 값은 그대로 두는 것을 권장합니다.
+
+```env
+REACT_APP_API_URL=
+```
+
+---
+
+## 6) 배포/검증 체크
+
+배포:
+
+```bash
+./shell-script/deploy.sh up
+```
+
+검증(예시):
+
+```bash
+# Nginx 자체 헬스
+curl -f http://wkms.example.com/health
+
+# 백엔드 헬스(프록시)
+curl -f http://wkms.example.com/api/health
+
+# HTTPS 확인
+curl -fk https://wkms.example.com/health
+curl -fk https://wkms.example.com/api/health
+```
+
+문제가 있으면:
+
+```bash
+./shell-script/deploy.sh logs nginx
+./shell-script/deploy.sh logs backend
+```
+
+---
+
+## 2. 컨테이너 배포 체크리스트 및 가이드
+
+### 별첨07 - ABEKM 컨테이너 배포 체크리스트 및 가이드
 
 > **문서 정보**  
 >

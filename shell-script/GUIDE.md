@@ -109,3 +109,7 @@ docker compose -f docker-compose.yml down
 
 - 이 디렉토리의 스크립트들은 **설정을 코드/Compose에 하드코딩하지 않고**, `backend/.env`를 “단일 진실 소스(SSOT)”로 두는 방향에 맞춰져 있습니다.
 - 비밀키/토큰(AWS/Azure/Upstage 등)은 문서에 적지 말고 `backend/.env`에서 관리하세요.
+
+## 도메인(HTTPS) 배포
+
+- 도메인/HTTPS 및 컨테이너 배포 체크리스트는 [01.docs/별첨04_도메인_HTTPS_배포_및_컨테이너_배포_체크리스트.md](../01.docs/별첨04_도메인_HTTPS_배포_및_컨테이너_배포_체크리스트.md) 참고
