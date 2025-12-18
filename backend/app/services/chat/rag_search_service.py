@@ -1211,7 +1211,7 @@ class RAGSearchService:
                 from app.services.core.ai_service import ai_service
                 from app.core.config import settings
                 from langchain_openai import AzureChatOpenAI
-                from langchain.schema import HumanMessage
+                from langchain_core.messages import HumanMessage
                 
                 # 리랭킹 전용 설정이 있으면 사용, 없으면 Settings 기반 기본값 사용
                 rerank_endpoint = settings.rag_reranking_endpoint or settings.azure_openai_endpoint

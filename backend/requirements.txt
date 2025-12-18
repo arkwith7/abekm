@@ -16,7 +16,7 @@ pgvector==0.4.1
 alembic==1.16.5
 
 # HTTP 클라이언트
-requests==2.31.0
+requests==2.32.5
 httpx==0.28.1
 
 # 인증 및 보안
@@ -27,8 +27,9 @@ bcrypt==4.0.1
 email-validator==2.3.0
 
 # AWS SDK
-boto3==1.39.10
-botocore==1.39.10
+# LangChain AWS 1.x가 boto3/botocore 최신 범위를 요구합니다.
+boto3==1.42.12
+botocore==1.42.12
 amazon-transcribe==0.6.2  # AWS Transcribe Streaming (실시간 STT)
 
 # Azure SDK
@@ -41,17 +42,27 @@ azure-storage-blob==12.23.1
 upstage==0.1  # Document Parse, Layout Analysis - REST API 직접 호출 방식
 
 # LLM 및 AI 프레임워크 (최신 호환 버전)
-openai==1.97.1
-langchain==0.3.26
-langchain-openai==0.3.28
-langchain-aws==0.2.29
-langchain-community==0.3.27
-langgraph==0.2.70
+# LangChain OpenAI 1.x는 openai>=1.109.1 을 요구합니다.
+openai==1.109.1
+# LangChain 1.x + LangGraph 1.x (Agentic/Graph 프로덕션 전환 기반)
+langchain==1.2.0
+langchain-core==1.2.2
+langchain-openai==1.1.5
+langchain-aws==1.1.0
+langchain-community==0.4.1
+langchain-text-splitters==1.1.0
+langgraph==1.0.5
+langgraph-checkpoint==3.0.1
+langgraph-checkpoint-postgres==3.0.2
+langgraph-sdk==0.3.0
+langgraph-checkpoint-sqlite==1.0.0
+langsmith==0.5.0
 duckduckgo-search==5.3.0  # 인터넷 검색 도구 (폴백)
 tavily-python>=0.5.0  # Tavily AI 검색 도구 (권장)
 
 # 비동기 및 파일 처리
 aiofiles==24.1.0
+aiosqlite==0.20.0
 psutil==5.9.8
 nest_asyncio==1.6.0  # Celery에서 비동기 함수 실행 지원
 

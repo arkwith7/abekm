@@ -228,7 +228,9 @@ class QuickPPTGeneratorService:
                 safe_topic = re.sub(r'[-\s]+', '_', safe_topic)
                 # 파일명 길이 제한 추가 (OS 제한 초과 방지)
                 safe_topic = safe_topic[:100]
-                file_basename = f"quick_presentation_{safe_topic}"
+                # Avoid overwriting files for repeated topics.
+                ts = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+                file_basename = f"quick_presentation_{safe_topic}_{ts}"
             
             filename = f"{file_basename}.pptx"
             output_path = self.upload_dir / filename

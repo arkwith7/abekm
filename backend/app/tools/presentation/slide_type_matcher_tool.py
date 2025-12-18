@@ -293,8 +293,21 @@ JSON 배열만 출력하세요. 다른 설명은 불필요합니다."""
                 if chunk:
                     if isinstance(chunk, str):
                         response_text += chunk
-                    elif hasattr(chunk, 'text'):
-                        response_text += str(chunk.text) if callable(chunk.text) else chunk.text
+                    elif hasattr(chunk, "content"):
+                        content = chunk.content
+                        if isinstance(content, str):
+                            response_text += content
+                        elif isinstance(content, list):
+                            for part in content:
+                                if isinstance(part, dict) and part.get("type") == "text":
+                                    response_text += str(part.get("text", ""))
+                                else:
+                                    response_text += str(part)
+                        else:
+                            response_text += str(content)
+                    elif hasattr(chunk, "text") and not callable(getattr(chunk, "text")):
+                        # LangChain 1.x: prefer `.text` property (not `.text()`)
+                        response_text += str(getattr(chunk, "text", ""))
             
             # JSON 파싱
             import re

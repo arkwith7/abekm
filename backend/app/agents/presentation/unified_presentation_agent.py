@@ -10,6 +10,8 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from contextvars import ContextVar
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Type
@@ -21,11 +23,16 @@ try:
     from langchain_core.messages import HumanMessage, AIMessage
 except ImportError:
     from langchain.tools import BaseTool
-    from langchain.schema import HumanMessage, AIMessage
+    from langchain_core.messages import HumanMessage, AIMessage
 
 from app.agents.presentation.base_agent import BaseAgent
 from app.services.core.ai_service import ai_service
 from app.utils.prompt_loader import load_presentation_prompt
+from app.agents.presentation.ppt_generation_graph import (
+    run_ppt_generation_graph,
+    run_template_wizard_until_mapped,
+    resume_template_wizard_build,
+)
 
 # Tools import
 from app.tools.presentation.outline_generation_tool import outline_generation_tool
@@ -57,9 +64,43 @@ class ExecutionPattern(str, Enum):
     """실행 패턴"""
     REACT = "react"  # ReAct (Reasoning + Acting)
     PLAN_EXECUTE = "plan_execute"  # Plan-and-Execute
+    TOOL_CALLING = "tool_calling"  # Tool-calling based agent loop (Phase 3)
 
 
 LLM_TIMEOUT_SECONDS = 120
+
+
+# ---------------------------------------------------------------------------
+# Phase 0: 요청별 상태 격리 (완전 무상태화)
+#
+# UnifiedPresentationAgent는 singleton으로 사용되므로, 인스턴스 필드에 요청별 상태를
+# 저장하면 동시 실행 시 교차 오염이 발생할 수 있습니다.
+#
+# 해결: ContextVar 기반으로 요청(=async task) 단위 실행 컨텍스트를 격리합니다.
+# 기존 코드 변경을 최소화하기 위해, BaseAgent가 쓰는 내부 필드명들을 property로
+# 오버라이드하여 컨텍스트로 라우팅합니다.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _UnifiedPPTRequestContext:
+    execution_id: Optional[str] = None
+    start_time: Optional[datetime] = None
+    steps: List[Dict[str, Any]] = field(default_factory=list)
+    tools_used: List[str] = field(default_factory=list)
+    user_id: Optional[int] = None
+
+    # Legacy caches used for auto-injection during ReAct/tool-calling loops.
+    latest_deck_spec: Any = None
+    latest_mappings: Any = None
+    latest_template_structure: Any = None
+    latest_template_metadata: Any = None
+    latest_slide_matches: Any = None
+
+
+_UNIFIED_PPT_CTX: ContextVar[Optional[_UnifiedPPTRequestContext]] = ContextVar(
+    "unified_ppt_request_ctx", default=None
+)
 
 
 class UnifiedPresentationAgent(BaseAgent):
@@ -104,6 +145,103 @@ class UnifiedPresentationAgent(BaseAgent):
         logger.info(
             f"🎨 {self.name} v{self.version} 초기화 완료: {len(self.tools)}개 도구 등록"
         )
+
+    def _get_request_ctx(self) -> _UnifiedPPTRequestContext:
+        """Get current request context.
+
+        If there is no active ContextVar (e.g., during startup), we keep a
+        per-instance fallback context that is *not* shared across async tasks.
+        The run() method always installs a ContextVar context for real requests.
+        """
+        ctx = _UNIFIED_PPT_CTX.get()
+        if ctx is not None:
+            return ctx
+        fallback = self.__dict__.get("_unified_ppt_fallback_ctx")
+        if fallback is None:
+            fallback = _UnifiedPPTRequestContext()
+            self.__dict__["_unified_ppt_fallback_ctx"] = fallback
+        return fallback
+
+    # --- Context-backed properties (override BaseAgent mutable fields) ---
+    @property
+    def _execution_id(self) -> Optional[str]:  # type: ignore[override]
+        return self._get_request_ctx().execution_id
+
+    @_execution_id.setter
+    def _execution_id(self, value: Optional[str]) -> None:  # type: ignore[override]
+        self._get_request_ctx().execution_id = value
+
+    @property
+    def _start_time(self) -> Optional[datetime]:  # type: ignore[override]
+        return self._get_request_ctx().start_time
+
+    @_start_time.setter
+    def _start_time(self, value: Optional[datetime]) -> None:  # type: ignore[override]
+        self._get_request_ctx().start_time = value
+
+    @property
+    def _steps(self) -> List[Dict[str, Any]]:  # type: ignore[override]
+        return self._get_request_ctx().steps
+
+    @_steps.setter
+    def _steps(self, value: List[Dict[str, Any]]) -> None:  # type: ignore[override]
+        self._get_request_ctx().steps = value
+
+    @property
+    def _tools_used(self) -> List[str]:  # type: ignore[override]
+        return self._get_request_ctx().tools_used
+
+    @_tools_used.setter
+    def _tools_used(self, value: List[str]) -> None:  # type: ignore[override]
+        self._get_request_ctx().tools_used = value
+
+    @property
+    def _user_id(self) -> Optional[int]:
+        return self._get_request_ctx().user_id
+
+    @_user_id.setter
+    def _user_id(self, value: Optional[int]) -> None:
+        self._get_request_ctx().user_id = value
+
+    @property
+    def _latest_deck_spec(self) -> Any:
+        return self._get_request_ctx().latest_deck_spec
+
+    @_latest_deck_spec.setter
+    def _latest_deck_spec(self, value: Any) -> None:
+        self._get_request_ctx().latest_deck_spec = value
+
+    @property
+    def _latest_mappings(self) -> Any:
+        return self._get_request_ctx().latest_mappings
+
+    @_latest_mappings.setter
+    def _latest_mappings(self, value: Any) -> None:
+        self._get_request_ctx().latest_mappings = value
+
+    @property
+    def _latest_template_structure(self) -> Any:
+        return self._get_request_ctx().latest_template_structure
+
+    @_latest_template_structure.setter
+    def _latest_template_structure(self, value: Any) -> None:
+        self._get_request_ctx().latest_template_structure = value
+
+    @property
+    def _latest_template_metadata(self) -> Any:
+        return self._get_request_ctx().latest_template_metadata
+
+    @_latest_template_metadata.setter
+    def _latest_template_metadata(self, value: Any) -> None:
+        self._get_request_ctx().latest_template_metadata = value
+
+    @property
+    def _latest_slide_matches(self) -> Any:
+        return self._get_request_ctx().latest_slide_matches
+
+    @_latest_slide_matches.setter
+    def _latest_slide_matches(self, value: Any) -> None:
+        self._get_request_ctx().latest_slide_matches = value
     
     def _load_system_prompt(
         self, 
@@ -280,56 +418,311 @@ class UnifiedPresentationAgent(BaseAgent):
         Returns:
             실행 결과 딕셔너리
         """
-        # Enum 변환
+        # Phase 0: install request-scoped context (prevents cross-request state pollution)
+        ctx_token = _UNIFIED_PPT_CTX.set(_UnifiedPPTRequestContext())
         try:
-            mode_enum = PresentationMode(mode)
-            pattern_enum = ExecutionPattern(pattern)
-        except ValueError as e:
+            # Enum 변환
+            try:
+                mode_enum = PresentationMode(mode)
+                pattern_enum = ExecutionPattern(pattern)
+            except ValueError as e:
+                return {
+                    "success": False,
+                    "error": f"Invalid mode or pattern: {e}",
+                }
+
+            # Template 모드인데 template_id가 없으면 에러
+            if mode_enum == PresentationMode.TEMPLATE and not template_id:
+                return {
+                    "success": False,
+                    "error": "template_id is required for template mode",
+                }
+
+            # 실행 초기화 (Phase 3: allow caller-provided run_id)
+            execution_id = kwargs.pop("run_id", None) or kwargs.pop("execution_id", None)
+            self._init_execution(execution_id)
+
+            # NOTE: Phase 0 statelessness: keep user_id in request context (not instance state)
+            self._user_id = user_id
+
+            logger.info(
+                f"🚀 [{self.name}] 시작: mode={mode}, pattern={pattern}, "
+                f"topic='{topic[:50]}', max_slides={max_slides}, user_id={user_id}"
+            )
+
+            # LangGraph 기반 고정 워크플로우(권장)를 기본 경로로 사용합니다.
+            # 필요 시 `use_langgraph=False`로 레거시 루프(ReAct/Plan-Execute)로 되돌릴 수 있습니다.
+            use_langgraph = bool(kwargs.pop("use_langgraph", True))
+            validate = bool(kwargs.pop("validate", False))
+
+            # Phase 3: tool_calling 패턴은 레거시 에이전트 루프를 사용합니다.
+            if pattern_enum == ExecutionPattern.TOOL_CALLING:
+                use_langgraph = False
+
+            if use_langgraph:
+                graph_result = await run_ppt_generation_graph(
+                    mode=mode_enum.value,
+                    topic=topic,
+                    context_text=context_text,
+                    max_slides=max_slides,
+                    template_id=template_id,
+                    user_id=user_id,
+                    request_id=self._execution_id,
+                    run_id=self._execution_id,
+                    validate=validate,
+                )
+
+                # Graph에서 수집한 관측값을 BaseAgent 메타데이터에 반영
+                self._steps = list(graph_result.get("steps") or [])
+                self._tools_used = list(graph_result.get("tools_used") or [])
+                result = graph_result
+            else:
+                # 패턴에 따라 레거시 루프 실행
+                if pattern_enum == ExecutionPattern.TOOL_CALLING:
+                    result = await self._run_tool_calling_agent(
+                        mode=mode_enum,
+                        topic=topic,
+                        context_text=context_text,
+                        template_id=template_id,
+                        max_slides=max_slides,
+                        **kwargs,
+                    )
+                elif pattern_enum == ExecutionPattern.REACT:
+                    result = await self._run_react(
+                        mode=mode_enum,
+                        topic=topic,
+                        context_text=context_text,
+                        template_id=template_id,
+                        max_slides=max_slides,
+                        **kwargs,
+                    )
+                else:  # PLAN_EXECUTE
+                    result = await self._run_plan_execute(
+                        mode=mode_enum,
+                        topic=topic,
+                        context_text=context_text,
+                        template_id=template_id,
+                        max_slides=max_slides,
+                        **kwargs,
+                    )
+
+            # 실행 종료
+            return self._finalize_execution(result)
+        finally:
+            _UNIFIED_PPT_CTX.reset(ctx_token)
+
+    async def _run_tool_calling_agent(
+        self,
+        mode: PresentationMode,
+        topic: str,
+        context_text: str,
+        template_id: Optional[str],
+        max_slides: int,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Phase 3: tool-calling based agent loop.
+
+        This replaces fragile string parsing (Thought/Action/Action Input) with
+        structured tool calls when the underlying chat model supports it.
+        """
+
+        from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+
+        self._log_step("START", f"Tool-calling Agent 시작 (mode={mode.value})")
+
+        # 상태 저장용 변수 (레거시 ReAct와 동일한 보조 캐시)
+        self._latest_deck_spec = None
+        self._latest_mappings = None
+        self._latest_template_structure = None
+        self._latest_template_metadata = None
+        self._latest_slide_matches = None
+
+        system_prompt = self._load_system_prompt(mode, ExecutionPattern.REACT)
+
+        available_tool_names = self._get_available_tools(mode)
+        available_tools = {name: self.tools[name] for name in available_tool_names}
+
+        # Prefer default provider; allow override.
+        provider = kwargs.pop("provider", None)
+        llm = ai_service.get_chat_model(provider=provider, temperature=0.0, max_tokens=4000)
+        if llm is None:
+            return {"success": False, "error": "LLM is not available"}
+
+        # Bind tools if supported; otherwise fail fast (caller can use legacy react).
+        if not hasattr(llm, "bind_tools"):
             return {
                 "success": False,
-                "error": f"Invalid mode or pattern: {e}",
+                "error": "Selected LLM does not support tool calling (missing bind_tools)",
             }
-        
-        # Template 모드인데 template_id가 없으면 에러
-        if mode_enum == PresentationMode.TEMPLATE and not template_id:
-            return {
-                "success": False,
-                "error": "template_id is required for template mode",
-            }
-        
-        # 실행 초기화
-        self._init_execution()
-        
-        # Store user_id for tool execution
-        self._user_id = user_id
-        
-        logger.info(
-            f"🚀 [{self.name}] 시작: mode={mode}, pattern={pattern}, "
-            f"topic='{topic[:50]}', max_slides={max_slides}, user_id={user_id}"
+
+        llm = llm.bind_tools(list(available_tools.values()))
+
+        user_prompt = (
+            f"주제: {topic}\n"
+            f"최대 슬라이드: {max_slides}\n"
+            f"{'템플릿 ID: ' + template_id if template_id else ''}\n\n"
+            f"컨텍스트:\n{(context_text or '')[:3000]}\n\n"
+            f"위 정보를 바탕으로 {'템플릿 기반' if mode == PresentationMode.TEMPLATE else ''} PPT를 생성해주세요.\n"
         )
-        
-        # 패턴에 따라 분기
-        if pattern_enum == ExecutionPattern.REACT:
-            result = await self._run_react(
-                mode=mode_enum,
-                topic=topic,
-                context_text=context_text,
-                template_id=template_id,
-                max_slides=max_slides,
-                **kwargs,
-            )
-        else:  # PLAN_EXECUTE
-            result = await self._run_plan_execute(
-                mode=mode_enum,
-                topic=topic,
-                context_text=context_text,
-                template_id=template_id,
-                max_slides=max_slides,
-                **kwargs,
-            )
-        
-        # 실행 종료
-        return self._finalize_execution(result)
+
+        messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
+
+        for iteration in range(self.max_iterations):
+            try:
+                response = await asyncio.wait_for(
+                    llm.ainvoke(
+                        messages,
+                        config={
+                            "run_id": self._execution_id,
+                            "tags": ["ppt", "tool_calling", f"mode:{mode.value}"],
+                            "metadata": {
+                                "mode": mode.value,
+                                "template_id": template_id,
+                                "max_slides": max_slides,
+                            },
+                        },
+                    ),
+                    timeout=LLM_TIMEOUT_SECONDS,
+                )
+
+                tool_calls = getattr(response, "tool_calls", None) or []
+                if tool_calls:
+                    # Append the assistant message so the tool call context is preserved.
+                    messages.append(response)
+
+                    for call in tool_calls:
+                        tool_name = (call.get("name") if isinstance(call, dict) else None) or ""
+                        tool_args = (call.get("args") if isinstance(call, dict) else None) or {}
+                        tool_call_id = (call.get("id") if isinstance(call, dict) else None) or ""
+
+                        if not isinstance(tool_args, dict):
+                            tool_args = {}
+
+                        # Auto-inject required params (keeps parity with legacy flow)
+                        if tool_name == "outline_generation_tool":
+                            tool_args.setdefault("topic", topic)
+                            tool_args.setdefault("context_text", context_text)
+                            tool_args.setdefault("max_slides", max_slides)
+
+                        if mode == PresentationMode.TEMPLATE:
+                            if tool_name == "template_analyzer_tool" and template_id:
+                                tool_args["template_id"] = template_id
+                                if self._user_id:
+                                    tool_args.setdefault("user_id", self._user_id)
+                            if tool_name == "templated_pptx_builder_tool" and template_id:
+                                tool_args["template_id"] = template_id
+                                if self._user_id:
+                                    tool_args.setdefault("user_id", self._user_id)
+
+                        if tool_name in ["quick_pptx_builder_tool", "templated_pptx_builder_tool", "content_mapping_tool"]:
+                            if self._latest_deck_spec:
+                                if tool_name == "content_mapping_tool":
+                                    tool_args.setdefault("outline", self._latest_deck_spec)
+                                else:
+                                    tool_args.setdefault("deck_spec", self._latest_deck_spec)
+
+                        if tool_name == "templated_pptx_builder_tool":
+                            if self._latest_mappings:
+                                tool_args.setdefault("mappings", self._latest_mappings)
+                            if self._latest_slide_matches:
+                                tool_args.setdefault("slide_matches", self._latest_slide_matches)
+
+                        if tool_name == "content_mapping_tool":
+                            if self._latest_template_structure:
+                                tool_args.setdefault("template_structure", self._latest_template_structure)
+                            if self._latest_slide_matches:
+                                tool_args.setdefault("slide_matches", self._latest_slide_matches)
+
+                        if tool_name == "slide_type_matcher_tool":
+                            if self._latest_deck_spec:
+                                tool_args.setdefault("outline", self._latest_deck_spec)
+                            if self._latest_template_metadata:
+                                tool_args.setdefault("template_metadata", self._latest_template_metadata)
+
+                        self._log_step("ACTION", tool_name, {"input": tool_args})
+                        observation = await self._execute_tool(tool_name, tool_args)
+
+                        # Cache important artifacts
+                        if isinstance(observation, dict):
+                            if "deck_spec" in observation:
+                                self._latest_deck_spec = observation["deck_spec"]
+                            elif "deck" in observation:
+                                self._latest_deck_spec = observation["deck"]
+                            if "mappings" in observation:
+                                self._latest_mappings = observation["mappings"]
+                            if "template_structure" in observation:
+                                self._latest_template_structure = observation["template_structure"]
+                            if tool_name == "template_analyzer_tool":
+                                if observation.get("template_metadata"):
+                                    self._latest_template_metadata = observation.get("template_metadata")
+                                elif observation.get("template_structure", {}).get("slides"):
+                                    self._latest_template_metadata = {"slides": observation["template_structure"]["slides"]}
+                            if "slide_matches" in observation:
+                                self._latest_slide_matches = observation["slide_matches"]
+
+                        self._tools_used.append(tool_name)
+                        self._log_step(
+                            "OBSERVATION",
+                            json.dumps(observation, ensure_ascii=False)[:500],
+                            metadata=observation if isinstance(observation, dict) else {"raw": str(observation)},
+                        )
+
+                        # Send tool result back
+                        messages.append(
+                            ToolMessage(
+                                content=json.dumps(observation, ensure_ascii=False),
+                                tool_call_id=tool_call_id or f"{tool_name}:{iteration}",
+                            )
+                        )
+
+                        # Early exit if builder succeeded
+                        if tool_name in ("templated_pptx_builder_tool", "quick_pptx_builder_tool"):
+                            if isinstance(observation, dict) and observation.get("success"):
+                                file_path = observation.get("file_path")
+                                file_name = observation.get("file_name") or observation.get("filename")
+                                slide_count = observation.get("slide_count", 0)
+                                return {
+                                    "success": True,
+                                    "file_path": file_path,
+                                    "file_name": file_name,
+                                    "slide_count": slide_count,
+                                    "final_answer": f"파일 생성이 완료되었습니다: {file_name}",
+                                    "iterations": iteration + 1,
+                                }
+
+                    continue
+
+                # No tool calls: treat as final.
+                final_text = getattr(response, "content", None) or str(response)
+                self._log_step("FINAL_ANSWER", final_text)
+                file_path, file_name, slide_count = self._extract_file_info_from_steps()
+                if not file_path:
+                    return {
+                        "success": False,
+                        "error": "Tool-calling completed without generating a PPT file (no builder tool call)",
+                        "file_path": None,
+                        "file_name": None,
+                        "slide_count": 0,
+                        "final_answer": final_text,
+                        "iterations": iteration + 1,
+                    }
+                return {
+                    "success": True if file_path else False,
+                    "file_path": file_path,
+                    "file_name": file_name,
+                    "slide_count": slide_count,
+                    "final_answer": final_text,
+                    "iterations": iteration + 1,
+                }
+
+            except asyncio.TimeoutError:
+                logger.error(f"❌ [{self.name}] LLM 타임아웃 (tool_calling)")
+                return {"success": False, "error": "LLM timeout"}
+            except Exception as e:
+                logger.error(f"❌ [{self.name}] tool_calling 실행 실패: {e}")
+                return {"success": False, "error": str(e)}
+
+        return {"success": False, "error": "Maximum iterations exceeded"}
     
     async def _run_react(
         self,
@@ -396,6 +789,15 @@ class UnifiedPresentationAgent(BaseAgent):
                         provider="bedrock",
                         temperature=0.0,
                         max_tokens=4000,
+                        run_config={
+                            "run_id": self._execution_id,
+                            "tags": ["ppt", "legacy_react", f"mode:{mode.value}"],
+                            "metadata": {
+                                "mode": mode.value,
+                                "template_id": template_id,
+                                "max_slides": max_slides,
+                            },
+                        },
                     ),
                     timeout=LLM_TIMEOUT_SECONDS,
                 )
@@ -729,12 +1131,23 @@ class UnifiedPresentationAgent(BaseAgent):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": planning_prompt}
             ]
+
+            run_config = {
+                "run_id": self._execution_id,
+                "tags": ["ppt", "legacy_plan_execute", f"mode:{mode.value}", "phase:planning"],
+                "metadata": {
+                    "mode": mode.value,
+                    "template_id": template_id,
+                    "max_slides": max_slides,
+                },
+            }
             plan_response_data = await asyncio.wait_for(
                 ai_service.chat_completion(
                     messages=messages,
                     provider="bedrock",
                     temperature=0.0,
                     max_tokens=2000,
+                    run_config=run_config,
                 ),
                 timeout=LLM_TIMEOUT_SECONDS,
             )
@@ -1103,6 +1516,50 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         use_rag: bool = True,
         use_ai_first: bool = True,  # 🆕 AI-First 모드 (기본값: True)
     ) -> Dict[str, Any]:
+        try:
+            _UNIFIED_PPT_CTX.get()
+            has_ctx = True
+        except LookupError:
+            has_ctx = False
+
+        if has_ctx:
+            return await self._generate_content_for_template_impl(
+                template_id=template_id,
+                user_query=user_query,
+                context=context,
+                user_id=user_id,
+                session_id=session_id,
+                container_ids=container_ids,
+                use_rag=use_rag,
+                use_ai_first=use_ai_first,
+            )
+
+        ctx_token = _UNIFIED_PPT_CTX.set(_UnifiedPPTRequestContext())
+        try:
+            return await self._generate_content_for_template_impl(
+                template_id=template_id,
+                user_query=user_query,
+                context=context,
+                user_id=user_id,
+                session_id=session_id,
+                container_ids=container_ids,
+                use_rag=use_rag,
+                use_ai_first=use_ai_first,
+            )
+        finally:
+            _UNIFIED_PPT_CTX.reset(ctx_token)
+
+    async def _generate_content_for_template_impl(
+        self,
+        template_id: str,
+        user_query: str,
+        context: str = "",
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        container_ids: Optional[List[str]] = None,
+        use_rag: bool = True,
+        use_ai_first: bool = True,  # 🆕 AI-First 모드 (기본값: True)
+    ) -> Dict[str, Any]:
         """
         UI 편집용 콘텐츠 생성 (Agent 통제 하에 실행).
         
@@ -1137,7 +1594,7 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         try:
             # 🆕 AI-First 모드: 단일 AI 호출로 모든 매핑 생성
             if use_ai_first:
-                return await self._generate_content_ai_first(
+                result = await self._generate_content_ai_first(
                     template_id=template_id,
                     user_query=user_query,
                     context=context,
@@ -1146,8 +1603,65 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
                     container_ids=container_ids,
                     use_rag=use_rag,
                 )
+                return self._finalize_execution(result)
             
             # 기존 4-Tool 파이프라인
+            # Phase 2: if session_id is provided, run via LangGraph + checkpointer so we can resume.
+            if session_id:
+                # Step 0: RAG 컨텍스트 수집 (use_rag=True인 경우)
+                enriched_context = context
+                if use_rag:
+                    try:
+                        rag_context = await self._perform_rag_search(
+                            query=user_query,
+                            container_ids=container_ids,
+                            session_id=session_id,
+                        )
+                        if rag_context:
+                            enriched_context = f"{context}\n\n## RAG 검색 결과\n{rag_context}"
+                            logger.info(f"  📚 RAG 컨텍스트 수집: {len(rag_context)}자 추가")
+                    except Exception as e:
+                        logger.warning(f"RAG 검색 실패 (계속 진행): {e}")
+
+                thread_id = f"pptwiz:{session_id}:{template_id}:{self._user_id or 'anon'}"
+                graph_result = await run_template_wizard_until_mapped(
+                    thread_id=thread_id,
+                    template_id=template_id,
+                    topic=user_query,
+                    context_text=enriched_context or "",
+                    user_id=self._user_id,
+                    request_id=session_id,
+                )
+
+                if not graph_result.get("success", False):
+                    raise ValueError(graph_result.get("error") or "콘텐츠 생성 실패")
+
+                deck_spec = graph_result.get("deck_spec") or {}
+                slide_matches = graph_result.get("slide_matches") or []
+                mappings = graph_result.get("mappings") or []
+                ai_slides = (deck_spec or {}).get("slides", [])
+
+                original_metadata = await self._load_template_metadata_direct(template_id, user_id)
+                original_slides_info = (original_metadata or {}).get("slides", []) if original_metadata else []
+                ui_slides = self._convert_to_ui_format(
+                    slides_info=original_slides_info,
+                    ai_slides=ai_slides,
+                    slide_matches=slide_matches,
+                    mappings=mappings,
+                )
+
+                logger.info(f"✅ [{self.name}] 콘텐츠 생성 완료(LangGraph): {len(ui_slides)} 슬라이드")
+                result = {
+                    "success": True,
+                    "slides": ui_slides,
+                    "template_id": template_id,
+                    "deck_spec": deck_spec,
+                    "slide_matches": slide_matches,
+                    "mappings": mappings,
+                    "thread_id": thread_id,
+                }
+                return self._finalize_execution(result)
+
             # Step 1: 템플릿 분석
             logger.info(f"📋 Step 1: 템플릿 분석 - {template_id}")
             template_result = await self.tools["template_analyzer_tool"]._arun(
@@ -1229,8 +1743,8 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             )
             
             logger.info(f"✅ [{self.name}] 콘텐츠 생성 완료: {len(ui_slides)} 슬라이드")
-            
-            return {
+
+            result = {
                 "success": True,
                 "slides": ui_slides,
                 "template_id": template_id,
@@ -1238,14 +1752,16 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
                 "slide_matches": slide_matches,
                 "mappings": mappings,
             }
+            return self._finalize_execution(result)
             
         except Exception as e:
             logger.error(f"❌ [{self.name}] 콘텐츠 생성 실패: {e}", exc_info=True)
-            return {
+            result = {
                 "success": False,
                 "error": str(e),
                 "slides": [],
             }
+            return self._finalize_execution(result)
     
     async def build_ppt_from_ui_data(
         self,
@@ -1253,6 +1769,63 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         slides_data: List[Dict[str, Any]],
         output_filename: str = "presentation",
         user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        deck_spec: Optional[Dict[str, Any]] = None,
+        slide_matches: Optional[List[Dict[str, Any]]] = None,
+        mappings: Optional[List[Dict[str, Any]]] = None,
+        use_ai_builder: bool = True,  # 🆕 SimplePPTBuilder 사용 (기본값 True로 변경)
+        slide_replacements: Optional[List[Dict[str, Any]]] = None,  # 🆕 v3.4
+        content_plan: Optional[Dict[str, Any]] = None,              # 🆕 v3.7
+        dynamic_slides: Optional[Dict[str, Any]] = None,            # 🆕 v3.7
+    ) -> Dict[str, Any]:
+        try:
+            _UNIFIED_PPT_CTX.get()
+            has_ctx = True
+        except LookupError:
+            has_ctx = False
+
+        if has_ctx:
+            return await self._build_ppt_from_ui_data_impl(
+                template_id=template_id,
+                slides_data=slides_data,
+                output_filename=output_filename,
+                user_id=user_id,
+                session_id=session_id,
+                deck_spec=deck_spec,
+                slide_matches=slide_matches,
+                mappings=mappings,
+                use_ai_builder=use_ai_builder,
+                slide_replacements=slide_replacements,
+                content_plan=content_plan,
+                dynamic_slides=dynamic_slides,
+            )
+
+        ctx_token = _UNIFIED_PPT_CTX.set(_UnifiedPPTRequestContext())
+        try:
+            return await self._build_ppt_from_ui_data_impl(
+                template_id=template_id,
+                slides_data=slides_data,
+                output_filename=output_filename,
+                user_id=user_id,
+                session_id=session_id,
+                deck_spec=deck_spec,
+                slide_matches=slide_matches,
+                mappings=mappings,
+                use_ai_builder=use_ai_builder,
+                slide_replacements=slide_replacements,
+                content_plan=content_plan,
+                dynamic_slides=dynamic_slides,
+            )
+        finally:
+            _UNIFIED_PPT_CTX.reset(ctx_token)
+
+    async def _build_ppt_from_ui_data_impl(
+        self,
+        template_id: str,
+        slides_data: List[Dict[str, Any]],
+        output_filename: str = "presentation",
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
         deck_spec: Optional[Dict[str, Any]] = None,
         slide_matches: Optional[List[Dict[str, Any]]] = None,
         mappings: Optional[List[Dict[str, Any]]] = None,
@@ -1325,7 +1898,31 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             normalized_mappings = self._normalize_mappings_format(mappings)
             
             # 🆕 절충형 AIPPTBuilder 사용 옵션
-            if use_ai_builder:
+            # Phase 2: if we have a wizard session checkpoint, try resuming the LangGraph build.
+            # Only do this when advanced build options aren't used (to avoid dropping features).
+            if session_id and not slide_replacements and not content_plan and not dynamic_slides:
+                thread_id = f"pptwiz:{session_id}:{template_id}:{self._user_id or 'anon'}"
+                resume_result = await resume_template_wizard_build(
+                    thread_id=thread_id,
+                    state_updates={
+                        "topic": output_filename,
+                        "template_id": template_id,
+                        "user_id": self._user_id,
+                        "deck_spec": updated_deck_spec,
+                        "slide_matches": slide_matches or [],
+                        "mappings": normalized_mappings,
+                        "validate": False,
+                    },
+                )
+                if resume_result.get("success"):
+                    build_result = resume_result
+                else:
+                    logger.warning(f"🧩 LangGraph resume build failed (fallback): {resume_result.get('error')}")
+                    build_result = None
+            else:
+                build_result = None
+
+            if build_result is None and use_ai_builder:
                 build_result = await self._build_with_ai_ppt_builder(
                     template_id=template_id,
                     mappings=normalized_mappings,
@@ -1335,7 +1932,7 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
                     content_plan=content_plan,              # 🆕 v3.7
                     dynamic_slides=dynamic_slides,          # 🆕 v3.7
                 )
-            else:
+            elif build_result is None:
                 # 기존 templated_pptx_builder_tool 실행
                 build_result = await self.tools["templated_pptx_builder_tool"]._arun(
                     deck_spec=updated_deck_spec,
@@ -1361,21 +1958,23 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
                 template_id=template_id,
                 user_id=self._user_id,
             )
-            
-            return {
+
+            result = {
                 "success": True,
                 "file_path": file_path,
                 "file_name": file_name,
                 "slide_count": slide_count,
                 "quality_report": quality_report,  # 품질 검증 결과 추가
             }
+            return self._finalize_execution(result)
             
         except Exception as e:
             logger.error(f"❌ [{self.name}] PPT 빌드 실패: {e}", exc_info=True)
-            return {
+            result = {
                 "success": False,
                 "error": str(e),
             }
+            return self._finalize_execution(result)
     
     # =========================================================================
     # Helper Methods for UI 편집 경로
@@ -2722,8 +3321,34 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
         return merged
 
 
-# Singleton instance
-unified_presentation_agent = UnifiedPresentationAgent()
+# -----------------------------------------------------------------------------
+# Stateless facade
+# -----------------------------------------------------------------------------
+
+
+class UnifiedPresentationAgentFacade:
+    """Facade that creates a fresh agent instance per request.
+
+    This avoids cross-request state pollution caused by shared instance fields
+    (steps/tools_used/_latest_* etc.) when running concurrent requests.
+    """
+
+    name: str = "unified_presentation_agent"
+    description: str = "Unified agent for Quick and Template PPT generation"
+    version: str = UnifiedPresentationAgent.version
+
+    async def run(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        return await UnifiedPresentationAgent().run(*args, **kwargs)
+
+    async def generate_content_for_template(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        return await UnifiedPresentationAgent().generate_content_for_template(*args, **kwargs)
+
+    async def build_ppt_from_ui_data(self, *args: Any, **kwargs: Any) -> Dict[str, Any]:
+        return await UnifiedPresentationAgent().build_ppt_from_ui_data(*args, **kwargs)
+
+
+# Public singleton symbol (now stateless)
+unified_presentation_agent = UnifiedPresentationAgentFacade()
 
 
 # --- Tool Wrapper for LangChain Compatibility ---
@@ -2817,15 +3442,38 @@ class PresentationAgentTool(BaseTool):
             inferred_topic[:50]
         )
 
+        # Pattern selection
+        # Default to tool_calling (Phase 3), with runtime fallback to legacy react
+        # for models/providers that do not support tool calling.
+        pattern = options.get("pattern") or "tool_calling"
+
         result = await unified_presentation_agent.run(
             mode=mode,
-            pattern="react", # Default pattern
+            pattern=pattern,
             topic=inferred_topic,
             context_text=context_text,
             template_id=options.get("template_id"),
             max_slides=int(options.get("max_slides", 8)),
-            **kwargs
+            **kwargs,
         )
+
+        # Fallback: tool calling not supported
+        if pattern == "tool_calling" and not result.get("success") and isinstance(result.get("error"), str):
+            err = result.get("error") or ""
+            if "does not support tool calling" in err or "bind_tools" in err:
+                logger.warning(
+                    "⚠️ [PresentationAgentTool] tool_calling not available; falling back to react: %s",
+                    err,
+                )
+                result = await unified_presentation_agent.run(
+                    mode=mode,
+                    pattern="react",
+                    topic=inferred_topic,
+                    context_text=context_text,
+                    template_id=options.get("template_id"),
+                    max_slides=int(options.get("max_slides", 8)),
+                    **kwargs,
+                )
 
         return result
 

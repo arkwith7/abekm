@@ -696,14 +696,42 @@ async def agent_chat_stream(
                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'ppt_generation', 'status': 'started', 'message': 'PPT 파일을 생성하고 있습니다...'}, ensure_ascii=False)}\n\n"
                     
                     from app.agents.presentation.unified_presentation_agent import unified_presentation_agent
+
+                    import uuid
+
+                    run_id = str(uuid.uuid4())
                     
                     ppt_result = await unified_presentation_agent.run(
                         mode="quick",
-                        pattern="react",
-                        topic="PPT 생성", # 자동 추론을 위해 일반적인 주제 전달 (내부에서 context 기반 추론 가능)
+                        pattern="tool_calling",
+                        # Use the (rewritten) user query so PPT title/filename match the request.
+                        topic=rewritten_query,
                         context_text=structured_answer,
-                        max_slides=8
+                        max_slides=8,
+                        run_id=run_id,
+                        user_id=int(user_emp_no) if str(user_emp_no).isdigit() else None,
                     )
+
+                    # Fallback to deterministic LangGraph-backed flow when tool-calling
+                    # doesn't work (unsupported) or doesn't actually create a PPT file.
+                    should_fallback_to_react = False
+                    if not ppt_result.get("success"):
+                        should_fallback_to_react = True
+                    if not ppt_result.get("file_name") and not ppt_result.get("filename"):
+                        should_fallback_to_react = True
+                    if not ppt_result.get("file_path"):
+                        should_fallback_to_react = True
+
+                    if should_fallback_to_react:
+                        ppt_result = await unified_presentation_agent.run(
+                            mode="quick",
+                            pattern="react",
+                            topic=rewritten_query,
+                            context_text=structured_answer,
+                            max_slides=8,
+                            run_id=run_id,
+                            user_id=int(user_emp_no) if str(user_emp_no).isdigit() else None,
+                        )
                     
                     success = ppt_result.get("success", False)
                     file_name = ppt_result.get("file_name")
@@ -730,6 +758,8 @@ async def agent_chat_stream(
                             "slide_count": ppt_result.get("slide_count", 0),
                             "iterations": ppt_result.get("iterations", 0),
                             "execution_time": ppt_result.get("execution_time", 0),
+                            "run_id": ppt_result.get("run_id") or run_id,
+                            "trace_id": ppt_result.get("trace_id") or run_id,
                             "retrieval_metrics": retrieval_result.get("metrics", {})
                         }
                     else:
@@ -748,9 +778,22 @@ async def agent_chat_stream(
                     return
                     
                 except Exception as ppt_error:
-                    logger.error(f"❌ [HybridPPT] 생성 실패: {ppt_error}", exc_info=True)
-                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'ppt_generation', 'status': 'error', 'message': f'PPT 생성 실패: {str(ppt_error)}'}, ensure_ascii=False)}\n\n"
-                    yield f"event: error\ndata: {json.dumps({'error': str(ppt_error)}, ensure_ascii=False)}\n\n"
+                    error_text = (str(ppt_error) or "").strip()
+                    if not error_text:
+                        error_text = f"{type(ppt_error).__name__} (no message)"
+
+                    # NOTE: This project uses loguru; `exc_info=True` is ignored.
+                    # Use loguru's exception capture to include traceback.
+                    try:
+                        logger.opt(exception=ppt_error).error("❌ [HybridPPT] 생성 실패: {}", error_text)
+                    except Exception:
+                        logger.exception("❌ [HybridPPT] 생성 실패")
+
+                    yield (
+                        "event: reasoning_step\n"
+                        f"data: {json.dumps({'stage': 'ppt_generation', 'status': 'error', 'message': f'PPT 생성 실패: {error_text}'}, ensure_ascii=False)}\n\n"
+                    )
+                    yield f"event: error\ndata: {json.dumps({'error': error_text}, ensure_ascii=False)}\n\n"
                     return
 
             # 🔍 Step 2: 전략 선택

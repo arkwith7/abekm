@@ -1,4 +1,4 @@
-from typing import TypedDict, Annotated, List, Dict, Any, Optional, Sequence
+from typing import TypedDict, Annotated, List, Dict, Any, Optional, Sequence, Literal
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 import json
 import operator
 from loguru import logger
+from pydantic import BaseModel
 
 # DB Session Helper
 @asynccontextmanager
@@ -60,6 +61,10 @@ system_prompt = (
 
 options = ["SearchAgent", "PresentationAgent", "FINISH"]
 
+
+class RouteDecision(BaseModel):
+    next: Literal["SearchAgent", "PresentationAgent", "FINISH"]
+
 # Function definition for routing
 function_def = {
     "name": "route",
@@ -93,14 +98,13 @@ prompt = ChatPromptTemplate.from_messages(
 
 supervisor_chain = (
     prompt
-    | llm.bind_functions(functions=[function_def], function_call="route")
-    | (lambda x: json.loads(x.additional_kwargs["function_call"]["arguments"]))
+    | llm.with_structured_output(RouteDecision)
 )
 
 # Nodes
 async def supervisor_node(state: AgentState):
-    result = await supervisor_chain.ainvoke(state)
-    return result
+    decision = await supervisor_chain.ainvoke(state)
+    return {"next": decision.next}
 
 async def search_node(state: AgentState):
     messages = state["messages"]
@@ -189,7 +193,7 @@ for member in options[:-1]:
 
 workflow.add_conditional_edges(
     "supervisor",
-    lambda x: x["next"],
+    lambda x: END if x["next"] == "FINISH" else x["next"],
 )
 
 workflow.set_entry_point("supervisor")

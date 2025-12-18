@@ -69,7 +69,7 @@ class OutlineGenerationTool(BaseTool):
         
         # 🆕 topic 정제: 요청 표현 제거 및 명사형 변환
         refined_topic = await self._refine_topic(topic)
-        if refined_topic != topic:
+        if refined_topic and refined_topic != topic:
             logger.info(f"📝 제목 정제: '{topic[:50]}' → '{refined_topic[:50]}'")
             topic = refined_topic
 
@@ -78,7 +78,7 @@ class OutlineGenerationTool(BaseTool):
             sanitized_text = self._sanitize_markdown(context_text)
 
             # Parse sections
-            sections = self._parse_sections(sanitized_text, max_slides)
+            parsed_title, sections = self._parse_sections(sanitized_text, max_slides)
 
             # 🔍 [Smart Fallback] 섹션이 너무 적으면 LLM으로 재생성 시도
             if len(sections) < min(3, max_slides):
@@ -87,10 +87,12 @@ class OutlineGenerationTool(BaseTool):
                     regenerated_text = await self._generate_outline_with_llm(topic, context_text, max_slides)
                     if regenerated_text:
                         logger.info("🔄 LLM 재생성 완료. 다시 파싱합니다.")
-                        new_sections = self._parse_sections(self._sanitize_markdown(regenerated_text), max_slides)
+                        new_title, new_sections = self._parse_sections(self._sanitize_markdown(regenerated_text), max_slides)
                         if len(new_sections) > len(sections):
                             logger.info(f"✅ 재생성 성공: {len(sections)} -> {len(new_sections)}개 섹션")
                             sections = new_sections
+                            if new_title:
+                                parsed_title = new_title
                         else:
                             logger.warning("⚠️ 재생성된 텍스트에서도 섹션을 충분히 찾지 못했습니다.")
                 except Exception as llm_err:
@@ -100,8 +102,11 @@ class OutlineGenerationTool(BaseTool):
                 logger.warning("⚠️ 섹션 파싱 실패 - 폴백 슬라이드 생성")
                 sections = self._create_fallback_sections(topic)
 
+            # Prefer the markdown-extracted title if available (so we don't end up with generic titles).
+            effective_topic = (parsed_title or "").strip() or topic
+
             # Build deck specification
-            deck = self._build_deck_spec(topic, sections, max_slides)
+            deck = self._build_deck_spec(effective_topic, sections, max_slides)
 
             logger.info(f"✅ [OutlineTool] 완료: {len(deck.slides)}개 슬라이드 생성")
 
@@ -270,7 +275,7 @@ class OutlineGenerationTool(BaseTool):
 
         return '\n'.join(processed)
 
-    def _parse_sections(self, text: str, max_slides: int) -> List[Dict[str, Any]]:
+    def _parse_sections(self, text: str, max_slides: int) -> tuple[str, List[Dict[str, Any]]]:
         """
         Parse markdown into sections.
         
@@ -483,7 +488,7 @@ class OutlineGenerationTool(BaseTool):
             i += 1
 
         logger.info(f"✅ 섹션 파싱 완료: {len(sections)}개")
-        return sections
+        return presentation_title.strip(), sections
 
     def _extract_toc(self, lines: List[str], start_idx: int) -> List[str]:
         """Extract table of contents items."""

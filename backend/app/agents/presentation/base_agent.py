@@ -231,8 +231,13 @@ class BaseAgent(ABC):
         """
         execution_time = (datetime.utcnow() - self._start_time).total_seconds()
         
+        # NOTE: Phase 3 observability (01.docs/13.2): surface run_id/trace_id.
+        # We alias both to execution_id for now so callers have stable correlation IDs
+        # even when external tracing (e.g., LangSmith) is not configured.
         result.update({
             "execution_id": self._execution_id,
+            "run_id": self._execution_id,
+            "trace_id": self._execution_id,
             "execution_time": execution_time,
             "steps": self._steps,
             "tools_used": self._tools_used,

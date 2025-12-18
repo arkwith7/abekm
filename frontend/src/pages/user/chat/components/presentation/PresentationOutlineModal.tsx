@@ -197,15 +197,20 @@ const PresentationOutlineModal: React.FC<Props> = ({
 
     const loadThumbnails = async (templateId: string) => {
         try {
-            const response = await fetch(
-                `/api/v1/agent/presentation/templates/${encodeURIComponent(templateId)}/thumbnails`,
-                { headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` } }
-            );
+            const apiBaseUrl = getApiUrl();
+            const apiUrl = apiBaseUrl
+                ? `${apiBaseUrl}/api/v1/agent/presentation/templates/${encodeURIComponent(templateId)}/thumbnails`
+                : `/api/v1/agent/presentation/templates/${encodeURIComponent(templateId)}/thumbnails`;
+
+            const response = await fetch(apiUrl, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` }
+            });
             if (response.ok) {
                 const data = await response.json();
-                const urls = (data.thumbnails || []).map((_: any, idx: number) =>
-                    `/api/v1/agent/presentation/templates/${encodeURIComponent(templateId)}/thumbnails/${idx}`
-                );
+                const urls = (data.thumbnails || []).map((_: any, idx: number) => {
+                    const thumbnailPath = `/api/v1/agent/presentation/templates/${encodeURIComponent(templateId)}/thumbnails/${idx}`;
+                    return apiBaseUrl ? `${apiBaseUrl}${thumbnailPath}` : thumbnailPath;
+                });
                 setSlideThumbnails(urls);
             }
         } catch (e) {
@@ -476,6 +481,8 @@ const PresentationOutlineModal: React.FC<Props> = ({
                     slides: slidesContent,
                     // 🆕 AI 생성 제목 우선 사용, 없으면 사용자 쿼리에서 추출
                     output_filename: (presentationTitle || sourceContent || '프레젠테이션').slice(0, 50).replace(/[\\/:*?"<>|]/g, '_'),
+                    // 🆕 wizard persistence lookup key (LangGraph checkpointer / Redis)
+                    session_id: sessionId,
                     // 🆕 v3.4: 슬라이드 대체 정보 전달
                     slide_replacements: slideReplacements.length > 0 ? slideReplacements : undefined,
                     // 🆕 v3.8: 동적 슬라이드 정보 전달 (슬라이드 추가/삭제)
@@ -502,10 +509,14 @@ const PresentationOutlineModal: React.FC<Props> = ({
 
     const loadPreviewUrl = async (filename: string) => {
         try {
-            const response = await fetch(
-                `/api/v1/agent/presentation/preview-url/${encodeURIComponent(filename)}`,
-                { headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` } }
-            );
+            const apiBaseUrl = getApiUrl();
+            const apiUrl = apiBaseUrl
+                ? `${apiBaseUrl}/api/v1/agent/presentation/preview-url/${encodeURIComponent(filename)}`
+                : `/api/v1/agent/presentation/preview-url/${encodeURIComponent(filename)}`;
+
+            const response = await fetch(apiUrl, {
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('ABEKM_token')}` }
+            });
             if (response.ok) {
                 const data = await response.json();
                 // previewUrl은 googlePreviewUrl로 통합됨

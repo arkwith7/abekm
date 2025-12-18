@@ -1,10 +1,10 @@
 from typing import List, Optional, Dict, Any
 import time
-from langchain.llms.base import BaseLLM
-from langchain.embeddings.base import Embeddings
+from langchain_core.language_models import BaseLanguageModel
+from langchain_core.embeddings import Embeddings
 from langchain_aws import ChatBedrock, ChatBedrockConverse, BedrockEmbeddings
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings, ChatOpenAI, OpenAIEmbeddings
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from loguru import logger
 import os
 from app.core.config import settings
@@ -19,7 +19,7 @@ class MultiVendorAIService:
     
     def __init__(self):
         # Provider 별 LLM / Embedding 인스턴스
-        self.llm_providers: Dict[str, BaseLLM] = {}
+        self.llm_providers: Dict[str, BaseLanguageModel] = {}
         self.embedding_providers: Dict[str, Embeddings] = {}
 
         # 기본 제공자 및 간단 메트릭 구조
@@ -163,7 +163,7 @@ class MultiVendorAIService:
         except Exception as e:
             logger.error(f"OpenAI 초기화 실패: {e}")
     
-    def get_llm(self, provider: Optional[str] = None) -> Optional[BaseLLM]:
+    def get_llm(self, provider: Optional[str] = None) -> Optional[BaseLanguageModel]:
         """LLM 인스턴스 반환"""
         requested_provider = provider
         provider = provider or self.default_provider
@@ -183,6 +183,40 @@ class MultiVendorAIService:
         
         logger.error("❌ 사용 가능한 LLM 제공자가 없습니다")
         return None
+
+    def get_chat_model(
+        self,
+        provider: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+    ):
+        """Supervisor/agent code 호환용 헬퍼.
+
+        기존 코드에서 기대하던 `get_chat_model()` API를 유지하면서,
+        LangChain 1.x Runnable 바인딩 방식으로 파라미터를 적용합니다.
+        """
+        llm = self.get_llm(provider)
+        if not llm:
+            return None
+
+        model_name = getattr(llm, "deployment_name", "") or getattr(llm, "model", "") or getattr(llm, "model_id", "")
+        is_reasoning = self._is_reasoning_model(str(model_name or ""))
+
+        if is_reasoning:
+            # reasoning 모델은 temperature 미지원 (일부는 max_completion_tokens만 지원)
+            if max_tokens is not None:
+                try:
+                    return llm.bind(max_completion_tokens=max_tokens)
+                except Exception:
+                    return llm
+            return llm
+
+        bind_kwargs: Dict[str, Any] = {}
+        if temperature is not None:
+            bind_kwargs["temperature"] = temperature
+        if max_tokens is not None:
+            bind_kwargs["max_tokens"] = max_tokens
+        return llm.bind(**bind_kwargs) if bind_kwargs else llm
     
     def get_embeddings(self, provider: Optional[str] = None) -> Optional[Embeddings]:
         """임베딩 인스턴스 반환"""
@@ -236,7 +270,8 @@ class MultiVendorAIService:
         messages: List[Dict[str, str]],
         provider: Optional[str] = None,
         max_tokens: Optional[int] = None,
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        run_config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """다중 메시지(chat history) 입력을 받아 표준 dict 반환.
         messages 예시: [{"role": "user"|"assistant"|"system", "content": "..."}, ...]
@@ -275,7 +310,29 @@ class MultiVendorAIService:
         used_provider = provider or self.default_provider
         try:
             logger.info(f"🤖 LLM invoke: provider={used_provider}, model={model_name}, is_reasoning={is_reasoning}, messages_count={len(lc_messages)}")
-            result = await llm.ainvoke(lc_messages)
+            # Phase 3: pass run_id/tags/metadata for tracing (LangSmith etc.)
+            if run_config:
+                effective_config = dict(run_config)
+
+                # Optional: mirror LangChain callbacks into the existing log system.
+                # This does NOT replace LangSmith UI traces; it complements them.
+                if os.getenv("LANGCHAIN_TRACE_TO_LOG", "false").lower() in {"1", "true", "yes", "y"}:
+                    try:
+                        from app.services.core.langchain_log_callback import SafeLogCallbackHandler
+
+                        callbacks = list(effective_config.get("callbacks") or [])
+                        callbacks.append(SafeLogCallbackHandler())
+                        effective_config["callbacks"] = callbacks
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to enable LANGCHAIN_TRACE_TO_LOG callbacks: {e}")
+
+                try:
+                    result = await llm.ainvoke(lc_messages, config=effective_config)
+                except TypeError:
+                    # Some implementations may not accept config kwarg.
+                    result = await llm.ainvoke(lc_messages)
+            else:
+                result = await llm.ainvoke(lc_messages)
             elapsed = int((time.time() - start) * 1000)
             logger.info(f"🤖 LLM response received in {elapsed}ms, result type: {type(result)}")
             

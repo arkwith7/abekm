@@ -139,7 +139,7 @@ class RerankTool(BaseTool):
         - bedrock: AWS Bedrock 모델 사용
         """
         from app.core.config import settings
-        from langchain.schema import HumanMessage
+        from langchain_core.messages import HumanMessage
         
         try:
             provider = settings.rag_reranking_provider

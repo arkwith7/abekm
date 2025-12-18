@@ -7,6 +7,7 @@ import os
 import urllib.parse
 from pathlib import Path
 from datetime import datetime
+import uuid
 
 from app.core.dependencies import get_current_user
 from app.core.security import AuthUtils
@@ -1121,7 +1122,8 @@ async def build_presentation_quick(
     """ReAct Agent 기반 Quick PPT 생성 (기존 파이프라인 대체)"""
     async def stream():
         try:
-            yield f"data: {json.dumps({'type': 'start', 'agent_type': 'ReAct'})}\n\n"
+            run_id = str(uuid.uuid4())
+            yield f"data: {json.dumps({'type': 'start', 'agent_type': 'ReAct', 'run_id': run_id, 'trace_id': run_id})}\n\n"
             
             # 메시지 소스 추출 (기존 로직 유지)
             topic = "발표자료"
@@ -1189,11 +1191,27 @@ async def build_presentation_quick(
                 
                 result = await unified_presentation_agent.run(
                     mode="quick",
-                    pattern="react",
+                    pattern="tool_calling",
                     topic=topic,
                     context_text=structured_context,
-                    max_slides=req.max_slides
+                    max_slides=req.max_slides,
+                    run_id=run_id,
                 )
+
+                # Fallback: if tool calling isn't supported by the selected model/provider,
+                # retry with legacy react to preserve UX.
+                if not result.get("success") and isinstance(result.get("error"), str):
+                    err = result.get("error") or ""
+                    if "does not support tool calling" in err or "bind_tools" in err:
+                        logger.warning(f"⚠️ [Quick] tool_calling not available; falling back to react: {err}")
+                        result = await unified_presentation_agent.run(
+                            mode="quick",
+                            pattern="react",
+                            topic=topic,
+                            context_text=structured_context,
+                            max_slides=req.max_slides,
+                            run_id=run_id,
+                        )
                 
                 # 결과 확인
                 if result.get("success"):
@@ -1220,6 +1238,8 @@ async def build_presentation_quick(
                             'slide_count': slide_count,
                             'iterations': result.get("iterations", 0),
                             'tools_used': result.get("tools_used", []),
+                            'run_id': result.get('run_id') or run_id,
+                            'trace_id': result.get('trace_id') or run_id,
                         }
                         
                         if result.get("final_answer"):
@@ -1306,7 +1326,8 @@ async def build_presentation_with_template_react(
     """ReAct Agent 기반 Template PPT 생성"""
     async def stream():
         try:
-            yield f"data: {json.dumps({'type': 'start', 'agent_type': 'TemplatedReAct'})}\n\n"
+            run_id = str(uuid.uuid4())
+            yield f"data: {json.dumps({'type': 'start', 'agent_type': 'TemplatedReAct', 'run_id': run_id, 'trace_id': run_id})}\n\n"
             
             # 메시지 소스 추출
             topic = "발표자료"
@@ -1443,13 +1464,14 @@ async def build_presentation_with_template_react(
                 agent_task = asyncio.create_task(
                     unified_presentation_agent.run(
                         mode="template",
-                        pattern="react",
+                        pattern="tool_calling",
                         topic=topic,
                         context_text=structured_context,
                         template_id=req.template_id,
                         max_slides=req.max_slides,
                         presentation_type=req.presentation_type,
-                        user_id=current_user.id  # 🆕 user_id 전달하여 user-specific 템플릿 접근
+                        user_id=current_user.id,  # 🆕 user_id 전달하여 user-specific 템플릿 접근
+                        run_id=run_id,
                     )
                 )
                 
@@ -1474,6 +1496,23 @@ async def build_presentation_with_template_react(
                 
                 # Agent 결과 가져오기
                 result = await agent_task
+
+                # Fallback to legacy react if tool calling isn't supported.
+                if not result.get("success") and isinstance(result.get("error"), str):
+                    err = result.get("error") or ""
+                    if "does not support tool calling" in err or "bind_tools" in err:
+                        logger.warning(f"⚠️ [TemplatedReAct] tool_calling not available; falling back to react: {err}")
+                        result = await unified_presentation_agent.run(
+                            mode="template",
+                            pattern="react",
+                            topic=topic,
+                            context_text=structured_context,
+                            template_id=req.template_id,
+                            max_slides=req.max_slides,
+                            presentation_type=req.presentation_type,
+                            user_id=current_user.id,
+                            run_id=run_id,
+                        )
                 
                 # 결과 확인
                 if result.get("success"):
@@ -1501,6 +1540,8 @@ async def build_presentation_with_template_react(
                             'slide_count': slide_count,
                             'iterations': result.get("iterations", 0),
                             'tools_used': result.get("tools_used", []),
+                            'run_id': result.get('run_id') or run_id,
+                            'trace_id': result.get('trace_id') or run_id,
                         }
                         
                         if result.get("final_answer"):
@@ -1566,7 +1607,8 @@ async def build_presentation_with_template_plan_execute(
     """Plan-and-Execute Agent 기반 Template PPT 생성"""
     async def stream():
         try:
-            yield f"data: {json.dumps({'type': 'start', 'agent_type': 'PlanExecute'})}\n\n"
+            run_id = str(uuid.uuid4())
+            yield f"data: {json.dumps({'type': 'start', 'agent_type': 'PlanExecute', 'run_id': run_id, 'trace_id': run_id})}\n\n"
             
             # 메시지 소스 추출
             topic = "발표자료"
@@ -1619,7 +1661,8 @@ async def build_presentation_with_template_plan_execute(
                     context_text=structured_context,
                     template_id=req.template_id,
                     max_slides=req.max_slides,
-                    user_id=current_user.id  # 🆕 user_id 전달하여 user-specific 템플릿 접근
+                    user_id=current_user.id,  # 🆕 user_id 전달하여 user-specific 템플릿 접근
+                    run_id=run_id,
                 )
                 
                 # 결과 확인
@@ -1638,6 +1681,8 @@ async def build_presentation_with_template_plan_execute(
                             'template_id': req.template_id,
                             'execution_metadata': result.get("execution_metadata", {}),
                             'plan_steps': len(result.get("plan", [])),
+                            'run_id': result.get('run_id') or run_id,
+                            'trace_id': result.get('trace_id') or run_id,
                         }
                         
                         if result.get("validation_result"):
@@ -1856,6 +1901,7 @@ class SlideReplacementData(BaseModel):
 class BuildFromDataRequest(BaseModel):
     slides: List[SlideContentData]
     output_filename: Optional[str] = "presentation"
+    session_id: Optional[str] = None  # 🆕 wizard state lookup key
     slide_replacements: Optional[List[SlideReplacementData]] = None  # 🆕 v3.4
     content_plan: Optional[Dict[str, Any]] = None  # 🆕 v3.8: 동적 슬라이드
     dynamic_slides: Optional[Dict[str, Any]] = None  # 🆕 v3.8: 동적 슬라이드 (mode, add_slides, remove_slides)
@@ -1876,6 +1922,13 @@ async def generate_template_content(
     4. content_mapping_tool: 콘텐츠-텍스트박스 매핑
     """
     try:
+        from app.agents.presentation.ppt_wizard_checkpoint import (
+            ensure_saved as wizard_cp_ensure_saved,
+            is_enabled as wizard_cp_is_enabled,
+            make_thread_id as wizard_cp_make_thread_id,
+        )
+        from app.services.presentation.ppt_wizard_store import PPTWizardKey, ppt_wizard_store
+
         user_id = str(current_user.emp_no) if hasattr(current_user, 'emp_no') else str(current_user.id)
         
         logger.info(f"📊 PPT 콘텐츠 생성 요청 (Agent): template={template_id}, user={user_id}, use_rag={request.use_rag}, use_ai_first={request.use_ai_first}")
@@ -1896,6 +1949,63 @@ async def generate_template_content(
             error_msg = result.get("error", "콘텐츠 생성 실패")
             logger.error(f"Content generation failed: {error_msg}")
             raise HTTPException(status_code=500, detail=error_msg)
+
+        # Phase 2: persist wizard artifacts via LangGraph checkpointer (preferred).
+        if request.session_id and wizard_cp_is_enabled():
+            try:
+                thread_id = wizard_cp_make_thread_id(
+                    user_id=str(current_user.id),
+                    session_id=request.session_id,
+                    template_id=template_id,
+                )
+
+                await wizard_cp_ensure_saved(
+                    thread_id=thread_id,
+                    state={
+                        "user_id": str(current_user.id),
+                        "session_id": request.session_id,
+                        "template_id": template_id,
+                        "thread_id": thread_id,
+                        "pipeline": result.get("pipeline") or ("ai_first" if request.use_ai_first else "legacy"),
+                        "deck_spec": result.get("deck_spec"),
+                        "slide_matches": result.get("slide_matches"),
+                        "mappings": result.get("mappings"),
+                        # AI-first extras (safe even if None)
+                        "slide_replacements": result.get("slide_replacements"),
+                        "content_plan": result.get("content_plan"),
+                        "dynamic_slides": result.get("dynamic_slides"),
+                        "presentation_title": result.get("presentation_title"),
+                    },
+                )
+
+                # Surface the thread_id to the caller (no UX change required; additive field).
+                if isinstance(result, dict):
+                    result["thread_id"] = thread_id
+            except Exception as e:
+                logger.warning(f"🧩 LangGraph wizard checkpoint save failed (fallback to Redis): {e}")
+
+        # Optional legacy fallback: persist wizard artifacts for follow-up build-from-data calls.
+        if request.session_id:
+            try:
+                await ppt_wizard_store.save(
+                    key=PPTWizardKey(
+                        user_id=str(current_user.id),
+                        session_id=request.session_id,
+                        template_id=template_id,
+                    ),
+                    state={
+                        "template_id": template_id,
+                        "deck_spec": result.get("deck_spec"),
+                        "slide_matches": result.get("slide_matches"),
+                        "mappings": result.get("mappings"),
+                        # AI-first extras
+                        "slide_replacements": result.get("slide_replacements"),
+                        "content_plan": result.get("content_plan"),
+                        "dynamic_slides": result.get("dynamic_slides"),
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"🧠 PPT wizard state save failed: {e}")
         
         return JSONResponse(result)
     except HTTPException:
@@ -1920,6 +2030,14 @@ async def build_ppt_from_data(
     템플릿 스타일을 완전히 보존하면서 콘텐츠만 교체.
     """
     try:
+        from app.agents.presentation.ppt_wizard_checkpoint import (
+            load as wizard_cp_load,
+            update as wizard_cp_update,
+            is_enabled as wizard_cp_is_enabled,
+            make_thread_id as wizard_cp_make_thread_id,
+        )
+        from app.services.presentation.ppt_wizard_store import PPTWizardKey, ppt_wizard_store
+
         # Convert Pydantic models to dict
         slides_data = [s.dict() for s in request.slides]
         
@@ -1927,6 +2045,33 @@ async def build_ppt_from_data(
         user_id = str(current_user.emp_no) if hasattr(current_user, 'emp_no') else str(current_user.id)
         
         logger.info(f"🏗️ PPT 빌드 요청 (Agent): template={template_id}, user={user_id}, slides={len(slides_data)}")
+
+        # Phase 2: load prior wizard artifacts from LangGraph checkpointer (preferred).
+        wizard_state = None
+        thread_id = None
+        if request.session_id and wizard_cp_is_enabled():
+            try:
+                thread_id = wizard_cp_make_thread_id(
+                    user_id=str(current_user.id),
+                    session_id=request.session_id,
+                    template_id=template_id,
+                )
+                wizard_state = await wizard_cp_load(thread_id=thread_id)
+            except Exception as e:
+                logger.warning(f"🧩 LangGraph wizard checkpoint load failed (fallback to Redis): {e}")
+
+        # Legacy fallback: load prior wizard artifacts from Redis.
+        if wizard_state is None and request.session_id:
+            try:
+                wizard_state = await ppt_wizard_store.load(
+                    key=PPTWizardKey(
+                        user_id=str(current_user.id),
+                        session_id=request.session_id,
+                        template_id=template_id,
+                    )
+                )
+            except Exception as e:
+                logger.warning(f"🧠 PPT wizard state load failed: {e}")
         
         # 🆕 v3.4: slide_replacements 처리
         slide_replacements = None
@@ -1945,14 +2090,23 @@ async def build_ppt_from_data(
                 logger.info(f"  📐 동적 슬라이드 요청: {type(dynamic_slides)}")
         
         # Agent 아키텍처로 전환: unified_presentation_agent 사용
+        # Prefer request-provided advanced options; otherwise, reuse saved AI-first extras.
+        slide_replacements_effective = slide_replacements or (wizard_state or {}).get("slide_replacements")
+        content_plan_effective = request.content_plan or (wizard_state or {}).get("content_plan")
+        dynamic_slides_effective = dynamic_slides or (wizard_state or {}).get("dynamic_slides")
+
         result = await unified_presentation_agent.build_ppt_from_ui_data(
             template_id=template_id,
             slides_data=slides_data,
             output_filename=request.output_filename,
             user_id=user_id,
-            slide_replacements=slide_replacements,  # 🆕 v3.4
-            content_plan=request.content_plan,      # 🆕 v3.8
-            dynamic_slides=dynamic_slides,          # 🆕 v3.8
+            session_id=request.session_id,
+            deck_spec=(wizard_state or {}).get("deck_spec"),
+            slide_matches=(wizard_state or {}).get("slide_matches"),
+            mappings=(wizard_state or {}).get("mappings"),
+            slide_replacements=slide_replacements_effective,  # 🆕 v3.4
+            content_plan=content_plan_effective,              # 🆕 v3.8
+            dynamic_slides=dynamic_slides_effective,          # 🆕 v3.8
         )
         
         if not result.get("success", False):
@@ -1962,11 +2116,41 @@ async def build_ppt_from_data(
         
         file_path = result.get("file_path")
         file_name = result.get("file_name")
+
+        # Phase 2: persist build outputs back to the checkpointer.
+        if thread_id and wizard_cp_is_enabled():
+            try:
+                await wizard_cp_update(
+                    thread_id=thread_id,
+                    values={
+                        "file_path": file_path,
+                        "file_name": file_name,
+                        "slide_count": result.get("slide_count"),
+                        # Keep latest artifacts for potential re-builds.
+                        "deck_spec": (wizard_state or {}).get("deck_spec"),
+                        "slide_matches": (wizard_state or {}).get("slide_matches"),
+                        "mappings": (wizard_state or {}).get("mappings"),
+                        "slide_replacements": slide_replacements_effective,
+                        "content_plan": content_plan_effective,
+                        "dynamic_slides": dynamic_slides_effective,
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"🧩 LangGraph wizard checkpoint update failed: {e}")
         
         # Generate download URL
         download_url = f"/api/v1/agent/presentation/download/{file_name}"
         
-        return {"file_url": download_url, "file_path": file_path, "file_name": file_name}
+        response_payload = {
+            "file_url": download_url,
+            "file_path": file_path,
+            "file_name": file_name,
+            "run_id": result.get("run_id") or result.get("execution_id"),
+            "trace_id": result.get("trace_id") or result.get("execution_id"),
+        }
+        if thread_id:
+            response_payload["thread_id"] = thread_id
+        return response_payload
     except HTTPException:
         raise
     except Exception as e:
@@ -2313,7 +2497,7 @@ class UnifiedPresentationRequest(BaseModel):
     source_message_id: Optional[str] = None
     message: Optional[str] = None
     mode: str = "quick"  # "quick" | "template"
-    pattern: str = "react"  # "react" | "plan_execute"
+    pattern: str = "tool_calling"  # "tool_calling" | "react" | "plan_execute"
     template_id: Optional[str] = None
     max_slides: int = 8
 
@@ -2348,7 +2532,8 @@ async def build_presentation_unified(
     """통합 에이전트 기반 PPT 생성"""
     async def stream():
         try:
-            yield f"data: {json.dumps({'type': 'start', 'mode': req.mode, 'pattern': req.pattern})}\n\n"
+            run_id = str(uuid.uuid4())
+            yield f"data: {json.dumps({'type': 'start', 'mode': req.mode, 'pattern': req.pattern, 'run_id': run_id, 'trace_id': run_id})}\n\n"
             
             # 메시지 소스 추출
             topic = "발표자료"
@@ -2410,8 +2595,25 @@ async def build_presentation_unified(
                     context_text=structured_context,
                     template_id=req.template_id,
                     max_slides=req.max_slides,
-                    user_id=current_user.id  # 🆕 user_id 전달하여 user-specific 템플릿 접근
+                    user_id=current_user.id,  # 🆕 user_id 전달하여 user-specific 템플릿 접근
+                    run_id=run_id,
                 )
+
+                # Fallback to legacy react if tool calling isn't supported.
+                if req.pattern == "tool_calling" and not result.get("success") and isinstance(result.get("error"), str):
+                    err = result.get("error") or ""
+                    if "does not support tool calling" in err or "bind_tools" in err:
+                        logger.warning(f"⚠️ [Unified] tool_calling not available; falling back to react: {err}")
+                        result = await unified_presentation_agent.run(
+                            mode=req.mode,
+                            pattern="react",
+                            topic=topic,
+                            context_text=structured_context,
+                            template_id=req.template_id,
+                            max_slides=req.max_slides,
+                            user_id=current_user.id,
+                            run_id=run_id,
+                        )
                 
                 # 결과 확인
                 if result.get("success"):
@@ -2419,9 +2621,9 @@ async def build_presentation_unified(
                     file_name = result.get("file_name")
                     
                     if file_path and file_name:
-                        file_url = f"/api/v1/presentation/agent/presentation/download/{urllib.parse.quote(file_name)}"
-                        
-                        yield f"data: {json.dumps({'type': 'complete', 'file_url': file_url, 'file_name': file_name, 'slide_count': result.get('slide_count', 0), 'execution_time': result.get('execution_time', 0), 'iterations': result.get('iterations', 0)})}\n\n"
+                        file_url = f"/api/v1/agent/presentation/download/{urllib.parse.quote(file_name)}"
+
+                        yield f"data: {json.dumps({'type': 'complete', 'file_url': file_url, 'file_name': file_name, 'slide_count': result.get('slide_count', 0), 'execution_time': result.get('execution_time', 0), 'iterations': result.get('iterations', 0), 'run_id': result.get('run_id') or run_id, 'trace_id': result.get('trace_id') or run_id})}\n\n"
                         logger.info(f"✅ [Unified] 성공: {file_name}, slides={result.get('slide_count')}, time={result.get('execution_time', 0):.2f}s")
                     else:
                         yield f"data: {json.dumps({'type': 'error', 'message': 'Agent가 파일 생성에 실패했습니다'})}\n\n"

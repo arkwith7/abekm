@@ -25,7 +25,7 @@ except ImportError:
 try:
     from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 except ImportError:
-    from langchain.schema import HumanMessage, AIMessage, SystemMessage
+    from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 # BaseTool 임포트
 try:
