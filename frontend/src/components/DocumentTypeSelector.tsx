@@ -65,7 +65,8 @@ export const DocumentTypeSelector: React.FC<DocumentTypeSelectorProps> = ({
             const defaultOpts = selectedDocType.default_options;
             setProcessingOptions(defaultOpts);
             onTypeChange(typeId, defaultOpts);
-            setShowOptions(typeId !== 'general'); // 일반 문서가 아니면 옵션 표시
+            const hasOptions = typeId === 'academic_paper' || typeId === 'patent' || typeId === 'presentation';
+            setShowOptions(hasOptions);
         }
     };
 

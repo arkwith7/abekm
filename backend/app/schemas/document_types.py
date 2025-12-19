@@ -24,6 +24,7 @@ class DocumentType(str, Enum):
     GENERAL = "general"
     ACADEMIC_PAPER = "academic_paper"
     PATENT = "patent"  # 향후 구현
+    UNSTRUCTURED_TEXT = "unstructured_text"
     
     @property
     def display_name(self) -> str:
@@ -31,7 +32,8 @@ class DocumentType(str, Enum):
         names = {
             "general": "일반 문서",
             "academic_paper": "학술 논문",
-            "patent": "특허 문서"
+            "patent": "특허 문서",
+            "unstructured_text": "비구조화 텍스트",
         }
         return names.get(self.value, self.value)
     
@@ -41,7 +43,8 @@ class DocumentType(str, Enum):
         descriptions = {
             "general": "기술보고서, 업무문서, 프레젠테이션 등 일반 문서",
             "academic_paper": "Journal paper, Conference paper, Thesis (Figure/Reference 추출)",
-            "patent": "특허 출원서, 등록 특허 (서지정보 추출 - 향후 구현)"
+            "patent": "특허 출원서, 등록 특허 (서지정보 추출 - 향후 구현)",
+            "unstructured_text": "기사/블로그/게시글/광고 카피 등 섹션 구조가 약한 텍스트 (Character/Stream 기반 청킹)",
         }
         return descriptions.get(self.value, "")
     
@@ -51,7 +54,8 @@ class DocumentType(str, Enum):
         icons = {
             "general": "📄",
             "academic_paper": "📚",
-            "patent": "📜"
+            "patent": "📜",
+            "unstructured_text": "📰",
         }
         return icons.get(self.value, "📄")
     
@@ -61,7 +65,8 @@ class DocumentType(str, Enum):
         formats = {
             "general": ["pdf", "docx", "pptx", "xlsx", "txt", "hwp"],
             "academic_paper": ["pdf", "docx"],
-            "patent": ["pdf", "docx", "xml"]
+            "patent": ["pdf", "docx", "xml"],
+            "unstructured_text": ["txt", "pdf", "docx", "md", "html"],
         }
         return formats.get(self.value, ["pdf", "docx"])
 
@@ -167,7 +172,8 @@ def get_pipeline_name(document_type: DocumentType) -> str:
     names = {
         DocumentType.GENERAL: "GeneralPipeline",
         DocumentType.ACADEMIC_PAPER: "AcademicPaperPipeline",
-        DocumentType.PATENT: "PatentPipeline"  # 향후 구현
+        DocumentType.PATENT: "PatentPipeline",  # 향후 구현
+        DocumentType.UNSTRUCTURED_TEXT: "GeneralPipeline",
     }
     return names.get(document_type, "GeneralPipeline")
 

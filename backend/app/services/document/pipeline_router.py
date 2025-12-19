@@ -26,6 +26,7 @@ class PipelineRouter:
         DocumentType.GENERAL: GeneralPipeline,
         DocumentType.ACADEMIC_PAPER: AcademicPaperPipeline,
         DocumentType.PATENT: GeneralPipeline,  # 🔜 향후 PatentPipeline로 교체
+        DocumentType.UNSTRUCTURED_TEXT: GeneralPipeline,
     }
     
     @classmethod
@@ -56,21 +57,30 @@ class PipelineRouter:
         """
         # 처리 옵션 방어적 복사 (None 처리 포함)
         processing_options = dict(processing_options or {})
+
+        # 입력 문서 유형 정규화 (공백/대소문자 방어)
+        document_type_clean = (document_type or "general").strip()
         
         # DocumentType enum으로 변환 (검증 포함)
         try:
-            doc_type_enum = DocumentType(document_type)
+            doc_type_enum = DocumentType(document_type_clean)
         except ValueError:
-            logger.warning(f"⚠️ [PipelineRouter] 알 수 없는 문서 유형: {document_type}, 기본 파이프라인 사용")
+            logger.warning(
+                "⚠️ [PipelineRouter] 알 수 없는 문서 유형: %r (raw=%r), 기본 파이프라인 사용",
+                document_type_clean,
+                document_type,
+            )
             doc_type_enum = DocumentType.GENERAL
         
         # downstream 서비스가 문서 유형을 참조할 수 있도록 옵션에 주입
-        processing_options.setdefault("document_type", doc_type_enum.value)
+        processing_options["document_type"] = doc_type_enum.value
         
         # 파이프라인 클래스 가져오기
         pipeline_class = cls.PIPELINE_MAP.get(doc_type_enum, GeneralPipeline)
         
-        logger.info(f"🔀 [PipelineRouter] 문서 유형: {document_type} → 파이프라인: {pipeline_class.__name__}")
+        logger.info(
+            f"🔀 [PipelineRouter] 문서 유형: {document_type_clean} → 파이프라인: {pipeline_class.__name__}"
+        )
         
         # 파이프라인 인스턴스 생성
         pipeline = pipeline_class(

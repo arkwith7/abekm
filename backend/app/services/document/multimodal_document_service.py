@@ -36,6 +36,7 @@ from app.services.document.extraction.text_extractor_service import text_extract
 from app.services.core.korean_nlp_service import korean_nlp_service
 from app.core.config import settings
 from app.services.document.chunking.advanced_chunker import advanced_chunk_text
+from app.services.document.chunking.stream_chunker import stream_chunk_text
 from app.services.document.chunking.section_aware_chunker import (
     chunk_by_sections,
     filter_objects_before_references
@@ -121,9 +122,17 @@ class MultimodalDocumentService:
         structure_aware_enabled = bool(processing_options.get("structure_aware_chunking_enabled", True))
         section_chunking_requested = processing_options.get("section_chunking_enabled", True)
         apply_section_chunking = document_type_normalized == "academic_paper" and section_chunking_requested
+
+        # 비구조화 텍스트: 구조 인식/섹션 인식 청킹을 생략하고 Character/Stream 기반 청킹을 우선 적용
+        is_unstructured_text = document_type_normalized == "unstructured_text"
+        if is_unstructured_text:
+            structure_aware_enabled = False
+            apply_section_chunking = False
         
         # 📋 문서 타입에 따른 처리 방식 로깅
-        if apply_section_chunking:
+        if is_unstructured_text:
+            logger.info("[PIPELINE] 📰 비구조화 텍스트 처리 모드: Character/Stream 기반 청킹")
+        elif apply_section_chunking:
             logger.info(f"[PIPELINE] 🎓 학술 논문 처리 모드: 섹션 기반 청킹, References 이후 제외")
         else:
             logger.info(f"[PIPELINE] 📄 일반 문서 처리 모드: 토큰 기반 청킹, 전체 콘텐츠 포함")
@@ -1788,18 +1797,36 @@ class MultimodalDocumentService:
             
             # 📝 기본 토큰 기반 청킹 (최종 폴백)
             if not adv_chunks:
-                logger.info(f"[CHUNKING] 기본 토큰 기반 청킹 사용")
-                adv_chunks = advanced_chunk_text(
-                    (
+                if is_unstructured_text:
+                    logger.info("[CHUNKING] Character/Stream 기반 청킹 사용 (비구조화 텍스트)")
+                    adv_chunks = stream_chunk_text(
                         (
-                            (getattr(o, 'content_text', '') or ''),
-                            getattr(o, 'page_no', None),
-                            getattr(o, 'object_id', None) or 0
-                        ) for o in text_objs
+                            (
+                                (getattr(o, 'content_text', '') or ''),
+                                getattr(o, 'page_no', None),
+                                getattr(o, 'object_id', None) or 0
+                            ) for o in text_objs
+                        ),
+                        min_tokens=chunk_params.get("min_tokens", 80),
+                        target_tokens=chunk_params.get("target_tokens", 280),
+                        max_tokens=chunk_params.get("max_tokens", 420),
+                        overlap_tokens=chunk_params.get("overlap_tokens", 40),
                     )
-                )
-                section_chunking_meta["enabled"] = False
-                section_chunking_meta["method"] = "token_based"
+                    section_chunking_meta["enabled"] = False
+                    section_chunking_meta["method"] = "character_stream"
+                else:
+                    logger.info(f"[CHUNKING] 기본 토큰 기반 청킹 사용")
+                    adv_chunks = advanced_chunk_text(
+                        (
+                            (
+                                (getattr(o, 'content_text', '') or ''),
+                                getattr(o, 'page_no', None),
+                                getattr(o, 'object_id', None) or 0
+                            ) for o in text_objs
+                        )
+                    )
+                    section_chunking_meta["enabled"] = False
+                    section_chunking_meta["method"] = "token_based"
 
             if section_chunk_counts:
                 section_chunking_meta["chunk_counts"] = section_chunk_counts
