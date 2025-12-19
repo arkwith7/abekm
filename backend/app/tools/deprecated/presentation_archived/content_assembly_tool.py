@@ -11,7 +11,7 @@ Phase: 2.2
 import logging
 from typing import Any, Dict, List, Optional, Type
 
-from langchain.tools import BaseTool
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from app.services.presentation.ppt_models import DeckSpec, SlideSpec

@@ -266,6 +266,136 @@ async def agent_chat(
         )
 
 
+@router.post("/agent/chat/v2", response_model=AgentChatResponse)
+async def agent_chat_v2(
+    request: AgentChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """V2 라우트 유지용 alias: 현재는 기존 `paper_search_agent`로 처리합니다."""
+    try:
+        user_emp_no = str(current_user.emp_no)
+        logger.info(f"🤖🆕 [AgentChatV2] 사용자: {user_emp_no}, 질의: '{request.message[:50]}...'")
+
+        constraints_obj = AgentConstraints(
+            max_chunks=request.max_chunks,
+            max_tokens=request.max_tokens,
+            similarity_threshold=request.similarity_threshold,
+            container_ids=request.container_ids,
+            document_ids=request.document_ids,
+        )
+
+        context = {
+            "user_emp_no": user_emp_no,
+            "session_id": request.session_id or str(uuid.uuid4()),
+        }
+
+        # 대화 히스토리 조회 (멀티턴 지원)
+        history: List[Dict[str, str]] = []
+        if request.session_id:
+            try:
+                from app.models.chat.chat_models import TbChatHistory
+                from sqlalchemy import select
+
+                history_stmt = (
+                    select(TbChatHistory)
+                    .where(TbChatHistory.session_id == request.session_id)
+                    .order_by(TbChatHistory.created_date.asc())
+                    .limit(10)
+                )
+                history_result = await db.execute(history_stmt)
+                history_records = history_result.scalars().all()
+
+                for record in history_records:
+                    if record.user_message:
+                        history.append({"role": "user", "content": record.user_message})
+                    if record.assistant_response:
+                        history.append({"role": "assistant", "content": record.assistant_response})
+
+                logger.info(f"📚 [AgentChatV2] 히스토리 로드: {len(history)}개 메시지")
+            except Exception as e:
+                logger.warning(f"⚠️ 히스토리 로드 실패: {e}")
+
+        result: AgentResult = await paper_search_agent.execute(
+            query=request.message,
+            db_session=db,
+            constraints=constraints_obj,
+            context=context,
+            history=history,
+            images=request.images or [],
+            attachments=request.attachments or [],
+        )
+
+        steps_response: List[AgentStepResponse] = []
+        for step in result.steps:
+            steps_response.append(
+                AgentStepResponse(
+                    step_number=step.step_number,
+                    tool_name=step.tool_name,
+                    reasoning=step.reasoning,
+                    latency_ms=0,
+                    success=True,
+                )
+            )
+
+        references_response: List[ReferenceDocument] = []
+        detailed_chunks_response: List[DetailedChunk] = []
+
+        for idx, ref in enumerate(result.references or []):
+            file_name = None
+            chunk_index = 0
+            page_number = None
+
+            if ref.metadata:
+                file_name = ref.metadata.get("file_name") or ref.metadata.get("title")
+                chunk_index = ref.metadata.get("chunk_index", 0)
+                page_number = ref.metadata.get("page_number")
+
+            references_response.append(
+                ReferenceDocument(
+                    chunk_id=ref.chunk_id,
+                    content=ref.content,
+                    score=ref.score,
+                    document_id=ref.metadata.get("document_id") if ref.metadata else None,
+                    title=file_name,
+                    page_number=page_number,
+                )
+            )
+
+            detailed_chunks_response.append(
+                DetailedChunk(
+                    index=idx + 1,
+                    file_id=int(ref.file_id) if ref.file_id and str(ref.file_id).isdigit() else 0,
+                    file_name=file_name or "문서",
+                    chunk_index=chunk_index,
+                    page_number=page_number,
+                    content_preview=(ref.content or "")[:200],
+                    similarity_score=ref.score,
+                    search_type="agent",
+                    section_title=file_name or "",
+                )
+            )
+
+        logger.info(f"✅ [AgentChatV2] 완료: {len(result.steps)}개 단계")
+
+        return AgentChatResponse(
+            answer=result.answer,
+            intent=result.intent.value if result.intent else "general",
+            strategy_used=result.strategy_used or [],
+            references=references_response,
+            detailed_chunks=detailed_chunks_response,
+            steps=steps_response,
+            metrics=result.metrics or {},
+            success=result.success,
+            errors=result.errors or [],
+        )
+
+    except Exception as e:
+        logger.error(f"❌ [AgentChatV2] 실패: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Agent V2 실행 실패: {str(e)}",
+        )
 @router.post("/agent/compare", response_model=Dict[str, Any])
 async def compare_architectures(
     request: AgentChatRequest,
@@ -879,6 +1009,195 @@ async def agent_chat_stream(
                         error_msg = f"특허 분석 실패: {str(patent_error)}"
                         yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'patent_analysis', 'status': 'error', 'message': error_msg}, ensure_ascii=False)}\n\n"
                         yield f"event: error\ndata: {json.dumps({'error': str(patent_error)}, ensure_ascii=False)}\n\n"
+                        return
+
+                elif request.tool == 'deep-research':
+                    yield (
+                        "event: reasoning_step\n"
+                        f"data: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': ['deep_research']}, 'message': 'Deep Research를 수행합니다 (웹 검색 + 내부 지식).'}, ensure_ascii=False)}\n\n"
+                    )
+
+                    yield (
+                        "event: reasoning_step\n"
+                        f"data: {json.dumps({'stage': 'deep_research', 'status': 'started', 'message': '리서치 계획을 수립하고 자료를 수집하고 있습니다...'}, ensure_ascii=False)}\n\n"
+                    )
+
+                    try:
+                        from app.agents.deep_research_agent import deep_research_agent
+                        from app.agents.base.agent_protocol import AgentExecutionContext
+
+                        deep_ctx = AgentExecutionContext(
+                            session_id=context.get('session_id'),
+                            user_id=int(user_emp_no) if str(user_emp_no).isdigit() else None,
+                            max_tokens=request.max_tokens,
+                            max_iterations=10,
+                            timeout_seconds=300,
+                        )
+
+                        deep_input = {
+                            'query': rewritten_query,
+                            'db_session': db,
+                            'constraints': constraints,
+                            'attached_document_context': attached_document_context,
+                            'context': context,
+                            'chat_history': chat_history_messages,
+                            'max_sub_questions': 5,
+                            'max_loops': 2,
+                        }
+
+                        deep_result = await deep_research_agent.execute(deep_input, deep_ctx)
+
+                        report_md = (deep_result.output or {}).get('report_markdown', '') if deep_result.success else ''
+                        sources = (deep_result.output or {}).get('sources', []) if deep_result.success else []
+
+                        if not report_md:
+                            raise RuntimeError('Deep Research 리포트 생성 실패')
+
+                        # Save report as an attachment
+                        safe_ts = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+                        report_filename = f"deep-research-report-{safe_ts}.md"
+                        stored = await chat_attachment_service.save_bytes(
+                            report_md.encode('utf-8'),
+                            owner_emp_no=user_emp_no,
+                            file_name=report_filename,
+                            mime_type='text/markdown',
+                        )
+                        download_url = f"/api/v1/agent/chat/assets/{stored.asset_id}"
+
+                        # Attach to metadata (also persisted for session restore)
+                        attached_files.append({
+                            'asset_id': stored.asset_id,
+                            'id': stored.asset_id,
+                            'category': stored.category,
+                            'file_name': stored.file_name,
+                            'mime_type': stored.mime_type,
+                            'file_size': stored.size,
+                            'download_url': download_url,
+                        })
+
+                        yield (
+                            "event: reasoning_step\n"
+                            f"data: {json.dumps({'stage': 'deep_research', 'status': 'completed', 'message': f'리포트 생성 완료 ({stored.file_name})'}, ensure_ascii=False)}\n\n"
+                        )
+
+                        # Stream: link + report
+                        final_prefix = f"✅ **Deep Research 리포트 생성 완료**\n\n📎 [{stored.file_name}]({download_url})\n\n---\n\n"
+                        for chunk in (final_prefix + report_md):
+                            yield f"event: content\ndata: {json.dumps({'delta': chunk}, ensure_ascii=False)}\n\n"
+
+                        # Build detailed chunks from sources for UI references
+                        detailed_chunks = []
+                        has_internet = False
+                        for idx_s, s in enumerate(sources[:20]):
+                            url = s.get('url')
+                            if url:
+                                has_internet = True
+                            file_name = s.get('title') or 'Source'
+                            file_id = s.get('file_id')
+                            detailed_chunks.append({
+                                'index': idx_s + 1,
+                                'file_id': int(file_id) if file_id and str(file_id).isdigit() else 0,
+                                'file_name': file_name,
+                                'chunk_index': 0,
+                                'page_number': s.get('page_number'),
+                                'content_preview': file_name,
+                                'similarity_score': 0.0,
+                                'search_type': 'internet' if url else 'hybrid',
+                                'section_title': file_name,
+                                'url': url,
+                                'full_content': None,
+                            })
+
+                        metadata = {
+                            'intent': 'deep_research',
+                            'strategy_used': ['deep_research'],
+                            'detailed_chunks': detailed_chunks,
+                            'search_stats': {},
+                            'total_chunks_searched': 0,
+                            'chunks_used': len(detailed_chunks),
+                            'attached_files': attached_files,
+                            'answer_source': 'mixed_search' if has_internet else 'database_search',
+                            'has_attachments': bool(attached_files),
+                            'has_internet_results': has_internet,
+                        }
+                        yield f"event: metadata\ndata: {json.dumps(metadata, ensure_ascii=False)}\n\n"
+
+                        # Persist to session history
+                        try:
+                            from app.models.chat.chat_models import TbChatSessions, TbChatHistory
+                            from sqlalchemy import select, update
+                            from datetime import datetime as dt
+
+                            session_id = context.get('session_id')
+
+                            session_stmt = select(TbChatSessions).where(TbChatSessions.session_id == session_id)
+                            session_result = await db.execute(session_stmt)
+                            existing_session = session_result.scalar_one_or_none()
+                            if not existing_session:
+                                new_session = TbChatSessions(
+                                    session_id=session_id,
+                                    user_emp_no=user_emp_no,
+                                    session_name=f"Agent Chat - {request.message[:30]}...",
+                                    session_description="AI Agent 채팅 세션",
+                                    default_container_id=request.container_ids[0] if request.container_ids else None,
+                                    allowed_containers=request.container_ids,
+                                    is_active=True,
+                                    last_activity=dt.utcnow(),
+                                    message_count=1,
+                                )
+                                db.add(new_session)
+                            else:
+                                update_stmt = (
+                                    update(TbChatSessions)
+                                    .where(TbChatSessions.session_id == session_id)
+                                    .values(
+                                        last_activity=dt.utcnow(),
+                                        message_count=TbChatSessions.message_count + 1,
+                                    )
+                                )
+                                await db.execute(update_stmt)
+
+                            history_entry = TbChatHistory(
+                                session_id=session_id,
+                                user_emp_no=user_emp_no,
+                                knowledge_container_id=request.container_ids[0] if request.container_ids else None,
+                                accessible_containers=request.container_ids,
+                                user_message=request.message,
+                                assistant_response=(final_prefix + report_md)[:60000],
+                                search_query=rewritten_query,
+                                search_results={
+                                    'chunks': detailed_chunks[:10],
+                                    'total_searched': 0,
+                                    'total_used': len(detailed_chunks),
+                                },
+                                referenced_documents=None,
+                                model_used='agent/deep_research',
+                                model_parameters={
+                                    'tool': 'deep-research',
+                                    'attached_files': attached_files,
+                                },
+                                conversation_context={
+                                    'deep_research': True,
+                                    'has_internet_results': has_internet,
+                                },
+                            )
+                            db.add(history_entry)
+                            await db.commit()
+                        except Exception as save_error:
+                            logger.warning(f"⚠️ Deep Research 히스토리 저장 실패: {save_error}")
+                            try:
+                                await db.rollback()
+                            except Exception:
+                                pass
+
+                        yield f"event: done\ndata: {json.dumps({'success': True, 'session_id': context.get('session_id')}, ensure_ascii=False)}\n\n"
+                        return
+
+                    except Exception as deep_error:
+                        logger.error(f"❌ Deep Research 실패: {deep_error}")
+                        error_msg = f"Deep Research 실패: {str(deep_error)}"
+                        yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'deep_research', 'status': 'error', 'message': error_msg}, ensure_ascii=False)}\n\n"
+                        yield f"event: error\ndata: {json.dumps({'error': str(deep_error)}, ensure_ascii=False)}\n\n"
                         return
             
             # 🆕 멀티모달 검색: 이미지가 있으면 multimodal_search 추가

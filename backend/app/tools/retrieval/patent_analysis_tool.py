@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 try:
     from langchain_core.tools import BaseTool
 except ImportError:
-    from langchain.tools import BaseTool
+    from langchain_core.tools import BaseTool
 
 from app.tools.contracts import ToolResult, ToolMetrics
 from app.tools.retrieval.patent_search_tool import PatentData, PatentJurisdiction, PatentStatus

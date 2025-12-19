@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 try:
     from langchain_core.tools import BaseTool
 except ImportError:
-    from langchain.tools import BaseTool
+    from langchain_core.tools import BaseTool
 
 from app.services.presentation.user_template_manager import user_template_manager
 

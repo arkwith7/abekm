@@ -3,7 +3,7 @@ Image Analysis Tool
 이미지를 VLM(Vision Language Model)로 분석하여 텍스트 설명을 생성하는 도구
 """
 from typing import Any, List, Optional
-from langchain.tools import BaseTool
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 from app.services.core.ai_service import ai_service  # 올바른 경로
 from app.core.config import settings

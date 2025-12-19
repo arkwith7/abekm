@@ -4,7 +4,6 @@ import {
   ChevronUp,
   File as FileIcon,
   Globe,
-  Image as ImageIcon,
   LayoutTemplate,
   Paperclip,
   Plus,
@@ -70,7 +69,7 @@ const formatFileSize = (size: number) => {
   return `${(size / (1024 * 1024)).toFixed(1)}MB`;
 };
 
-type ToolType = 'ppt' | 'web-search' | 'deep-research' | 'image-gen' | 'patent';
+type ToolType = 'ppt' | 'web-search' | 'deep-research' | 'patent';
 
 interface ToolConfig {
   id: ToolType;
@@ -118,15 +117,6 @@ const TOOLS: Record<ToolType, ToolConfig> = {
     bgClass: 'bg-purple-50',
     textClass: 'text-purple-700',
     iconBgClass: 'bg-purple-100'
-  },
-  'image-gen': {
-    id: 'image-gen',
-    name: '이미지 생성',
-    icon: ImageIcon,
-    colorClass: 'text-green-600',
-    bgClass: 'bg-green-50',
-    textClass: 'text-green-700',
-    iconBgClass: 'bg-green-100'
   }
 };
 
@@ -695,23 +685,6 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
                       <div className="flex flex-col items-start">
                         <span className="font-medium">Deep Research</span>
                         <span className="text-xs text-gray-500">심층 분석 및 리포트</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedTool('image-gen');
-                        setIsToolMenuOpen(false);
-                      }}
-                      className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-gray-700 rounded-lg transition-colors hover:bg-blue-50 hover:text-blue-700"
-                    >
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-100 text-green-600">
-                        <ImageIcon className="h-4 w-4" />
-                      </div>
-                      <div className="flex flex-col items-start">
-                        <span className="font-medium">이미지 생성</span>
-                        <span className="text-xs text-gray-500">DALL-E 3 이미지 생성</span>
                       </div>
                     </button>
                   </div>

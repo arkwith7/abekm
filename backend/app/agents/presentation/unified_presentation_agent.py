@@ -22,7 +22,7 @@ try:
     from langchain_core.tools import BaseTool
     from langchain_core.messages import HumanMessage, AIMessage
 except ImportError:
-    from langchain.tools import BaseTool
+    from langchain_core.tools import BaseTool
     from langchain_core.messages import HumanMessage, AIMessage
 
 from app.agents.presentation.base_agent import BaseAgent

@@ -52,10 +52,9 @@ langchain-aws==1.1.0
 langchain-community==0.4.1
 langchain-text-splitters==1.1.0
 langgraph==1.0.5
-langgraph-checkpoint==3.0.1
-langgraph-checkpoint-postgres==3.0.2
-langgraph-sdk==0.3.0
-langgraph-checkpoint-sqlite==1.0.0
+langgraph-checkpoint>=2.1.0,<4.0.0
+langgraph-checkpoint-postgres>=3.0.0,<4.0.0
+langgraph-sdk>=0.3.0,<1.0.0
 langsmith==0.5.0
 duckduckgo-search==5.3.0  # 인터넷 검색 도구 (폴백)
 tavily-python>=0.5.0  # Tavily AI 검색 도구 (권장)

@@ -13,6 +13,7 @@ interface MessageListProps {
   isLoading: boolean;
   messagesEndRef: React.RefObject<HTMLDivElement>;
   onOpenDocument?: (doc: { id: string; file_name: string; file_extension?: string; title?: string }) => void;
+  onOpenChatAsset?: (asset: { url: string; fileName?: string }) => void;
   conversationState?: ConversationState | null;
 }
 
@@ -21,6 +22,7 @@ const MessageList: React.FC<MessageListProps> = ({
   isLoading,
   messagesEndRef,
   onOpenDocument,
+  onOpenChatAsset,
   conversationState
 }) => {
   const { selectedDocuments } = useSelectedDocuments();
@@ -86,7 +88,12 @@ const MessageList: React.FC<MessageListProps> = ({
     }
 
     renderedMessages.push(
-      <MessageBubble key={`${message.id || 'msg'}-${idx}`} message={message} onOpenDocument={onOpenDocument} />
+      <MessageBubble
+        key={`${message.id || 'msg'}-${idx}`}
+        message={message}
+        onOpenDocument={onOpenDocument}
+        onOpenChatAsset={onOpenChatAsset}
+      />
     );
   });
 

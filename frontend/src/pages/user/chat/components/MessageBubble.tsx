@@ -98,9 +98,13 @@ interface MessageBubbleProps {
     file_extension?: string;
     title?: string;
   }) => void;
+  onOpenChatAsset?: (asset: {
+    url: string;
+    fileName?: string;
+  }) => void;
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument, onOpenChatAsset }) => {
   const [showReferences, setShowReferences] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showHtmlPreview, setShowHtmlPreview] = useState(true);
@@ -664,6 +668,7 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
                           ),
                           a: ({ children, href }) => {
                             const isDocOpen = (u: string) => u.startsWith('doc-open://');
+                            const isChatAsset = (u: string) => u.startsWith('/api/v1/agent/chat/assets/');
                             // 템플릿 모드(URL 템플릿)로 전달된 뷰어 링크인지 판단: fileId= 또는 docId= 파라미터가 존재
                             const isTemplateViewer = (u: string) => /[?&](fileId|docId)=/.test(u);
                             const extractDocId = (u: string): string => {
@@ -688,6 +693,17 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
                             const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
                               if (!href) return;
                               const url = href.toString();
+
+                              // Chat asset viewer: open in-app viewer for markdown/text assets
+                              if (isChatAsset(url) && onOpenChatAsset) {
+                                const fileName = extractFileNameFromChildren();
+                                const lower = (fileName || url).toLowerCase();
+                                if (lower.endsWith('.md') || lower.endsWith('.txt') || lower.endsWith('.log')) {
+                                  e.preventDefault();
+                                  onOpenChatAsset({ url, fileName: fileName || undefined });
+                                  return;
+                                }
+                              }
 
                               // 디버그 로그 추가
                               // 커스텀 문서 오픈 스킴 처리 (doc-open://) → 새 탭 열지 않고 뷰어 오픈
@@ -733,8 +749,8 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, onOpenDocument }
                               }
                             };
                             const url = href?.toString() || '';
-                            const target = (isDocOpen(url) || isTemplateViewer(url)) ? undefined : '_blank';
-                            const rel = (isDocOpen(url) || isTemplateViewer(url)) ? undefined : 'noopener noreferrer';
+                            const target = (isDocOpen(url) || isTemplateViewer(url) || isChatAsset(url)) ? undefined : '_blank';
+                            const rel = (isDocOpen(url) || isTemplateViewer(url) || isChatAsset(url)) ? undefined : 'noopener noreferrer';
 
                             // 추가 디버그: href와 URL 상태 로깅
                             return (

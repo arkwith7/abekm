@@ -18,7 +18,7 @@ from pptx.dml.color import RGBColor
 try:
     from langchain_core.tools import BaseTool
 except ImportError:
-    from langchain.tools import BaseTool
+    from langchain_core.tools import BaseTool
 
 from app.core.config import settings
 from app.services.presentation.ppt_models import DeckSpec, SlideSpec

@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Union
+import io
 
 import aiofiles
 import boto3
@@ -176,6 +177,80 @@ class ChatAttachmentService:
             file_name,
             size,
             mime_type
+        )
+
+        return stored
+
+    async def save_bytes(
+        self,
+        content: bytes,
+        *,
+        owner_emp_no: str,
+        file_name: str,
+        mime_type: str = "application/octet-stream",
+    ) -> StoredAttachment:
+        """Save generated content as an attachment.
+
+        This is used for agent-generated outputs (e.g., Deep Research reports)
+        where we don't have a FastAPI UploadFile.
+        """
+        asset_id = uuid.uuid4().hex
+        normalized_name = _normalize_filename(file_name or f"attachment-{asset_id}")
+        mime_type = mime_type or mimetypes.guess_type(normalized_name)[0] or "application/octet-stream"
+        category = _detect_category(mime_type)
+        size = len(content or b"")
+        dest_path: Union[Path, str] = ""
+
+        if self.storage_backend == "s3" and self.s3_client and self.s3_bucket:
+            s3_key = f"chat-attachments/{asset_id}"
+            dest_path = s3_key
+
+            metadata = {
+                "owner_emp_no": str(owner_emp_no),
+                "file_name": str(normalized_name),
+                "mime_type": str(mime_type),
+                "category": str(category),
+            }
+            import urllib.parse
+            metadata["file_name_encoded"] = urllib.parse.quote(normalized_name)
+
+            def _upload_to_s3():
+                self.s3_client.put_object(
+                    Bucket=self.s3_bucket,
+                    Key=s3_key,
+                    Body=content,
+                    ContentType=mime_type,
+                    Metadata=metadata,
+                )
+
+            await run_in_threadpool(_upload_to_s3)
+        else:
+            user_dir = self.base_dir / str(owner_emp_no)
+            user_dir.mkdir(parents=True, exist_ok=True)
+            dest_path = user_dir / f"{asset_id}-{normalized_name}"
+            async with aiofiles.open(dest_path, "wb") as out_file:
+                await out_file.write(content or b"")
+
+        stored = StoredAttachment(
+            asset_id=asset_id,
+            file_name=normalized_name,
+            mime_type=mime_type,
+            size=size,
+            category=category,
+            path=dest_path,
+            owner_emp_no=str(owner_emp_no),
+            created_at=time.time(),
+            storage_backend=self.storage_backend if (self.storage_backend == "s3" and self.s3_client) else "local",
+        )
+        self._storage[asset_id] = stored
+
+        logger.info(
+            "📎 Generated attachment stored (%s): id=%s name=%s size=%s bytes mime=%s",
+            stored.storage_backend,
+            asset_id,
+            normalized_name,
+            size,
+            mime_type,
         )
 
         return stored

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 try:
     from langchain_core.tools import BaseTool
 except ImportError:
-    from langchain.tools import BaseTool
+    from langchain_core.tools import BaseTool
 
 from app.services.core.ai_service import ai_service
 

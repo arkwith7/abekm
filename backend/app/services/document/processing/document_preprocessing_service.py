@@ -55,16 +55,11 @@ class DocumentPreprocessingService:
             self.chunking_log_dir.mkdir(parents=True, exist_ok=True)
             logger.info(f"📊 청킹 디버그 모드 활성화: {self.chunking_log_dir}")
         
-        # kss (Korean Sentence Splitter) 초기화
-        try:
-            import kss
-            self.kss = kss
-            self.use_kss = True
-            logger.info("한국어 문장 분할기 (kss) 로드 성공")
-        except ImportError:
-            self.kss = None
-            self.use_kss = False
-            logger.warning("kss 라이브러리 없음 - 폴백 문장 분할 사용")
+        # kss (Korean Sentence Splitter) 초기화 - lazy loading으로 변경
+        self.kss = None
+        self.use_kss = False
+        # kss import는 실제 사용 시점에 수행 (초기화 지연)
+        logger.info("한국어 문장 분할기 (kss) - lazy loading 모드")
         
         logger.info(f"문서 전처리 서비스 초기화 - 최대: {self.max_tokens_per_chunk}, 목표: {self.target_tokens_per_chunk}, 최소: {self.min_tokens_per_chunk}, 겹침: {self.overlap_tokens}")
     
@@ -597,10 +592,26 @@ class DocumentPreprocessingService:
         
         return sub_chunks
     
+    def _initialize_kss_if_needed(self):
+        """kss를 실제 사용 시점에 초기화 (lazy loading)"""
+        if not self.use_kss and self.kss is None:
+            try:
+                import kss
+                self.kss = kss
+                self.use_kss = True
+                logger.info("✅ 한국어 문장 분할기 (kss) lazy loading 성공")
+            except Exception as e:
+                logger.warning(f"⚠️ kss 초기화 실패 - 폴백 사용: {e}")
+                self.use_kss = False
+    
     def _split_into_sentences(self, text: str) -> List[str]:
         """개선된 텍스트 문장 분할 - kss 우선, 폴백 패턴 사용"""
         if not text or not text.strip():
             return []
+        
+        # kss 초기화 (lazy loading)
+        if self.kss is None:
+            self._initialize_kss_if_needed()
         
         # kss 라이브러리 사용 (한국어 최적화)
         if self.use_kss and self.kss:

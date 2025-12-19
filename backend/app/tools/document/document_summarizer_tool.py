@@ -15,7 +15,7 @@ import os
 try:
     from langchain_core.tools import BaseTool
 except ImportError:
-    from langchain.tools import BaseTool
+    from langchain_core.tools import BaseTool
 
 from app.tools.contracts import ToolResult, ToolMetrics, SearchChunk
 from app.tools.document.document_loader_tool import document_loader_tool

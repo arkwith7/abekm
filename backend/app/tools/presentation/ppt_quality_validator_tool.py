@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 try:
     from langchain_core.tools import BaseTool
 except ImportError:
-    from langchain.tools import BaseTool
+    from langchain_core.tools import BaseTool
 
 
 class PPTQualityValidatorInput(BaseModel):

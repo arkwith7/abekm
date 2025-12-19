@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 try:  # pragma: no cover - optional dependency for LangChain compatibility
     from langchain_core.tools import BaseTool  # type: ignore
 except ImportError:  # pragma: no cover
-    from langchain.tools import BaseTool  # type: ignore
+    from langchain_core.tools import BaseTool  # type: ignore
 
 from app.core.database import get_async_session_local
 from app.tools.contracts import ToolResult

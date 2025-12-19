@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 import base64
 import uuid
 from datetime import datetime
-from langchain.tools import BaseTool
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text

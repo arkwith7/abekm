@@ -15,6 +15,7 @@ import { Document as GlobalDocument } from '../../contexts/types';
 // 재사용 컴포넌트
 import FileViewer from '../../components/common/FileViewer';
 import ChatHeader from './chat/components/ChatHeader';
+import ChatAssetViewerModal from './chat/components/ChatAssetViewerModal';
 import MessageComposer from './chat/components/MessageComposer';
 import MessageList from './chat/components/MessageList';
 import PresentationOutlineModal from './chat/components/presentation/PresentationOutlineModal';
@@ -70,6 +71,9 @@ const AgentChatPage: React.FC = () => {
     // 파일 뷰어 상태
     const [selectedDocument, setSelectedDocument] = useState<ViewerDocument | null>(null);
     const [viewerOpen, setViewerOpen] = useState(false);
+    const [chatAssetViewerOpen, setChatAssetViewerOpen] = useState(false);
+    const [chatAssetUrl, setChatAssetUrl] = useState<string | null>(null);
+    const [chatAssetFileName, setChatAssetFileName] = useState<string | null>(null);
     const [ragOpen, setRagOpen] = useState(false);
     const previousDocumentCountRef = useRef(0);
 
@@ -301,6 +305,18 @@ const AgentChatPage: React.FC = () => {
         setSelectedDocument(null);
     };
 
+    const handleOpenChatAsset = (asset: { url: string; fileName?: string }) => {
+        setChatAssetUrl(asset.url);
+        setChatAssetFileName(asset.fileName || null);
+        setChatAssetViewerOpen(true);
+    };
+
+    const handleCloseChatAssetViewer = () => {
+        setChatAssetViewerOpen(false);
+        setChatAssetUrl(null);
+        setChatAssetFileName(null);
+    };
+
     const simplifiedSelectedDocuments = useMemo(() => (
         selectedDocuments.map(doc => ({
             id: String(doc.fileId),
@@ -450,6 +466,18 @@ const AgentChatPage: React.FC = () => {
                                     messages={messages}
                                     isLoading={isLoading}
                                     messagesEndRef={messagesEndRef}
+                                    onOpenDocument={(doc) => {
+                                        handleOpenDocument({
+                                            fileId: doc.id,
+                                            fileName: doc.file_name,
+                                            originalName: doc.file_name,
+                                            fileType: doc.file_extension || (doc.file_name.includes('.') ? doc.file_name.split('.').pop() || '' : ''),
+                                            containerName: '',
+                                            fileSize: 0,
+                                            containerId: ''
+                                        } as any);
+                                    }}
+                                    onOpenChatAsset={handleOpenChatAsset}
                                 />
                             </div>
 
@@ -498,6 +526,14 @@ const AgentChatPage: React.FC = () => {
                     onClose={handleCloseViewer}
                 />
             )}
+
+            {/* 채팅 생성 파일(리포트) 뷰어 모달 */}
+            <ChatAssetViewerModal
+                isOpen={chatAssetViewerOpen}
+                onClose={handleCloseChatAssetViewer}
+                assetUrl={chatAssetUrl}
+                fileName={chatAssetFileName}
+            />
 
             {/* 🆕 하이브리드 모드: PPT 구조 확인 및 재생성 모달 */}
             {outlineModalOpen && targetMessageId && (() => {

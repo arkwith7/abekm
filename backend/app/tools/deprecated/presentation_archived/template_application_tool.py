@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional, Type
 
-from langchain.tools import BaseTool
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
 from pptx import Presentation

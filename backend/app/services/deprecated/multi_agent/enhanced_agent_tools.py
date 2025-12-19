@@ -25,7 +25,7 @@ try:  # 우선 langchain_core
     from langchain_core.tools import BaseTool  # type: ignore
 except ImportError:
     try:
-        from langchain.tools import BaseTool  # type: ignore
+        from langchain_core.tools import BaseTool  # type: ignore
     except ImportError:  # pragma: no cover
         class BaseTool:  # minimal fallback
             name: str = ""

@@ -14,7 +14,7 @@ from pptx.enum.text import PP_ALIGN
 try:
     from langchain_core.tools import BaseTool
 except ImportError:
-    from langchain.tools import BaseTool
+    from langchain_core.tools import BaseTool
 
 from app.services.presentation.ppt_models import ChartData, DiagramData
 

@@ -31,7 +31,7 @@ except ImportError:
 try:
     from langchain_core.tools import BaseTool
 except ImportError:
-    from langchain.tools import BaseTool
+    from langchain_core.tools import BaseTool
 
 class MultiAgentState(TypedDict):
     """멀티 에이전트 워크플로우 공유 상태"""

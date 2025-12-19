@@ -248,6 +248,24 @@ class Settings(BaseSettings):
     # OpenAI 설정
     openai_api_key: Optional[str] = None
     
+    # 🆕 Feature Flags - Agent System
+    enable_autonomous_agents: bool = Field(
+        default=False,
+        description="자율형 에이전트 시스템 활성화 (LangChain ReAct 패턴)"
+    )
+    use_paper_search_agent_v2: bool = Field(
+        default=False,
+        description="PaperSearchAgent V2 사용 (V1 대신 자율형 ReAct 에이전트)"
+    )
+    agent_max_iterations: int = Field(
+        default=15,
+        description="에이전트 최대 반복 횟수 (도구 호출 제한)"
+    )
+    agent_timeout_seconds: int = Field(
+        default=180,
+        description="에이전트 실행 타임아웃 (초)"
+    )
+    
     # LLM 제공자 설정
     llm_providers: List[str] = Field(default_factory=lambda: ["bedrock", "azure_openai", "openai"])
     default_llm_provider: str = "bedrock"

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 try:
     from langchain_core.tools import BaseTool
 except ImportError:
-    from langchain.tools import BaseTool
+    from langchain_core.tools import BaseTool
 
 from app.services.presentation.templated_ppt_generator_service import templated_ppt_service
 from app.services.presentation.ppt_models import DeckSpec
