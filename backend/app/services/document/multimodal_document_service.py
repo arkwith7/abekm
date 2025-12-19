@@ -40,6 +40,7 @@ from app.services.document.chunking.section_aware_chunker import (
     chunk_by_sections,
     filter_objects_before_references
 )
+from app.services.document.chunking.structure_aware_chunker import StructureAwareChunker
 from app.services.document.extraction.adaptive_section_detector import AdaptiveSectionDetector
 from app.services.document.storage.search_index_store import SearchIndexStoreService
 
@@ -116,6 +117,8 @@ class MultimodalDocumentService:
         processing_options = processing_options or {}
         pipeline_type = processing_options.get("pipeline_type") or provider or settings.default_llm_provider
         document_type_normalized = (document_type or processing_options.get("document_type") or "").lower()
+        # 기본값: 모든 문서에 구조 인식 청킹 적용
+        structure_aware_enabled = bool(processing_options.get("structure_aware_chunking_enabled", True))
         section_chunking_requested = processing_options.get("section_chunking_enabled", True)
         apply_section_chunking = document_type_normalized == "academic_paper" and section_chunking_requested
         
@@ -1397,6 +1400,137 @@ class MultimodalDocumentService:
                 logger.info(f"[MULTIMODAL] image_object_ids_seen=False, 모든 이미지 객체 포함: {len(raw_image_objs)}개")
             table_objs = [o for o in extracted_objects if getattr(o, 'object_type', None) == "TABLE"]
             text_objs = [o for o in text_objs if (getattr(o, 'content_text', '') or '').strip()]
+
+            def _normalize_structure_elements() -> List[Dict[str, Any]]:
+                """Provider 결과/텍스트 객체에서 구조 요소(elements) 스트림을 생성한다.
+
+                목표: 제목/섹션/서브섹션/문단 단위로 분리된 element 목록을 만들고,
+                이를 StructureAwareChunker에 넣어 계층적 청킹을 수행.
+                """
+                elements: List[Dict[str, Any]] = []
+
+                # Map page_no -> TEXT_BLOCK object_id (best-effort). This keeps source_object_ids bigint[]-safe.
+                page_to_text_object_id: Dict[int, int] = {}
+                for obj in text_objs:
+                    pno = getattr(obj, 'page_no', None)
+                    oid = getattr(obj, 'object_id', None)
+                    if isinstance(pno, int) and isinstance(oid, int) and pno not in page_to_text_object_id:
+                        page_to_text_object_id[pno] = oid
+
+                # 1) Upstage: metadata['elements']가 있으면 최우선 사용
+                raw_elements = metadata.get('elements')
+                if isinstance(raw_elements, list) and raw_elements:
+                    for idx, elem in enumerate(raw_elements):
+                        if not isinstance(elem, dict):
+                            continue
+                        cat = (elem.get('category') or elem.get('type') or '').lower()
+                        text_val = (elem.get('content') or elem.get('text') or '').strip()
+                        page_no = elem.get('page')
+                        if not text_val and cat not in ['table', 'figure', 'image', 'chart']:
+                            continue
+                        source_oid = None
+                        if isinstance(page_no, int):
+                            source_oid = page_to_text_object_id.get(page_no)
+                        elements.append({
+                            'id': source_oid or 0,
+                            'category': cat,
+                            'text': text_val,
+                            'page': page_no if isinstance(page_no, int) else None,
+                        })
+                    if elements:
+                        return elements
+
+                # 2) Azure DI: pages[*].paragraphs(role 포함) 기반
+                pages = metadata.get('pages')
+                if isinstance(pages, list) and pages:
+                    para_found = False
+                    for p in pages:
+                        if not isinstance(p, dict):
+                            continue
+                        page_no = p.get('page_no')
+                        paras = p.get('paragraphs')
+                        if not isinstance(paras, list) or not paras:
+                            continue
+                        para_found = True
+                        source_oid = page_to_text_object_id.get(page_no) if isinstance(page_no, int) else None
+                        for para_idx, para in enumerate(paras):
+                            if not isinstance(para, dict):
+                                continue
+                            content = (para.get('content') or para.get('text') or '').strip()
+                            if not content:
+                                continue
+                            role = (para.get('role') or '').lower()
+                            # role → category 매핑 (사전 정의 섹션명이 아니라, 문서 레이아웃 role 기반)
+                            if role in ('title',):
+                                cat = 'title'
+                            elif 'heading' in role or role in ('sectionheading', 'section_heading'):
+                                # Azure는 세부 레벨을 항상 주지 않으므로 heading2로 통일(계층은 heuristics로 보강 가능)
+                                cat = 'heading2'
+                            elif role in ('pageheader', 'header'):
+                                cat = 'header'
+                            elif role in ('pagefooter', 'footer'):
+                                cat = 'footer'
+                            elif role in ('listitem', 'list_item'):
+                                cat = 'list'
+                            else:
+                                cat = 'paragraph'
+
+                            elements.append({
+                                'id': source_oid or 0,
+                                'category': cat,
+                                'text': content,
+                                'page': page_no if isinstance(page_no, int) else None,
+                            })
+                    if para_found and elements:
+                        return elements
+
+                # 3) Fallback: 현재 TEXT_BLOCK을 줄 단위로 분해 + 번호/형식 기반 헤더 추정
+                import re
+                heading_pat = re.compile(r"^\s*(?:\d{1,2}(?:\.\d{1,2}){0,6}|[IVX]{1,6})[\).\-\s]+\S+", re.IGNORECASE)
+
+                def looks_like_heading(line: str) -> bool:
+                    s = line.strip()
+                    if not s:
+                        return False
+                    # 너무 긴 줄은 헤더 가능성이 낮음
+                    if len(s) > 120:
+                        return False
+                    # 숫자/로마숫자 기반 헤더
+                    if heading_pat.match(s):
+                        return True
+                    # 콜론으로 끝나는 짧은 구문
+                    if s.endswith(':') and len(s) <= 80:
+                        return True
+                    # ALL CAPS(영문) 짧은 줄
+                    if len(s) <= 60 and s.isupper() and any(c.isalpha() for c in s):
+                        return True
+                    return False
+
+                for obj in text_objs:
+                    raw = (getattr(obj, 'content_text', '') or '').strip()
+                    if not raw:
+                        continue
+                    page_no = getattr(obj, 'page_no', None)
+                    obj_id = getattr(obj, 'object_id', None)
+                    # 한 페이지 텍스트 블록이면 라인으로 쪼개서 헤더 감지
+                    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+                    # 라인이 거의 없으면 문단으로 처리
+                    if len(lines) <= 2:
+                        elements.append({'id': int(obj_id or 0), 'category': 'paragraph', 'text': raw, 'page': page_no})
+                        continue
+                    buffer: List[str] = []
+                    for ln in lines:
+                        if looks_like_heading(ln):
+                            if buffer:
+                                elements.append({'id': int(obj_id or 0), 'category': 'paragraph', 'text': "\n".join(buffer).strip(), 'page': page_no})
+                                buffer = []
+                            elements.append({'id': int(obj_id or 0), 'category': 'heading2', 'text': ln, 'page': page_no})
+                        else:
+                            buffer.append(ln)
+                    if buffer:
+                        elements.append({'id': int(obj_id or 0), 'category': 'paragraph', 'text': "\n".join(buffer).strip(), 'page': page_no})
+
+                return elements
             
             # 🆕 References 이전 객체만 필터링 (학술 논문 처리)
             references_page = None
@@ -1549,6 +1683,34 @@ class MultimodalDocumentService:
 
             section_chunk_counts: Dict[str, int] = {}
             adv_chunks: List[Dict[str, Any]] = []
+
+            # ✅ 2-A) 구조 인식 청킹 (기본)
+            if structure_aware_enabled:
+                try:
+                    structural_elements = _normalize_structure_elements()
+                    if structural_elements:
+                        sa = StructureAwareChunker(
+                            chunk_size=int(chunk_params.get('max_tokens', 420)),
+                            chunk_overlap=int(chunk_params.get('overlap_tokens', 40)),
+                            min_chunk_size=int(chunk_params.get('min_tokens', 80)),
+                            emit_header_chunks=bool(processing_options.get('structure_aware_emit_header_chunks', False)),
+                            # 이미지는/표는 기존 멀티모달 파이프라인에서 별도 청크로 처리하므로 중복 방지
+                            include_visual_chunks=False,
+                        )
+                        adv_chunks = sa.chunk_elements(structural_elements)
+                        if adv_chunks:
+                            section_chunking_meta["enabled"] = True
+                            section_chunking_meta["method"] = "structure_aware"
+                            chunk_params["structure_aware"] = {
+                                "enabled": True,
+                                "source": "elements|paragraphs|heuristic",
+                            }
+                            logger.info(f"[CHUNKING] 🧩 구조 인식 청킹 완료: {len(adv_chunks)}개 청크")
+                    else:
+                        logger.info("[CHUNKING] 구조 요소를 만들지 못해 기존 청킹으로 폴백")
+                except Exception as sa_err:
+                    logger.warning(f"[CHUNKING] 구조 인식 청킹 실패, 기존 청킹으로 폴백: {sa_err}")
+                    adv_chunks = []
             
             # 🆕 섹션 기반 청킹 시도 (마크다운이 있고 섹션이 감지된 경우)
             markdown_text = metadata.get("markdown") or None
@@ -1559,7 +1721,7 @@ class MultimodalDocumentService:
                 and len(sections_info) > 0
             )
             
-            if use_section_chunking:
+            if not adv_chunks and use_section_chunking:
                 logger.info(f"[CHUNKING] 🎯 섹션 기반 청킹 사용 ({len(sections_info)}개 섹션)")
                 section_chunking_meta["enabled"] = True
                 section_chunking_meta["method"] = "section_aware"
@@ -1591,7 +1753,7 @@ class MultimodalDocumentService:
                     use_section_chunking = False
             
             # 🔄 기존 섹션 그룹 기반 청킹 (폴백)
-            if not use_section_chunking and section_groups:
+            if not adv_chunks and (not use_section_chunking) and section_groups:
                 logger.info(f"[CHUNKING] 섹션 그룹 기반 청킹 사용")
                 section_chunking_meta["enabled"] = True
                 section_chunking_meta["method"] = "section_groups"
@@ -1645,7 +1807,10 @@ class MultimodalDocumentService:
             chunk_session = DocChunkSession(
                 file_bss_info_sno=file_bss_info_sno,
                 extraction_session_id=extraction_session.extraction_session_id,
-                strategy_name="advanced_paragraph_token",
+                strategy_name=(
+                    "structure_aware" if (structure_aware_enabled and section_chunking_meta.get("method") == "structure_aware")
+                    else "advanced_paragraph_token"
+                ),
                 params_json=chunk_params,
                 status="running",
                 started_at=datetime.now()
@@ -1682,7 +1847,8 @@ class MultimodalDocumentService:
                     content_text=cdict['content_text'],
                     token_count=cdict['token_count'],
                     modality="text",
-                    section_heading=cdict.get('section'),  # 섹션 타입 (other, methods 등)
+                    # 구조 인식 청킹이면 section_path를 우선 저장, 없으면 기존 section
+                    section_heading=cdict.get('section_path') or cdict.get('section'),
                     page_range=page_range_value  # 페이지 범위 추가
                 )
                 session.add(doc_chunk)

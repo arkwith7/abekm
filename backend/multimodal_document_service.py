@@ -31,6 +31,7 @@ from app.services.document.extraction.text_extractor_service import text_extract
 from app.services.core.korean_nlp_service import korean_nlp_service
 from app.core.config import settings
 from app.services.document.chunking.advanced_chunker import advanced_chunk_text
+from app.services.document.chunking.structure_aware_chunker import StructureAwareChunker
 
 # Azure Blob Storage 통합
 try:
@@ -125,8 +126,38 @@ class MultimodalDocumentService:
                     )
                 )
 
+            # 🆕 Structure-Aware Extraction (Upstage/Azure Elements)
+            if "elements" in metadata and metadata["elements"]:
+                for idx, elem in enumerate(metadata["elements"]):
+                    category = elem.get("category", "").lower()
+                    content = elem.get("content") or elem.get("text") or ""
+                    page_no = elem.get("page")
+                    
+                    object_type = "TEXT_BLOCK"
+                    if category in ["table", "table_continued", "table_header", "table_body"]:
+                        object_type = "TABLE"
+                    elif category in ["figure", "chart", "image", "diagram"]:
+                        object_type = "FIGURE"
+                    
+                    # Skip empty text unless it's an image/table
+                    if not content.strip() and object_type == "TEXT_BLOCK":
+                        continue
+
+                    extracted_objects.append(DocExtractedObject(
+                        extraction_session_id=extraction_session.extraction_session_id,
+                        file_bss_info_sno=file_bss_info_sno,
+                        page_no=page_no,
+                        object_type=object_type,
+                        sequence_in_page=idx,
+                        content_text=content,
+                        char_count=len(content),
+                        token_estimate=len(content.split()),
+                        structure_json=elem,
+                        bbox=elem.get("coordinates") or elem.get("bbox")
+                    ))
+
             # PDF
-            if "pages" in metadata:
+            elif "pages" in metadata:
                 for p in metadata["pages"]:
                     _add_text_obj(p.get("page_no"), p.get("text", ""))
                     for idx in range(p.get("tables_count", 0)):
@@ -277,41 +308,109 @@ class MultimodalDocumentService:
                 _stage("blob_intermediate_save", False, error=str(blob_err))
 
             # -----------------------------
-            # 2. Chunking (advanced)
+            # 2. Chunking (advanced or structure-aware)
             # -----------------------------
-            text_objs = [o for o in extracted_objects if o.object_type == "TEXT_BLOCK"]
-            chunk_session = DocChunkSession(
-                file_bss_info_sno=file_bss_info_sno,
-                extraction_session_id=extraction_session.extraction_session_id,
-                strategy_name="advanced_paragraph_token",
-                params_json={
-                    "min_tokens": 80,
-                    "target_tokens": 280,
-                    "max_tokens": 420,
-                    "overlap_tokens": 40
-                },
-                status="running",
-                started_at=datetime.now()
-            )
-            session.add(chunk_session)
-            await session.flush()
-            result["chunk_session_id"] = chunk_session.chunk_session_id
-
-            iterable = ((o.content_text or "", o.page_no, o.object_id) for o in text_objs)
-            adv_chunks = advanced_chunk_text(iterable)
+            
+            # Check if we have structured elements (from Upstage/Azure)
+            has_structure = any(obj.structure_json and obj.structure_json.get('category') for obj in extracted_objects)
+            
             doc_chunks: List[DocChunk] = []
-            for idx, cdict in enumerate(adv_chunks):
-                doc_chunk = DocChunk(
-                    chunk_session_id=chunk_session.chunk_session_id,
+            
+            if has_structure:
+                # Prepare elements for StructureAwareChunker
+                elements_for_chunking = []
+                for obj in extracted_objects:
+                    elem = obj.structure_json.copy() if obj.structure_json else {}
+                    elem['id'] = obj.object_id # Use DB ID as element ID
+                    elem['content'] = obj.content_text
+                    elem['page'] = obj.page_no
+                    # Ensure category exists
+                    if not elem.get('category'):
+                        if obj.object_type == 'TABLE': elem['category'] = 'table'
+                        elif obj.object_type == 'FIGURE': elem['category'] = 'figure'
+                        elif obj.object_type == 'IMAGE': elem['category'] = 'image'
+                        else: elem['category'] = 'paragraph'
+                    elements_for_chunking.append(elem)
+                
+                chunker = StructureAwareChunker(chunk_size=512, chunk_overlap=100)
+                structured_chunks = chunker.chunk_elements(elements_for_chunking)
+                
+                chunk_session = DocChunkSession(
                     file_bss_info_sno=file_bss_info_sno,
-                    chunk_index=idx,
-                    source_object_ids=cdict.get('source_object_ids', []),
-                    content_text=cdict['content_text'],
-                    token_count=cdict['token_count'],
-                    modality="text"
+                    extraction_session_id=extraction_session.extraction_session_id,
+                    strategy_name="structure_aware_tree",
+                    params_json={
+                        "chunk_size": 512,
+                        "chunk_overlap": 100,
+                        "strategy": "structure_aware"
+                    },
+                    status="running",
+                    started_at=datetime.now()
                 )
-                session.add(doc_chunk)
-                doc_chunks.append(doc_chunk)
+                session.add(chunk_session)
+                await session.flush()
+                result["chunk_session_id"] = chunk_session.chunk_session_id
+                
+                for idx, cdict in enumerate(structured_chunks):
+                    # cdict['metadata']['source_ids'] contains the DB IDs
+                    source_ids = cdict['metadata'].get('source_ids', [])
+                    if not source_ids and cdict['metadata'].get('original_id'):
+                         # For single element chunks (table/figure/header)
+                         try:
+                             source_ids = [int(cdict['metadata']['original_id'])]
+                         except:
+                             pass
+
+                    doc_chunk = DocChunk(
+                        chunk_session_id=chunk_session.chunk_session_id,
+                        file_bss_info_sno=file_bss_info_sno,
+                        chunk_index=idx,
+                        source_object_ids=source_ids,
+                        content_text=cdict['content'],
+                        token_count=len(cdict['content'].split()), # Approximation if tokenizer not avail
+                        modality="text",
+                        section_heading=cdict['metadata'].get('section_path'),
+                        # Store full metadata in blob or rely on source objects
+                    )
+                    session.add(doc_chunk)
+                    doc_chunks.append(doc_chunk)
+
+            else:
+                # Fallback to existing advanced_chunk_text
+                text_objs = [o for o in extracted_objects if o.object_type == "TEXT_BLOCK"]
+                chunk_session = DocChunkSession(
+                    file_bss_info_sno=file_bss_info_sno,
+                    extraction_session_id=extraction_session.extraction_session_id,
+                    strategy_name="advanced_paragraph_token",
+                    params_json={
+                        "min_tokens": 80,
+                        "target_tokens": 280,
+                        "max_tokens": 420,
+                        "overlap_tokens": 40
+                    },
+                    status="running",
+                    started_at=datetime.now()
+                )
+                session.add(chunk_session)
+                await session.flush()
+                result["chunk_session_id"] = chunk_session.chunk_session_id
+
+                iterable = ((o.content_text or "", o.page_no, o.object_id) for o in text_objs)
+                adv_chunks = advanced_chunk_text(iterable)
+                
+                for idx, cdict in enumerate(adv_chunks):
+                    doc_chunk = DocChunk(
+                        chunk_session_id=chunk_session.chunk_session_id,
+                        file_bss_info_sno=file_bss_info_sno,
+                        chunk_index=idx,
+                        source_object_ids=cdict.get('source_object_ids', []),
+                        content_text=cdict['content_text'],
+                        token_count=cdict['token_count'],
+                        modality="text"
+                    )
+                    session.add(doc_chunk)
+                    doc_chunks.append(doc_chunk)
+            
             await session.flush()
             chunk_session.status = "success"
             chunk_session.completed_at = datetime.now()
