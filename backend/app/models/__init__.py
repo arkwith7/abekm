@@ -61,6 +61,22 @@ from .academic import (
     TbAcademicReferences,
 )
 
+# 특허 서지정보 모델
+from .patent import (
+    TbPatentBibliographicInfo,
+    TbPatentInventors,
+    TbPatentApplicants,
+    TbPatentIpcClassifications,
+    TbPatentCitations,
+    TbPatentLegalStatus,
+    TbPatentFamilyMembers,
+    TbPatentSearchSessions,
+    TbPatentSearchResults,
+    TbPatentPriorArtReports,
+    TbPatentCollectionSettings,
+    TbPatentCollectionTasks,
+)
+
 # 채팅 및 대화 모델
 from .chat import (
     TbChatHistory,
@@ -106,6 +122,20 @@ __all__ = [
     "TbAcademicAffiliations",
     "TbAcademicDocumentAuthors",
     "TbAcademicReferences",
+    
+    # 특허 서지정보 모델
+    "TbPatentBibliographicInfo",
+    "TbPatentInventors",
+    "TbPatentApplicants",
+    "TbPatentIpcClassifications",
+    "TbPatentCitations",
+    "TbPatentLegalStatus",
+    "TbPatentFamilyMembers",
+    "TbPatentSearchSessions",
+    "TbPatentSearchResults",
+    "TbPatentPriorArtReports",
+    "TbPatentCollectionSettings",
+    "TbPatentCollectionTasks",
     
     # 채팅 및 대화 모델
     "TbChatHistory",

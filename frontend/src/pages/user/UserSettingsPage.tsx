@@ -1,5 +1,6 @@
 import {
     Bell,
+    Database,
     Layout,
     Palette,
     Settings,
@@ -7,9 +8,10 @@ import {
 } from 'lucide-react';
 import React, { useState } from 'react';
 import TemplateManagement from './TemplateManagement';
+import PatentCollectionSettings from './PatentCollectionSettings';
 
 // 설정 탭 타입
-type SettingsTab = 'templates' | 'notifications' | 'appearance' | 'privacy';
+type SettingsTab = 'templates' | 'patent-collection' | 'notifications' | 'appearance' | 'privacy';
 
 interface TabItem {
     id: SettingsTab;
@@ -24,6 +26,12 @@ const settingsTabs: TabItem[] = [
         name: 'PPT 템플릿',
         icon: Layout,
         description: '프레젠테이션 템플릿 관리'
+    },
+    {
+        id: 'patent-collection',
+        name: '특허 수집',
+        icon: Database,
+        description: 'KIPRIS 기반 특허 자동 수집'
     },
     {
         id: 'notifications',
@@ -52,6 +60,9 @@ export const UserSettingsPage: React.FC = () => {
         switch (activeTab) {
             case 'templates':
                 return <TemplateManagement />;
+
+            case 'patent-collection':
+                return <PatentCollectionSettings />;
 
             case 'notifications':
                 return (

@@ -76,6 +76,10 @@ flower==2.0.1  # Celery 모니터링 (선택)
 # 로깅
 loguru==0.7.3
 
+# 데이터 분석 (Jupyter 노트북 테스트용)
+pandas==2.2.0
+numpy==1.26.3
+
 # 한국어 NLP
 konlpy==0.6.0
 JPype1==1.4.1

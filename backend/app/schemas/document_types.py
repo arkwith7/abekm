@@ -17,13 +17,11 @@ class DocumentType(str, Enum):
     ✅ 구현된 파이프라인:
     - GENERAL: 일반 문서 (기본 파이프라인)
     - ACADEMIC_PAPER: 학술 논문 (Figure/Reference 추출)
-    
-    🔜 향후 구현 예정:
-    - PATENT: 특허 문서 (서지정보 추출 - DB 연동 필요)
+    - PATENT: 특허 문서 (섹션 감지 및 구조화 청킹) ✅ 2025-12-22 구현 완료
     """
     GENERAL = "general"
     ACADEMIC_PAPER = "academic_paper"
-    PATENT = "patent"  # 향후 구현
+    PATENT = "patent"  # ✅ 구현 완료 (2025-12-22)
     UNSTRUCTURED_TEXT = "unstructured_text"
     
     @property
@@ -43,7 +41,7 @@ class DocumentType(str, Enum):
         descriptions = {
             "general": "기술보고서, 업무문서, 프레젠테이션 등 일반 문서",
             "academic_paper": "Journal paper, Conference paper, Thesis (Figure/Reference 추출)",
-            "patent": "특허 출원서, 등록 특허 (서지정보 추출 - 향후 구현)",
+            "patent": "특허 출원서, 등록 특허 (청구항/명세서 구조화 청킹) ✅",
             "unstructured_text": "기사/블로그/게시글/광고 카피 등 섹션 구조가 약한 텍스트 (Character/Stream 기반 청킹)",
         }
         return descriptions.get(self.value, "")
@@ -85,12 +83,12 @@ class PatentOptions(BaseModel):
     """
     특허 문서 처리 옵션
     
-    ⚠️ 향후 구현 예정 (특허 서지정보 DB 연동 필요)
+    ✅ 2025-12-22 구현 완료
     """
-    extract_claims: bool = Field(True, description="Claims 섹션 추출")
-    parse_citations: bool = Field(True, description="인용 특허 파싱")
+    extract_claims: bool = Field(True, description="청구항 섹션 추출")
+    parse_citations: bool = Field(False, description="인용 특허 파싱 (향후 구현)")
     technical_field_extraction: bool = Field(True, description="기술 분야 추출")
-    priority_claims: bool = Field(True, description="Claims 우선 처리")
+    priority_claims: bool = Field(True, description="청구항 우선 처리")
 
 class DocumentTypeInfo(BaseModel):
     """문서 유형 정보 (API 응답용)"""
@@ -112,9 +110,7 @@ class ProcessingOptionsFactory:
         ✅ 구현된 파이프라인:
         - GENERAL: 기본 옵션 없음
         - ACADEMIC_PAPER: Figure/Reference 추출 옵션
-        
-        🔜 향후 구현:
-        - PATENT: Claims/서지정보 추출 옵션 (DB 연동 필요)
+        - PATENT: 청구항/섹션 추출 옵션 ✅ 2025-12-22
         """
         if document_type == DocumentType.ACADEMIC_PAPER:
             return AcademicPaperOptions().dict()
@@ -167,12 +163,12 @@ def get_pipeline_name(document_type: DocumentType) -> str:
     - AcademicPaperPipeline: 학술 논문 처리
     
     🔜 향후 구현 예정:
-    - PatentPipeline: 특허 문서 처리 (서지정보 DB 연동 후)
+    - PatentPipeline: 특허 문서 처리 ✅ 2025-12-22
     """
     names = {
         DocumentType.GENERAL: "GeneralPipeline",
         DocumentType.ACADEMIC_PAPER: "AcademicPaperPipeline",
-        DocumentType.PATENT: "PatentPipeline",  # 향후 구현
+        DocumentType.PATENT: "PatentPipeline",  # ✅ 구현 완료
         DocumentType.UNSTRUCTURED_TEXT: "GeneralPipeline",
     }
     return names.get(document_type, "GeneralPipeline")

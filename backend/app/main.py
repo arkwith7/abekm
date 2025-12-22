@@ -27,6 +27,7 @@ from app.api.v1.documents import router as documents_router
 from app.api.v1.document_access import router as document_access_router
 from app.api.v1.agent import router as agent_router  # 🤖 Agent-based RAG
 from app.api.v1.patent import router as patent_router  # 🔬 Patent Intelligence
+from app.api.v1.patent_collection import router as patent_collection_router  # 📥 특허 수집
 from app.api.v1.endpoints.transcribe import router as transcribe_router  # 🎤 실시간 STT
 
 from app.core.config import settings
@@ -318,6 +319,8 @@ app.include_router(agent_router, prefix="/api/v1", tags=["🤖 Agent RAG"])
 
 # 🔬 Patent Intelligence API (Enterprise Intelligence)
 app.include_router(patent_router, prefix="/api/v1", tags=["🔬 Patent Intelligence"])
+# 특허 수집 라우터는 자체적으로 /api/v1/patent-collection 프리픽스를 포함하므로 추가 prefix 없이 포함
+app.include_router(patent_collection_router, tags=["📥 Patent Collection"])
 
 # 🔍 멀티모달 검색 API (텍스트 + 이미지)
 app.include_router(multimodal_search_router, prefix="/api/v1", tags=["🔍 Multimodal Search"])

@@ -484,80 +484,75 @@ export const getMyDocuments = async (options?: {
 export const getMyContainers = async (): Promise<KnowledgeContainer[]> => {
   try {
     const response = await api.get(`/api/v1/documents/containers`);
-    console.log('Full API Response for containers:', response.data);
-
-    // API 응답 구조 확인 후 적절히 처리
-    let containersData = response.data;
-    if (containersData.containers) {
-      containersData = containersData.containers;
-    } else if (!Array.isArray(containersData)) {
+    let containersData = response.data?.containers ?? response.data;
+    if (!Array.isArray(containersData)) {
       console.warn('Containers data is not an array:', containersData);
       return [];
     }
 
-    console.log('Containers raw data:', containersData);
-
-    // API 응답 (snake_case)을 프론트엔드 모델 (camelCase)에 맞게 변환
     const transformedData = containersData.map((item: any) => {
-      // 모든 권한 관련 필드를 로그로 출력
-      console.log(`Raw container data for ${item.container_name}:`, item);
-
-      // 권한 매핑 로직 - 실제 백엔드 응답 구조에 맞게 수정
-      let permission = 'VIEWER'; // 기본값
-
-      // 가능한 모든 권한 필드를 확인
       const permissionFields = [
-        'permission_type', 'permission', 'role_id', 'role_name',
-        'access_level', 'user_permission', 'container_permission',
-        'default_permission', 'effective_permission'
+        'user_permission',
+        'permission_level',
+        'role_id',
+        'role_name',
+        'permission_type',
+        'access_scope',
+        'access_level',
+        'default_permission',
+        'effective_permission'
       ];
 
-      for (const field of permissionFields) {
-        if (item[field]) {
-          console.log(`Found permission field ${field}:`, item[field]);
-          const value = item[field].toString().toLowerCase();
+      const normalized = permissionFields
+        .map((field) => (item[field] ? item[field].toString().toUpperCase() : ''))
+        .filter(Boolean);
 
-          if (value.includes('owner') || value.includes('admin')) {
-            permission = 'OWNER';
-            break;
-          } else if (value.includes('editor') || value.includes('manager') || value.includes('write')) {
-            permission = 'EDITOR';
-            break;
-          } else if (value.includes('viewer') || value.includes('read')) {
-            permission = 'VIEWER';
-            break;
-          }
-        }
-      }
+      const includesAny = (keyword: string) => normalized.some((value) => value.includes(keyword));
 
-      // 컨테이너 소유자 확인
-      if (item.container_owner && item.container_owner === 'HR001') {
+      let permission: KnowledgeContainer['permission'] = 'VIEWER';
+      if (includesAny('ADMIN') || includesAny('OWNER') || includesAny('FULL')) {
         permission = 'OWNER';
-        console.log(`Container ${item.container_name} is owned by HR001, setting OWNER permission`);
+      } else if (
+        includesAny('MANAGER') ||
+        includesAny('EDITOR') ||
+        includesAny('WRITE') ||
+        includesAny('WRITER') ||
+        includesAny('CONTRIBUTOR')
+      ) {
+        permission = 'EDITOR';
+      } else if (includesAny('VIEWER') || includesAny('READ')) {
+        permission = 'VIEWER';
       }
+
+      const canUpload = Boolean(
+        item.can_upload ||
+        includesAny('ADMIN') ||
+        includesAny('OWNER') ||
+        includesAny('MANAGER') ||
+        includesAny('EDITOR') ||
+        includesAny('WRITE') ||
+        includesAny('WRITER') ||
+        includesAny('CONTRIBUTOR')
+      );
+
+      if (canUpload && permission === 'VIEWER') {
+        permission = 'EDITOR';
+      }
+
+      const hierarchyPath = item.hierarchy_path || item.org_path || item.path || '';
 
       return {
         id: item.container_id,
         name: item.container_name || item.name || 'Unknown Container',
-        path: item.org_path || item.path || '',
+        path: hierarchyPath,
         parent_id: item.parent_container_id,
-        permission: permission,
+        permission,
+        can_upload: canUpload,
         document_count: item.document_count || 0,
-        children: [], // children은 후처리로 채워집니다.
+        children: [],
       };
     });
 
-    console.log('✅ 변환된 컨테이너 데이터:', transformedData);
-
-    // CEO직속 컨테이너 특별히 확인
-    const ceoContainer = transformedData.find((c: any) => c.id === 'WJ_CEO');
-    if (ceoContainer) {
-      console.log('🏢 CEO직속 컨테이너 확인:', ceoContainer);
-    } else {
-      console.warn('⚠️ CEO직속 컨테이너(WJ_CEO)를 찾을 수 없습니다');
-    }
-
-    // 트리 구조로 변환
     const tree = [];
     const map: { [key: string]: any } = {};
 
@@ -573,7 +568,6 @@ export const getMyContainers = async (): Promise<KnowledgeContainer[]> => {
       }
     }
 
-    console.log('Transformed containers tree:', tree);
     return tree;
 
   } catch (error) {
@@ -1149,6 +1143,78 @@ export const createUserContainer = async (data: {
 // 🗑️ 사용자 컨테이너 삭제
 export const deleteUserContainer = async (containerId: string): Promise<any> => {
   const response = await api.delete(`/api/v1/containers/user/${containerId}`);
+  return response.data;
+};
+
+// -----------------------------
+// 특허 수집 API
+// -----------------------------
+export interface PatentCollectionSettingPayload {
+  container_id: string;
+  search_config: {
+    ipc_codes?: string[];
+    keywords?: string[];
+    applicants?: string[];
+  };
+  max_results?: number;
+  auto_download_pdf?: boolean;
+  auto_generate_embeddings?: boolean;
+  schedule_type?: string;
+  schedule_config?: Record<string, unknown> | null;
+}
+
+export interface PatentCollectionSettingResponse {
+  setting_id: number;
+  user_emp_no: string;
+  container_id: string;
+  search_config: Record<string, any>;
+  max_results: number;
+  auto_download_pdf: boolean;
+  auto_generate_embeddings: boolean;
+  schedule_type: string;
+  schedule_config?: Record<string, unknown> | null;
+  is_active: boolean;
+  last_collection_date?: string | null;
+}
+
+export interface PatentCollectionTaskStartResponse {
+  task_id: string;
+  status: string;
+  message: string;
+}
+
+export interface PatentCollectionStatusResponse {
+  task_id: string;
+  status: string;
+  progress_current: number;
+  progress_total: number;
+  collected_count: number;
+  error_count: number;
+}
+
+export const getPatentCollectionSettings = async (): Promise<PatentCollectionSettingResponse[]> => {
+  const response = await api.get(`/api/v1/patent-collection/settings`);
+  return response.data;
+};
+
+export const createPatentCollectionSetting = async (
+  payload: PatentCollectionSettingPayload
+): Promise<PatentCollectionSettingResponse> => {
+  const response = await api.post(`/api/v1/patent-collection/settings`, payload);
+  return response.data;
+};
+
+export const startPatentCollection = async (
+  payload: { setting_id: number }
+): Promise<PatentCollectionTaskStartResponse> => {
+  const response = await api.post(`/api/v1/patent-collection/start`, payload);
+  return response.data;
+};
+
+export const getPatentCollectionStatus = async (
+  taskId: string
+): Promise<PatentCollectionStatusResponse> => {
+  const response = await api.get(`/api/v1/patent-collection/status/${taskId}`);
   return response.data;
 };
 

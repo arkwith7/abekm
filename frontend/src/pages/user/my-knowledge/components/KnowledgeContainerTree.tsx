@@ -18,6 +18,7 @@ export interface KnowledgeContainer {
   parent_id?: string;
   children?: KnowledgeContainer[];
   permission: 'OWNER' | 'EDITOR' | 'VIEWER' | 'NONE';
+  can_upload?: boolean;
   document_count?: number;
 }
 

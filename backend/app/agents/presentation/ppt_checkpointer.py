@@ -55,6 +55,15 @@ _SQLITE_CONN: Optional[sqlite3.Connection] = None
 _SQLITE_SAVER: Optional[Any] = None
 
 
+async def _open_pool_async(pool: Any) -> None:
+    """Open AsyncConnectionPool asynchronously to avoid deprecated warning."""
+    try:
+        await pool.open()
+        logger.info("✅ PPT checkpointer: AsyncConnectionPool opened")
+    except Exception as e:
+        logger.warning(f"⚠️ PPT checkpointer: Failed to open pool: {e}")
+
+
 def _ensure_async_setup_started(saver: Any) -> None:
     """Ensure async saver.setup() runs once.
 
@@ -163,8 +172,12 @@ def _get_postgres_saver() -> Optional[Any]:
                 kwargs={"autocommit": True},
                 min_size=1,
                 max_size=max_size,
-                open=True,
+                open=False,  # Don't open in constructor (deprecated)
             )
+            # Schedule async open in background
+            import asyncio
+            asyncio.create_task(_open_pool_async(_PG_POOL))
+            
             saver = AsyncPostgresSaver(_PG_POOL)
             _ensure_async_setup_started(saver)
             _PG_SAVER = saver

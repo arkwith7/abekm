@@ -10,6 +10,7 @@ from app.schemas.document_types import DocumentType
 from app.services.document.pipelines.base_pipeline import DocumentPipeline
 from app.services.document.pipelines.general_pipeline import GeneralPipeline
 from app.services.document.pipelines.academic_paper_pipeline import AcademicPaperPipeline
+from app.services.document.pipelines.patent_pipeline import PatentPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class PipelineRouter:
     PIPELINE_MAP: Dict[str, Type[DocumentPipeline]] = {
         DocumentType.GENERAL: GeneralPipeline,
         DocumentType.ACADEMIC_PAPER: AcademicPaperPipeline,
-        DocumentType.PATENT: GeneralPipeline,  # 🔜 향후 PatentPipeline로 교체
+        DocumentType.PATENT: PatentPipeline,  # ✅ PatentPipeline 적용 (2025-12-22)
         DocumentType.UNSTRUCTURED_TEXT: GeneralPipeline,
     }
     
