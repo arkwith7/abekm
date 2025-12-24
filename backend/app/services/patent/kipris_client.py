@@ -65,7 +65,9 @@ class KIPRISClient:
                 query_parts.append(f"({ipc_query})")
 
             if keywords:
-                keyword_query = " OR ".join([f"TI:{kw}" for kw in keywords])
+                # KIPRIS Plus API는 TI: 필드 지정자가 제대로 작동하지 않을 수 있음
+                # 필드 지정 없이 일반 키워드 검색 사용 (제목+초록+청구항 등 전체 텍스트 검색)
+                keyword_query = " OR ".join([kw for kw in keywords])
                 query_parts.append(f"({keyword_query})")
 
             if applicants:

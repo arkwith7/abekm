@@ -33,6 +33,7 @@ class TbPatentCollectionSettings(Base):
     # 상태
     is_active = Column(Boolean, nullable=False, default=True, comment="활성화 여부")
     last_collection_date = Column(DateTime(timezone=True), nullable=True, comment="마지막 수집 일시")
+    last_collection_result = Column(JSONB, nullable=True, comment="마지막 수집 결과 (collected, errors)")
     
     # 시스템 필드
     created_date = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, comment="생성일")

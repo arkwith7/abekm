@@ -320,6 +320,19 @@ async def iframe_view_file(
             logger.error("❌ iframe 파일 경로가 없음")
             raise HTTPException(status_code=404, detail="파일 경로를 찾을 수 없습니다.")
 
+        # URL 기반 문서(특허 등): 외부 사이트를 iframe에 직접 넣으면 차단(X-Frame-Options)될 수 있어
+        # 최소한의 안내 링크 HTML을 반환한다.
+        if isinstance(file_path, str) and (file_path.startswith('http://') or file_path.startswith('https://')):
+            safe_url = file_path
+            html = (
+                "<!doctype html><html><head><meta charset='utf-8'/><title>External Link</title></head>"
+                "<body>"
+                "<p>외부 링크 문서입니다. 아래 링크를 클릭하여 열어주세요.</p>"
+                f"<p><a href='{safe_url}' target='_blank' rel='noopener noreferrer'>{safe_url}</a></p>"
+                "</body></html>"
+            )
+            return Response(content=html, media_type="text/html")
+
         storage_backend = getattr(settings, 'storage_backend', 'local')
 
         # S3 스토리지인 경우: 프리사인드 URL로 리다이렉트 (inline)

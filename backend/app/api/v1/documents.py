@@ -1045,7 +1045,8 @@ async def get_documents(
                 # 🌩️ 프로바이더 환경 필터링: 현재 프로바이더로 처리된 문서 또는 아직 처리되지 않은 문서만 표시
                 or_(
                     TbFileBssInfo.file_bss_info_sno.in_(processed_documents_subquery),  # 현재 프로바이더로 처리 완료된 문서
-                    TbFileBssInfo.processing_status.in_(['pending', 'processing'])  # 처리 대기 중인 문서
+                    TbFileBssInfo.processing_status.in_(['pending', 'processing']),  # 처리 대기 중인 문서
+                    TbFileBssInfo.document_type == 'patent',  # 특허는 URL 기반 문서 엔트리로 항상 표시
                 )
             )
         ).order_by(desc(TbFileBssInfo.created_date))
@@ -1068,7 +1069,8 @@ async def get_documents(
                 # 🌩️ 프로바이더 환경 필터링: 현재 프로바이더로 처리된 문서 또는 아직 처리되지 않은 문서만
                 or_(
                     TbFileBssInfo.file_bss_info_sno.in_(processed_documents_subquery),
-                    TbFileBssInfo.processing_status.in_(['pending', 'processing'])
+                    TbFileBssInfo.processing_status.in_(['pending', 'processing']),
+                    TbFileBssInfo.document_type == 'patent',
                 )
             )
         )
@@ -1332,7 +1334,6 @@ async def download_document(
     🌩️ Storage 검증: 현재 프로바이더와 일치하는 저장소인지 확인
     """
     try:
-        from app.utils.provider_filters import is_valid_storage_for_provider
         from app.core.config import settings as app_settings
         
         logger.info(
@@ -1351,20 +1352,6 @@ async def download_document(
 
         if not file_info:
             raise HTTPException(status_code=404, detail="문서를 찾을 수 없습니다.")
-        
-        # 🌩️ Storage 프로바이더 검증
-        file_path_value = str(getattr(file_info, 'path', '') or '')
-        current_provider = app_settings.get_current_embedding_provider()
-        
-        if not is_valid_storage_for_provider(file_path_value):
-            logger.warning(
-                f"Storage 불일치 - 현재 환경: {current_provider}, 파일 경로: {file_path_value}"
-            )
-            raise HTTPException(
-                status_code=400,
-                detail=f"이 문서는 다른 환경({current_provider})에서 처리되어 현재 환경에서 다운로드할 수 없습니다. "
-                       f"문서를 재처리하거나 관리자에게 문의하세요."
-            )
         
         # 🔐 다운로드 권한 확인
         container_id = getattr(file_info, 'knowledge_container_id', None)
@@ -1390,8 +1377,43 @@ async def download_document(
         
         logger.info(f"✅ 다운로드 권한 확인 완료 - 사용자: {user.emp_no}, 문서: {document_id}")
 
-        # 파일 경로 확인 (상대/절대 경로 모두 처리)
+        # ✅ URL 기반 문서(특허 등): 프론트는 blob 다운로드를 사용하므로
+        # 외부 도메인 리다이렉트는 CORS로 실패할 수 있다.
+        # 따라서 URL 자체를 담은 .url(바로가기) 파일로 다운로드 제공.
         file_path_value = str(getattr(file_info, 'path', '') or '')
+        if file_path_value.startswith('http://') or file_path_value.startswith('https://'):
+            logical_name = (
+                str(getattr(file_info, 'file_lgc_nm', '') or '').strip()
+                or str(getattr(file_info, 'file_psl_nm', '') or '').strip()
+                or f"document_{document_id}"
+            )
+            # 확장자 보정
+            if not logical_name.lower().endswith('.url'):
+                logical_name = f"{logical_name}.url"
+            encoded_name = urllib.parse.quote(str(logical_name))
+            disposition = f"attachment; filename*=UTF-8''{encoded_name}"
+
+            content = f"[InternetShortcut]\nURL={file_path_value}\n"
+            response = Response(content=content, media_type='text/plain; charset=utf-8')
+            response.headers['Content-Disposition'] = disposition
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            logger.info(f"[DOWNLOAD] URL 바로가기 파일 제공: {logical_name} -> {file_path_value}")
+            return response
+
+        # 🌩️ Storage 프로바이더 검증 (URL 문서는 제외)
+        from app.utils.provider_filters import is_valid_storage_for_provider
+        current_provider = app_settings.get_current_embedding_provider()
+        if not is_valid_storage_for_provider(file_path_value):
+            logger.warning(
+                f"Storage 불일치 - 현재 환경: {current_provider}, 파일 경로: {file_path_value}"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"이 문서는 다른 환경({current_provider})에서 처리되어 현재 환경에서 다운로드할 수 없습니다. "
+                       f"문서를 재처리하거나 관리자에게 문의하세요."
+            )
+
+        # 파일 경로 확인 (상대/절대 경로 모두 처리)
         original_path_for_name = Path(file_path_value)
         file_path = original_path_for_name
         if not file_path.is_absolute():

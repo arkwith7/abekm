@@ -104,6 +104,94 @@ class PatentCollectionService:
         result = await self.session.execute(query)
         return list(result.scalars().all())
 
+    async def get_user_setting_by_id(
+        self,
+        user_emp_no: str,
+        setting_id: int,
+        include_inactive: bool = False,
+    ) -> Optional[TbPatentCollectionSettings]:
+        query = select(TbPatentCollectionSettings).where(
+            TbPatentCollectionSettings.setting_id == setting_id,
+            TbPatentCollectionSettings.user_emp_no == user_emp_no,
+        )
+        if not include_inactive:
+            query = query.where(TbPatentCollectionSettings.is_active.is_(True))
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def update_collection_setting(
+        self,
+        user_emp_no: str,
+        setting_id: int,
+        *,
+        container_id: Optional[str] = None,
+        search_config: Optional[Dict[str, Any]] = None,
+        max_results: Optional[int] = None,
+        auto_download_pdf: Optional[bool] = None,
+        auto_generate_embeddings: Optional[bool] = None,
+        schedule_type: Optional[str] = None,
+        schedule_config: Optional[Dict[str, Any]] = None,
+    ) -> Optional[TbPatentCollectionSettings]:
+        setting = await self.get_user_setting_by_id(user_emp_no, setting_id)
+        if not setting:
+            return None
+
+        values: Dict[str, Any] = {}
+        if container_id is not None:
+            values["container_id"] = container_id
+        if search_config is not None:
+            values["search_config"] = search_config
+        if max_results is not None:
+            values["max_results"] = max_results
+        if auto_download_pdf is not None:
+            values["auto_download_pdf"] = auto_download_pdf
+        if auto_generate_embeddings is not None:
+            values["auto_generate_embeddings"] = auto_generate_embeddings
+        if schedule_type is not None:
+            values["schedule_type"] = schedule_type
+        if schedule_config is not None:
+            values["schedule_config"] = schedule_config
+
+        if not values:
+            return setting
+
+        await self.session.execute(
+            update(TbPatentCollectionSettings)
+            .where(
+                TbPatentCollectionSettings.setting_id == setting_id,
+                TbPatentCollectionSettings.user_emp_no == user_emp_no,
+                TbPatentCollectionSettings.is_active.is_(True),
+            )
+            .values(**values)
+        )
+        await self.session.commit()
+        updated = await self.get_user_setting_by_id(user_emp_no, setting_id)
+        if updated:
+            logger.info(f"✅ 특허 수집 설정 수정: {setting_id}")
+        return updated
+
+    async def deactivate_collection_setting(
+        self,
+        user_emp_no: str,
+        setting_id: int,
+    ) -> bool:
+        setting = await self.get_user_setting_by_id(user_emp_no, setting_id)
+        if not setting:
+            return False
+
+        await self.session.execute(
+            update(TbPatentCollectionSettings)
+            .where(
+                TbPatentCollectionSettings.setting_id == setting_id,
+                TbPatentCollectionSettings.user_emp_no == user_emp_no,
+                TbPatentCollectionSettings.is_active.is_(True),
+            )
+            .values(is_active=False)
+        )
+        await self.session.commit()
+        logger.info(f"✅ 특허 수집 설정 비활성화(삭제): {setting_id}")
+        return True
+
     # ---------------------------
     # 작업 관리
     # ---------------------------
@@ -151,6 +239,30 @@ class PatentCollectionService:
         )
         await self.session.commit()
 
+        # 완료 시 설정의 last_collection_result 업데이트
+        if status == "completed":
+            # task에서 setting_id 가져오기
+            task_result = await self.session.execute(
+                select(TbPatentCollectionTasks).where(
+                    TbPatentCollectionTasks.task_id == task_id
+                )
+            )
+            task = task_result.scalar_one_or_none()
+            if task and task.setting_id:
+                await self.session.execute(
+                    update(TbPatentCollectionSettings)
+                    .where(TbPatentCollectionSettings.setting_id == task.setting_id)
+                    .values(
+                        last_collection_date=datetime.utcnow(),
+                        last_collection_result={
+                            "collected": collected_count or 0,
+                            "errors": error_count or 0,
+                        }
+                    )
+                )
+                await self.session.commit()
+                logger.info(f"✅ 설정 {task.setting_id} 마지막 수집 결과 업데이트 완료")
+
     # ---------------------------
     # 특허 데이터 저장
     # ---------------------------
@@ -171,54 +283,93 @@ class PatentCollectionService:
             logger.warning("⚠️ applicationNumber 누락으로 스킵")
             return None
 
-        # 중복 체크
-        existing = await self.session.execute(
+        # 중복 체크 (서지정보 기준). 이미 존재하더라도 문서 목록 엔트리(TbFileBssInfo)가 없으면 생성한다.
+        existing_biblio_result = await self.session.execute(
             select(TbPatentBibliographicInfo).where(
                 TbPatentBibliographicInfo.application_number == app_no
             )
         )
-        if existing.scalar_one_or_none():
-            logger.info(f"ℹ️ 이미 존재하는 특허: {app_no}")
-            return None
+        existing_biblio = existing_biblio_result.scalar_one_or_none()
+
+        # 특허 접근 URL 생성 (원본 파일 저장하지 않고 URL만 저장)
+        pub_no = str(patent_data.get('publicationNumber') or '').strip()
+        if pub_no:
+            source_url = f"https://patents.google.com/?q={pub_no}"
+        else:
+            source_url = f"https://patents.google.com/?q={app_no}"
+
+        # 이미 문서 엔트리가 있는지 확인
+        existing_file_result = await self.session.execute(
+            select(TbFileBssInfo).where(
+                TbFileBssInfo.document_type == 'patent',
+                TbFileBssInfo.knowledge_container_id == container_id,
+                TbFileBssInfo.del_yn != 'Y',
+                TbFileBssInfo.file_psl_nm == f"{app_no}.url",
+            )
+        )
+        existing_file = existing_file_result.scalar_one_or_none()
+        if existing_file:
+            logger.info(f"ℹ️ 이미 존재하는 특허 문서 엔트리: {app_no} → file_sno={existing_file.file_bss_info_sno}")
+            return int(existing_file.file_bss_info_sno)
 
         try:
             # 1. 서지정보 저장 (날짜 변환 포함)
-            biblio = TbPatentBibliographicInfo(
-                application_number=app_no,
-                publication_number=patent_data.get("publicationNumber"),
-                title=patent_data.get("inventionTitle"),
-                abstract=patent_data.get("abstract"),
-                # 날짜 필드 - 문자열을 date 객체로 변환
-                application_date=self._parse_date(patent_data.get("applicationDate")),
-                publication_date=self._parse_date(patent_data.get("publicationDate")),
-                registration_date=self._parse_date(patent_data.get("registrationDate")),
-                # 기타 필드
-                jurisdiction=patent_data.get("country", "KR"),
-                legal_status=patent_data.get("legalStatus", "APPLICATION"),
-                data_source="KIPRIS",
-                knowledge_container_id=container_id,
-                imported_by=user_emp_no,
-            )
-            self.session.add(biblio)
-            await self.session.flush()
+            if not existing_biblio:
+                biblio = TbPatentBibliographicInfo(
+                    application_number=app_no,
+                    publication_number=patent_data.get("publicationNumber"),
+                    title=patent_data.get("inventionTitle") or app_no,
+                    abstract=patent_data.get("abstract"),
+                    # 날짜 필드 - 문자열을 date 객체로 변환
+                    application_date=self._parse_date(patent_data.get("applicationDate")),
+                    publication_date=self._parse_date(patent_data.get("publicationDate")),
+                    registration_date=self._parse_date(patent_data.get("registrationDate")),
+                    # 기타 필드
+                    jurisdiction=patent_data.get("country", "KR"),
+                    legal_status=patent_data.get("legalStatus", "APPLICATION"),
+                    data_source="KIPRIS",
+                    source_url=source_url,
+                    knowledge_container_id=container_id,
+                    imported_by=user_emp_no,
+                )
+                self.session.add(biblio)
+                await self.session.flush()
+            else:
+                # 기존 서지정보에 URL/컨테이너/수집자 정보가 비어있으면 보강
+                await self.session.execute(
+                    update(TbPatentBibliographicInfo)
+                    .where(TbPatentBibliographicInfo.patent_id == existing_biblio.patent_id)
+                    .values(
+                        knowledge_container_id=existing_biblio.knowledge_container_id or container_id,
+                        imported_by=existing_biblio.imported_by or user_emp_no,
+                        source_url=existing_biblio.source_url or source_url,
+                    )
+                )
 
             # 2. 문서 메타 저장
-            pub_no = patent_data.get('publicationNumber', 'unknown')
-            file_lgc_nm = f"{app_no}.pdf"
-            file_psl_nm = f"{app_no}_{pub_no}.pdf"
-            local_path = f"uploads/patents/{app_no}.pdf"
+            title = (patent_data.get("inventionTitle") or "").strip() or app_no
+            file_lgc_nm = title
+            file_psl_nm = f"{app_no}.url"
+            file_extsn = "url"
             
             file_record = TbFileBssInfo(
                 drcy_sno=1,
                 file_lgc_nm=file_lgc_nm,
                 file_psl_nm=file_psl_nm,
-                file_extsn="pdf",
-                path=local_path,
+                file_extsn=file_extsn,
+                path=source_url,
                 knowledge_container_id=container_id,
                 document_type="patent",
                 owner_emp_no=user_emp_no,
                 created_by=user_emp_no,
-                processing_status="pending",  # 처리 대기 상태
+                processing_status="completed",  # 서지 임베딩/인덱싱 완료 기준으로 completed
+                processing_completed_at=datetime.utcnow(),
+                korean_metadata={
+                    "applicationNumber": app_no,
+                    "publicationNumber": pub_no or None,
+                    "data_source": "KIPRIS",
+                    "source_url": source_url,
+                },
             )
             self.session.add(file_record)
             await self.session.flush()  # file_sno 생성

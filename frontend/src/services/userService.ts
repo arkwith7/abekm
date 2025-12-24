@@ -1204,6 +1204,19 @@ export const createPatentCollectionSetting = async (
   return response.data;
 };
 
+export const updatePatentCollectionSetting = async (
+  settingId: number,
+  payload: Partial<PatentCollectionSettingPayload>
+): Promise<PatentCollectionSettingResponse> => {
+  const response = await api.put(`/api/v1/patent-collection/settings/${settingId}`, payload);
+  return response.data;
+};
+
+export const deletePatentCollectionSetting = async (settingId: number): Promise<{ success: boolean }> => {
+  const response = await api.delete(`/api/v1/patent-collection/settings/${settingId}`);
+  return response.data;
+};
+
 export const startPatentCollection = async (
   payload: { setting_id: number }
 ): Promise<PatentCollectionTaskStartResponse> => {

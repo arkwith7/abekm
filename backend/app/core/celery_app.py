@@ -36,7 +36,10 @@ celery_app = Celery(
     "wkms",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=['app.tasks.document_tasks']  # 태스크 모듈 자동 로드
+    include=[
+        'app.tasks.document_tasks',
+        'app.tasks.patent_collection_tasks'  # 특허 수집 태스크 추가
+    ]
 )
 
 # Celery 설정
