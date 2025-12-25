@@ -84,6 +84,13 @@ const SearchPage: React.FC = () => {
 
       console.log('🔍 다른 페이지에서 전달받은 검색 요청:', { query: incomingQuery, hasImage });
 
+      // ✅ 이미 동일 쿼리의 결과가 화면/스토어에 캐시되어 있으면 불필요한 재검색을 방지
+      // (메뉴 이동 시 "즉시 복원" UX를 우선)
+      if (!hasImage && incomingQuery && incomingQuery === query && searchResults.length > 0) {
+        updateWorkContext({ sourcePageState: null });
+        return;
+      }
+
       // sessionStorage에서 이미지 복원
       let imageFile: File | null = null;
       if (hasImage) {
@@ -120,7 +127,7 @@ const SearchPage: React.FC = () => {
       // 사용한 상태 정리 (중복 실행 방지)
       updateWorkContext({ sourcePageState: null });
     }
-  }, [workContext.sourcePageState, setQuery, executeSearch, updateWorkContext]);
+  }, [workContext.sourcePageState, setQuery, executeSearch, updateWorkContext, query, searchResults.length]);
 
   // 선택된 검색 결과를 글로벌 페이지 상태에 병합 (기존 문서 + 새 선택 문서)
   // 🆕 검색 결과가 있을 때만 동기화 (다른 페이지의 선택 문서 보존)

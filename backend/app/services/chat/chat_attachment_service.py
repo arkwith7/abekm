@@ -54,7 +54,9 @@ class StoredAttachment:
 
     @property
     def download_url(self) -> str:
-        return f"/api/v1/chat/assets/{self.asset_id}"
+        # ✅ 2025-12-09: 일반 RAG 채팅(/api/v1/chat/*)은 Agent Chat로 통합됨
+        #   - 실제 활성 라우트: /api/v1/agent/chat/assets/{asset_id}
+        return f"/api/v1/agent/chat/assets/{self.asset_id}"
 
     @property
     def preview_url(self) -> Optional[str]:

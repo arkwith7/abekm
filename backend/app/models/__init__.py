@@ -25,7 +25,9 @@ from .core import (
     TbCmnsCdGrpItem,
     TbKnowledgeCategories,
     TbContainerCategories,
-    TbSystemSettings
+    TbSystemSettings,
+    TbAiUsageLog,
+    TbAiModelConfig
 )
 
 # 문서 관리 모델 (문서 처리 파이프라인 핵심)

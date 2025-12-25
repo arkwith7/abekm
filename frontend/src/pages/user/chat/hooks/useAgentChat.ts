@@ -60,6 +60,8 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
     document_ids: [],
     ...options.defaultSettings
   });
+  // 컨테이너 필터의 중복 업데이트/로그 스팸 방지용
+  const lastContainerFilterKeyRef = useRef<string>('');
 
   // 현재 실행 중인 Agent 상태
   const [currentSteps, setCurrentSteps] = useState<AgentStep[]>([]);
@@ -547,6 +549,13 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
    * 컨테이너 필터 설정
    */
   const setContainerFilter = useCallback((containerIds: string[]) => {
+    // ✅ 동일한 값이면 아무 것도 하지 않음 (렌더 루프/로그 스팸 방지)
+    const nextKey = (containerIds || []).join('|');
+    if (lastContainerFilterKeyRef.current === nextKey) {
+      return;
+    }
+    lastContainerFilterKeyRef.current = nextKey;
+
     setSettings(prev => {
       // 값이 실제로 변경되었는지 확인
       const prevIds = prev.container_ids || [];

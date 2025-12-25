@@ -35,8 +35,11 @@ export const useMyKnowledge = () => {
     savedMyKnowledgeState?.viewMode || 'list'
   );
 
-  // 컨테이너 관련 - ⚠️ localStorage 캐시 사용 안 함 (DB 결과 우선)
-  const [containers, setContainers] = useState<KnowledgeContainer[]>([]);
+  // 컨테이너 관련
+  // ✅ 메뉴 이동(언마운트/리마운트) 시에는 store 메모리 캐시를 즉시 반영 (UX 우선)
+  const [containers, setContainers] = useState<KnowledgeContainer[]>(
+    () => (savedMyKnowledgeState?.containers as KnowledgeContainer[] | undefined) || []
+  );
   const [selectedContainerId, setSelectedContainerId] = useState<string | null>(
     savedMyKnowledgeState?.selectedContainer || null
   );
@@ -44,8 +47,11 @@ export const useMyKnowledge = () => {
     new Set(savedMyKnowledgeState?.expandedContainers || [])
   );
 
-  // 문서 관련 - ⚠️ localStorage 캐시 사용 안 함 (DB 결과 우선)
-  const [documents, setDocuments] = useState<ExtendedDocument[]>([]);
+  // 문서 관련
+  // ✅ 메뉴 이동 시에는 store 메모리 캐시를 즉시 반영
+  const [documents, setDocuments] = useState<ExtendedDocument[]>(
+    () => (savedMyKnowledgeState?.documents as ExtendedDocument[] | undefined) || []
+  );
 
   // 페이지네이션 관련
   const [currentPage, setCurrentPage] = useState(
@@ -87,6 +93,7 @@ export const useMyKnowledge = () => {
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const expandedContainersRef = useRef(expandedContainers);
+  const latestPageStateRef = useRef<any>(null);
 
   // expandedContainers 변경 감지 및 ref 업데이트
   useEffect(() => {
@@ -94,25 +101,33 @@ export const useMyKnowledge = () => {
   }, [expandedContainers]);
 
   // 상태 변경 시 pageStates에 저장 (디바운스 적용)
-  // ⚠️ containers, documents는 저장하지 않음 (DB 결과 우선)
+  // ✅ 메뉴 이동 시에는 이전 화면을 그대로 복원하기 위해 containers/documents도 메모리에 저장
+  // - 새로고침 시에는 zustand persist에서 containers/documents를 비워서 DB/API 기준으로 재조회
   useEffect(() => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
 
+    const payload = {
+      // 메뉴 이동(언마운트/리마운트) 시 복원을 위해 캐시
+      containers,
+      documents,
+      selectedContainer: selectedContainerId,
+      expandedContainers: Array.from(expandedContainersRef.current),
+      searchTerm,
+      filterStatus,
+      sortBy,
+      sortOrder,
+      selectedDocuments: globalState.pageStates?.myKnowledge?.selectedDocuments || [],
+      currentPage,
+      viewMode,
+      lastLoadTime: Date.now(),
+    };
+    // ✅ 언마운트 시 flush 저장을 위해 최신 payload 보관
+    latestPageStateRef.current = payload;
+
     saveTimeoutRef.current = setTimeout(() => {
-      actions.savePageState('myKnowledge', {
-        // containers, documents는 저장하지 않음 - 항상 API에서 최신 데이터 로드
-        selectedContainer: selectedContainerId,
-        expandedContainers: Array.from(expandedContainersRef.current),
-        searchTerm,
-        filterStatus,
-        sortBy,
-        sortOrder,
-        selectedDocuments: globalState.pageStates?.myKnowledge?.selectedDocuments || [],
-        currentPage,
-        viewMode
-      });
+      actions.savePageState('myKnowledge', payload);
     }, 500); // 500ms 디바운스
 
     return () => {
@@ -121,7 +136,21 @@ export const useMyKnowledge = () => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedContainerId, searchTerm, filterStatus, sortBy, sortOrder, currentPage, viewMode]);
+  }, [selectedContainerId, searchTerm, filterStatus, sortBy, sortOrder, currentPage, viewMode, containers, documents]);
+
+  // ✅ 메뉴 이동으로 언마운트될 때 마지막 상태를 즉시 저장 (디바운스 취소로 인한 캐시 누락 방지)
+  useEffect(() => {
+    return () => {
+      try {
+        if (latestPageStateRef.current) {
+          actions.savePageState('myKnowledge', latestPageStateRef.current);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const findContainerById = useCallback((id: string, searchContainers: KnowledgeContainer[]): KnowledgeContainer | null => {
     const search = (items: KnowledgeContainer[]): KnowledgeContainer | null => {
@@ -516,6 +545,9 @@ export const useMyKnowledge = () => {
       setCurrentPage(savedMyKnowledgeState.currentPage || 1);
       setSearchTerm(savedMyKnowledgeState.searchTerm || '');
       setViewMode(savedMyKnowledgeState.viewMode || 'list');
+      // ✅ 리마운트 시 restore 직후 selectedContainerId effect가 불필요하게 재호출(fetch)하지 않도록 마킹
+      // - restore된 상태(메모리 캐시)가 가장 신뢰할 UX 상태임
+      lastLoadedContainerRef.current = savedMyKnowledgeState.selectedContainer || null;
 
       setIsLoading(false);
       initialLoadDoneRef.current = true;
@@ -576,6 +608,8 @@ export const useMyKnowledge = () => {
         setHasNext(docs.has_next);
         setHasPrevious(docs.has_previous);
         setCurrentPage(1);
+        // ✅ initial load에서 이미 문서를 로드했으면, 아래 effect가 중복 로드를 하지 않도록 마킹
+        lastLoadedContainerRef.current = containerToSelect.id;
       }
 
       initialLoadDoneRef.current = true;
@@ -773,7 +807,13 @@ export const useMyKnowledge = () => {
   }, [loadDocuments, selectedContainerId]); // itemsPerPage 제거
 
   const loadingDocsRef = useRef(false);
-  const lastLoadedContainerRef = useRef<string | null>(null);
+  // ✅ 캐시가 존재(lastLoadTime)하면 "이미 로드된 컨테이너"로 간주하여 remount 직후 중복 fetch 방지
+  // - 문서가 0건인 컨테이너도 "이미 로드"로 간주해야 메뉴 왕복 시 재호출이 사라짐
+  const initialLastLoadedContainerId =
+    savedMyKnowledgeState?.lastLoadTime
+      ? (savedMyKnowledgeState.selectedContainer || null)
+      : null;
+  const lastLoadedContainerRef = useRef<string | null>(initialLastLoadedContainerId);
 
   useEffect(() => {
     if (!selectedContainerId) {

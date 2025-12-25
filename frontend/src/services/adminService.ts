@@ -24,6 +24,307 @@ const api = axios.create({
   baseURL: getApiUrl(),
 });
 
+// 인증 토큰 인터셉터
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('ABEKM_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ==================== Admin Dashboard API ====================
+
+export interface AdminDashboardStats {
+  total_users: number;
+  active_users: number;
+  total_documents: number;
+  total_containers: number;
+  total_chat_sessions: number;
+  storage_used_bytes: number;
+  storage_used_display: string;
+}
+
+export interface AuditLogItem {
+  audit_id: number;
+  timestamp: string;
+  user_emp_no: string;
+  user_name?: string;
+  target_user_emp_no?: string;
+  target_user_name?: string;
+  container_id?: string;
+  container_name?: string;
+  action_type: string;
+  resource_type: string;
+  old_permission?: string;
+  new_permission?: string;
+  action_result: string;
+  ip_address?: string;
+  failure_reason?: string;
+}
+
+export interface AuditLogParams {
+  page?: number;
+  page_size?: number;
+  category?: string;
+  result?: string;
+  search?: string;
+  days?: number;
+}
+
+export interface AuditLogResponse {
+  success: boolean;
+  logs: AuditLogItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface AuditLogStats {
+  total: number;
+  success: number;
+  failure: number;
+  warning: number;
+}
+
+export interface StorageInfo {
+  upload_dir: string;
+  used_bytes: number;
+  used_display: string;
+  total_bytes: number;
+  total_display: string;
+  free_bytes: number;
+  free_display: string;
+  usage_percent: number;
+}
+
+/**
+ * 관리자 대시보드 API
+ */
+export const adminDashboardAPI = {
+  /**
+   * 대시보드 통계 조회
+   */
+  getStats: async (): Promise<AdminDashboardStats> => {
+    const response = await api.get('/api/v1/admin/dashboard/stats');
+    return response.data.data;
+  },
+
+  /**
+   * 감사 로그 조회
+   */
+  getAuditLogs: async (params?: AuditLogParams): Promise<AuditLogResponse> => {
+    const response = await api.get('/api/v1/admin/audit-logs', { params });
+    return response.data;
+  },
+
+  /**
+   * 감사 로그 통계 조회
+   */
+  getAuditLogStats: async (days: number = 30): Promise<AuditLogStats> => {
+    const response = await api.get('/api/v1/admin/audit-logs/stats', { params: { days } });
+    return response.data.stats;
+  },
+
+  /**
+   * 저장소 정보 조회
+   */
+  getStorageInfo: async (): Promise<StorageInfo> => {
+    const response = await api.get('/api/v1/admin/storage');
+    return response.data.storage;
+  },
+
+  /**
+   * 시스템 헬스체크
+   */
+  getHealthCheck: async (): Promise<{ status: string; services: Record<string, string> }> => {
+    const response = await api.get('/api/v1/admin/health');
+    return response.data;
+  },
+
+  // ==================== AI Usage APIs ====================
+
+  /**
+   * AI 사용량 요약 조회
+   */
+  getAIUsageSummary: async (days: number = 30): Promise<AIUsageSummary> => {
+    const response = await api.get('/api/v1/admin/ai/usage/summary', { params: { days } });
+    return response.data.data;
+  },
+
+  /**
+   * 일별 AI 사용량 조회
+   */
+  getAIDailyUsage: async (days: number = 30): Promise<AIUsageDaily[]> => {
+    const response = await api.get('/api/v1/admin/ai/usage/daily', { params: { days } });
+    return response.data.data;
+  },
+
+  /**
+   * 상위 AI 사용자 조회
+   */
+  getAITopUsers: async (days: number = 30, limit: number = 10): Promise<AITopUser[]> => {
+    const response = await api.get('/api/v1/admin/ai/usage/top-users', { params: { days, limit } });
+    return response.data.data;
+  },
+
+  /**
+   * AI 모델 설정 목록 조회
+   */
+  getAIModelConfigs: async (): Promise<AIModelConfig[]> => {
+    const response = await api.get('/api/v1/admin/ai/models');
+    return response.data.data;
+  }
+};
+
+// AI Usage Types
+export interface AIUsageSummary {
+  period_days: number;
+  summary: {
+    total_requests: number;
+    total_input_tokens: number;
+    total_output_tokens: number;
+    total_tokens: number;
+    total_cost_usd: number;
+    avg_latency_ms: number;
+    success_count: number;
+    failure_count: number;
+    success_rate: number;
+  };
+  by_provider: Array<{
+    provider: string;
+    requests: number;
+    tokens: number;
+    cost: number;
+  }>;
+  by_operation: Array<{
+    operation: string;
+    requests: number;
+    tokens: number;
+  }>;
+}
+
+export interface AIUsageDaily {
+  date: string;
+  requests: number;
+  tokens: number;
+  cost: number;
+}
+
+export interface AITopUser {
+  user_emp_no: string;
+  requests: number;
+  tokens: number;
+  cost: number;
+}
+
+export interface AIModelConfig {
+  id: number;
+  provider: string;
+  model: string;
+  display_name: string;
+  input_cost_per_1k: number | null;
+  output_cost_per_1k: number | null;
+  max_tokens_per_request: number | null;
+  max_requests_per_minute: number | null;
+}
+
+// Knowledge Base Management Types
+export interface DocumentStatusSummary {
+  total_documents: number;
+  by_status: {
+    pending: number;
+    processing: number;
+    completed: number;
+    failed: number;
+  };
+  by_type: Record<string, number>;
+  failed_documents: Array<{
+    file_id: number;
+    file_name: string;
+    container_id: string | null;
+    error: string | null;
+    started_at: string | null;
+    created_at: string | null;
+  }>;
+  recent_completed: Array<{
+    file_id: number;
+    file_name: string;
+    container_id: string | null;
+    chunk_count: number;
+    completed_at: string | null;
+  }>;
+}
+
+export interface VectorDBStats {
+  total_chunks: number;
+  avg_chunk_size: number;
+  by_provider: Record<string, number>;
+  by_container: Array<{
+    container_id: string;
+    chunk_count: number;
+    document_count: number;
+  }>;
+  embedding_coverage: {
+    azure_1536: number;
+    aws_1024: number;
+    multimodal_512: number;
+    legacy: number;
+  };
+}
+
+export interface ContainerOverview {
+  total_containers: number;
+  total_documents: number;
+  total_chunks: number;
+  containers: Array<{
+    container_id: string;
+    container_name: string;
+    container_type: string | null;
+    is_public: boolean;
+    document_count: number;
+    chunk_count: number;
+    user_count: number;
+    created_at: string | null;
+  }>;
+}
+
+// Knowledge Base Management API
+export const knowledgeBaseAPI = {
+  /**
+   * 문서 처리 현황 조회
+   */
+  getDocumentsStatus: async (): Promise<DocumentStatusSummary> => {
+    const response = await api.get('/api/v1/admin/documents/status');
+    return response.data.data;
+  },
+
+  /**
+   * 문서 재처리 요청
+   */
+  reprocessDocument: async (fileId: number): Promise<{ success: boolean; message: string }> => {
+    const response = await api.post(`/api/v1/admin/documents/${fileId}/reprocess`);
+    return response.data;
+  },
+
+  /**
+   * 벡터 DB 통계 조회
+   */
+  getVectorDBStats: async (): Promise<VectorDBStats> => {
+    const response = await api.get('/api/v1/admin/vector-db/stats');
+    return response.data.data;
+  },
+
+  /**
+   * 컨테이너 전체 현황 조회
+   */
+  getContainersOverview: async (): Promise<ContainerOverview> => {
+    const response = await api.get('/api/v1/admin/containers/overview');
+    return response.data.data;
+  }
+};
+
 // 시스템 모니터링
 export const getSystemMetrics = async (): Promise<SystemMetrics> => {
   const response = await api.get(`/api/admin/system/metrics`);

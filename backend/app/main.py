@@ -29,6 +29,7 @@ from app.api.v1.agent import router as agent_router  # 🤖 Agent-based RAG
 from app.api.v1.patent import router as patent_router  # 🔬 Patent Intelligence
 from app.api.v1.patent_collection import router as patent_collection_router  # 📥 특허 수집
 from app.api.v1.endpoints.transcribe import router as transcribe_router  # 🎤 실시간 STT
+from app.api.v1.admin import router as admin_router  # 🔧 시스템 관리자 API
 
 from app.core.config import settings
 
@@ -347,6 +348,9 @@ app.include_router(document_access_router, prefix="/api/v1")
 
 # 🎤 실시간 음성→텍스트 변환 API (AWS Transcribe Streaming)
 app.include_router(transcribe_router, prefix="/api/v1/transcribe", tags=["🎤 Speech-to-Text"])
+
+# 🔧 시스템 관리자 API
+app.include_router(admin_router, tags=["🔧 System Admin"])
 
 @app.get("/")
 async def root():

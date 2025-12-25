@@ -175,6 +175,7 @@ export interface SearchState {
   viewMode: 'list' | 'grid';
   currentPage: number;
   selectedDocuments: Document[]; // 검색 페이지 전용 선택된 문서
+  lastLoadTime?: number;
 }
 
 // 내 지식 관련 상태 (복원용)  
@@ -190,6 +191,7 @@ export interface MyKnowledgeState {
   viewMode?: 'grid' | 'list';
   containers?: any[]; // KnowledgeContainer[]
   documents?: any[]; // ExtendedDocument[]
+  lastLoadTime?: number;
 }
 
 export interface ChatHistoryState {

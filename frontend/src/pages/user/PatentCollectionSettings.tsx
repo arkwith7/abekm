@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Database, Folder, Play, Settings as SettingsIcon, Clock, Tag } from 'lucide-react';
 import {
   getMyContainers,
@@ -79,7 +79,7 @@ const PatentCollectionSettings: React.FC = () => {
   const [newContainerDesc, setNewContainerDesc] = useState('');
   const [editingSettingId, setEditingSettingId] = useState<number | null>(null);
 
-  const flattenContainers = (nodes: KnowledgeContainer[]): KnowledgeContainer[] => {
+  const flattenContainers = useCallback((nodes: KnowledgeContainer[]): KnowledgeContainer[] => {
     const list: KnowledgeContainer[] = [];
     const walk = (items: KnowledgeContainer[]) => {
       items.forEach((c) => {
@@ -89,7 +89,7 @@ const PatentCollectionSettings: React.FC = () => {
     };
     walk(nodes);
     return list;
-  };
+  }, []);
 
   const formatContainerLabel = (c: KnowledgeContainer) => {
     if (c.path) {
@@ -110,7 +110,7 @@ const PatentCollectionSettings: React.FC = () => {
   const totalSettings = settings.length;
   const runningTasks = Object.values(activeTasks).filter((t) => t.status === 'running').length;
 
-  const loadContainers = async () => {
+  const loadContainers = useCallback(async () => {
     try {
       const data = await getMyContainers();
       const flat = flattenContainers(data || []);
@@ -122,16 +122,16 @@ const PatentCollectionSettings: React.FC = () => {
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [flattenContainers, selectedContainer]);
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
       const data = await getPatentCollectionSettings();
       setSettings(data || []);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, []);
 
   const clearEditMode = (opts?: { keepContainer?: boolean }) => {
     const keepContainer = opts?.keepContainer ?? true;
@@ -184,7 +184,7 @@ const PatentCollectionSettings: React.FC = () => {
     }
   };
 
-  const pollTask = async (settingId: number, taskId: string) => {
+  const pollTask = useCallback(async (settingId: number, taskId: string) => {
     try {
       const res = await getPatentCollectionStatus(taskId);
       const status = (res.status || 'running') as TaskStatus['status'];
@@ -235,12 +235,12 @@ const PatentCollectionSettings: React.FC = () => {
     } catch (err) {
       console.error('status check failed', err);
     }
-  };
+  }, [loadSettings]);
 
   useEffect(() => {
     loadContainers();
     loadSettings();
-  }, []);
+  }, [loadContainers, loadSettings]);
 
   useEffect(() => {
     if (Object.keys(activeTasks).length === 0) return;
@@ -248,7 +248,7 @@ const PatentCollectionSettings: React.FC = () => {
       Object.values(activeTasks).forEach((t) => pollTask(t.settingId, t.taskId));
     }, 3000);
     return () => clearInterval(timer);
-  }, [activeTasks]);
+  }, [activeTasks, pollTask]);
 
   const handleSave = async () => {
     if (!selectedContainer) {

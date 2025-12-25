@@ -10,10 +10,11 @@ export const useSearch = () => {
   const [state, setState] = useState({
     query: savedSearchState?.query || '',
     isSearching: false,
-    // ⚠️ searchResults는 localStorage에서 복원하지 않음 (DB 결과 우선)
-    searchResults: [] as SearchResult[],
-    totalCount: 0,
-    searchTime: null as number | null,
+    // ✅ 메뉴 이동 시에는 이전 결과를 그대로 보여주고, 새로고침 시에는(스토리지) 비움
+    // (Zustand persist에서 results는 저장하지 않도록 partialize 처리됨)
+    searchResults: (savedSearchState?.results || []) as SearchResult[],
+    totalCount: (savedSearchState as any)?.totalCount || 0,
+    searchTime: (savedSearchState as any)?.searchTime ?? null,
     error: null as string | null,
     currentPage: savedSearchState?.currentPage || 1,
   });
@@ -50,7 +51,8 @@ export const useSearch = () => {
   }, [filters]);
 
   // 상태 변경 시 pageStates에 저장 (디바운스 적용)
-  // ⚠️ searchResults는 저장하지 않음 (DB 결과 우선)
+  // ✅ 검색 UI 상태 + (메뉴 이동용) 결과 캐시를 메모리에 저장
+  // - 새로고침 시에는 store persist가 results를 비워서 DB/API 기준으로 재조회
   useEffect(() => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -59,10 +61,14 @@ export const useSearch = () => {
     const payload = {
       query: state.query,
       filters: filtersRef.current,
-      // results는 저장하지 않음 - 항상 API에서 최신 데이터 로드
+      // 메뉴 이동 시 즉시 복원을 위해 결과도 메모리에 보관
+      results: state.searchResults,
       selectedResults: Array.from(selectedResults),
       viewMode,
       currentPage: state.currentPage,
+      totalCount: state.totalCount,
+      searchTime: state.searchTime,
+      lastLoadTime: Date.now(),
       // NOTE: selectedDocuments는 다른 훅(SearchPage)에서 관리 → 여기서 덮어쓰지 않음
     };
 
@@ -76,7 +82,7 @@ export const useSearch = () => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.query, selectedResults, viewMode, state.currentPage]);
+  }, [state.query, selectedResults, viewMode, state.currentPage, state.searchResults, state.totalCount, state.searchTime]);
 
   const buildSearchParams = useCallback((query: string, page: number = 1) => {
     const currentFilters = filtersRef.current || {

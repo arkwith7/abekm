@@ -67,10 +67,7 @@ export const writePersistedAgentChatState = (state: PersistedAgentChatState) => 
   if (!hasLocalStorage()) return;
   try {
     window.localStorage.setItem(AGENT_CHAT_STATE_STORAGE_KEY, JSON.stringify(state));
-    console.log('💾 [agentChatState] localStorage 저장:', {
-      sessionId: state.sessionId,
-      messageCount: state.messages?.length || 0
-    });
+    // NOTE: 저장은 자주 발생할 수 있어(스트리밍/타이핑) 콘솔 스팸을 방지하기 위해 기본 로그는 비활성화
   } catch (error) {
     console.warn('⚠️ Agent 채팅 상태 저장 실패:', error);
   }

@@ -24,7 +24,9 @@ import LoginPage from './components/LoginPage';
 
 // Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AIManagement from './pages/admin/AIManagement';
 import AuditLog from './pages/admin/AuditLog';
+import KnowledgeBaseManagement from './pages/admin/KnowledgeBaseManagement';
 import SecurityPolicy from './pages/admin/SecurityPolicy';
 import SystemMonitoring from './pages/admin/SystemMonitoring';
 import UserManagement from './pages/admin/UserManagement';
@@ -152,6 +154,8 @@ function App() {
                       <Route path="users" element={<UserManagement />} />
                       <Route path="security" element={<SecurityPolicy />} />
                       <Route path="audit" element={<AuditLog />} />
+                      <Route path="knowledge-base" element={<KnowledgeBaseManagement />} />
+                      <Route path="ai" element={<AIManagement />} />
                       <Route path="settings" element={<div>시스템 설정 (개발 예정)</div>} />
 
                       {/* 지식 관리 기능 */}

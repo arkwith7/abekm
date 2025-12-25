@@ -1,14 +1,8 @@
 /**
  * 글로벌 앱 상태 관리 Context
  */
-import React, { createContext, ReactNode, useContext, useEffect, useMemo, useReducer } from 'react';
+import React, { ReactNode, useMemo } from 'react';
 import { getGlobalNavigate } from '../utils/navigation';
-import {
-    globalAppReducer,
-    initialGlobalState,
-    loadStateFromLocalStorage,
-    saveStateToLocalStorage
-} from './globalAppReducer';
 import {
     AgentType,
     ChatMessage,
@@ -20,6 +14,7 @@ import {
     SourcePageType,
     UserActivity
 } from './types';
+import { useGlobalAppStore } from '../store/globalAppStore';
 
 // Context 타입 정의
 interface GlobalAppContextType {
@@ -86,429 +81,182 @@ interface GlobalAppContextType {
     };
 }
 
-// Context 생성
-const GlobalAppContext = createContext<GlobalAppContextType | undefined>(undefined);
-
 // Provider 컴포넌트
 interface GlobalAppProviderProps {
     children: ReactNode;
 }
 
 export const GlobalAppProvider: React.FC<GlobalAppProviderProps> = ({ children }) => {
-    const [state, dispatch] = useReducer(globalAppReducer, initialGlobalState);
-    const lastNavigationRef = React.useRef<{ route: string; at: number } | null>(null);
+    // Provider는 구독/값 전달을 하지 않음 (호환성 유지용 래퍼)
+    return <>{children}</>;
+};
 
-    // 로컬 스토리지에서 상태 복원
-    useEffect(() => {
-        const savedState = loadStateFromLocalStorage();
-        if (savedState) {
-            // 각 저장된 상태를 개별적으로 복원
-            if (savedState.selectedContainers) {
-                dispatch({ type: 'SET_SELECTED_CONTAINERS', payload: savedState.selectedContainers });
-            }
-            if (savedState.selectedDocuments) {
-                dispatch({ type: 'SET_SELECTED_DOCUMENTS', payload: savedState.selectedDocuments });
-            }
-            if (savedState.workContext) {
-                dispatch({ type: 'UPDATE_WORK_CONTEXT', payload: savedState.workContext });
-            }
-            if (savedState.pageStates) {
-                if (savedState.pageStates.search) {
-                    dispatch({
-                        type: 'SAVE_PAGE_STATE',
-                        payload: { page: 'search', state: savedState.pageStates.search }
-                    });
-                }
-                if (savedState.pageStates.myKnowledge) {
-                    dispatch({
-                        type: 'SAVE_PAGE_STATE',
-                        payload: { page: 'myKnowledge', state: savedState.pageStates.myKnowledge }
-                    });
-                }
-                if (savedState.pageStates.chat) {
-                    dispatch({
-                        type: 'SET_PAGE_SELECTED_DOCUMENTS',
-                        payload: { page: 'chat', documents: savedState.pageStates.chat.selectedDocuments || [] }
-                    });
-                }
-                if (savedState.pageStates.agentChat) {
-                    dispatch({
-                        type: 'SET_PAGE_SELECTED_DOCUMENTS',
-                        payload: { page: 'agentChat', documents: savedState.pageStates.agentChat.selectedDocuments || [] }
-                    });
-                }
-            }
+// Custom Hook
+export const useGlobalApp = (): GlobalAppContextType => {
+    // explicit typing to satisfy CRA/tsc strict compilation inside Docker
+    const storeActions = useGlobalAppStore((s: import('../store/globalAppStore').GlobalAppStore) => s.actions);
+    const state = useGlobalAppStore((s: import('../store/globalAppStore').GlobalAppStore) => {
+        // store에는 actions가 포함되므로 제거해서 기존 타입과 정합
+        const { actions: _a, ...rest } = s as any;
+        return rest as GlobalAppState;
+    });
+    const dispatch = React.useCallback((action: GlobalAppAction) => {
+        // 기존 reducer-style dispatch를 최소 지원 (신규 개발은 storeActions 사용 권장)
+        switch (action.type) {
+            case 'SET_USER':
+                storeActions.setUser(action.payload);
+                break;
+            case 'SET_SELECTED_CONTAINERS':
+                storeActions.setSelectedContainers(action.payload);
+                break;
+            case 'SET_SELECTED_DOCUMENTS':
+                storeActions.setSelectedDocuments(action.payload);
+                break;
+            case 'SET_PAGE_SELECTED_DOCUMENTS':
+                storeActions.setPageSelectedDocuments(action.payload.page as any, action.payload.documents);
+                break;
+            case 'ADD_PAGE_SELECTED_DOCUMENT':
+                storeActions.addPageSelectedDocument(action.payload.page as any, action.payload.document);
+                break;
+            case 'REMOVE_PAGE_SELECTED_DOCUMENT':
+                storeActions.removePageSelectedDocument(action.payload.page as any, action.payload.fileId);
+                break;
+            case 'CLEAR_PAGE_SELECTED_DOCUMENTS':
+                storeActions.clearPageSelectedDocuments(action.payload.page as any);
+                break;
+            case 'UPDATE_WORK_CONTEXT':
+                storeActions.updateWorkContext(action.payload);
+                break;
+            case 'SAVE_PAGE_STATE':
+                storeActions.savePageState(action.payload.page as any, action.payload.state);
+                break;
+            case 'RESTORE_PAGE_STATE':
+                storeActions.restorePageState(action.payload.page as any);
+                break;
+            case 'SET_CHAT_SESSION':
+                storeActions.setChatSession(action.payload);
+                break;
+            case 'ADD_CHAT_MESSAGE':
+                storeActions.addChatMessage(action.payload);
+                break;
+            case 'CLEAR_CHAT_HISTORY':
+                storeActions.clearChatHistory();
+                break;
+            case 'SET_LOADING':
+                storeActions.setLoading(action.payload);
+                break;
+            case 'SET_ERROR':
+                storeActions.setError(action.payload);
+                break;
+            case 'ADD_NOTIFICATION':
+                storeActions.addNotification(action.payload.type, action.payload.message);
+                break;
+            case 'REMOVE_NOTIFICATION':
+                storeActions.removeNotification(action.payload);
+                break;
+            case 'UPDATE_USER_ACTIVITY':
+                storeActions.updateUserActivity(action.payload);
+                break;
+            case 'INCREMENT_ACTIVITY_COUNT':
+                storeActions.incrementActivityCount(action.payload.type);
+                break;
+            case 'RESET_STATE':
+                storeActions.resetState();
+                break;
+            default:
+                break;
         }
-    }, []);
+    }, [storeActions]);
 
-    // 상태 변경 시 로컬 스토리지에 저장
-    useEffect(() => {
-        saveStateToLocalStorage(state);
-    }, [state]);
-
-    // navigateWithContext는 state를 참조하므로 useCallback으로 별도 메모이제이션
+    // navigateWithContext는 기존 API 호환성을 위해 유지하되, 스토어 기반으로 상태만 업데이트
     const navigateWithContext = React.useCallback((
         to: SourcePageType,
         preserveState?: any,
         options?: { ragMode?: boolean; selectedAgent?: AgentType; selectedAgentChain?: string }
     ) => {
-        let navigated = false;
-        // 페이지 전환 시 문서 동기화 로직
-        const fromPage = state.workContext.sourcePageType;
-
-        const documentsEqual = (a: Document[] = [], b: Document[] = []) => {
-            if (a.length !== b.length) {
-                return false;
-            }
-            return a.every((doc, idx) => doc.fileId === b[idx]?.fileId);
-        };
-
-        const cloneDocuments = (docs: Document[] = []) => docs.map(doc => ({ ...doc }));
-
-        const syncDocumentsIfNeeded = (
-            page: 'search' | 'myKnowledge' | 'chat' | 'agentChat',
-            docs: Document[] = []
-        ) => {
-            const existing = state.pageStates[page]?.selectedDocuments || [];
-            const sanitizedDocs = cloneDocuments(docs);
-            if (!documentsEqual(existing, sanitizedDocs)) {
-                dispatch({
-                    type: 'SET_PAGE_SELECTED_DOCUMENTS',
-                    payload: { page, documents: sanitizedDocs }
-                });
-            }
-        };
-
-        // 검색/내지식 → 일반 채팅 이동
-        if ((fromPage === 'search' || fromPage === 'my-knowledge') && to === 'chat') {
-            const sourceDocs = fromPage === 'search'
-                ? state.pageStates.search.selectedDocuments
-                : state.pageStates.myKnowledge.selectedDocuments;
-            if (sourceDocs && sourceDocs.length > 0 && (!state.pageStates.chat.selectedDocuments || state.pageStates.chat.selectedDocuments.length === 0)) {
-                syncDocumentsIfNeeded('chat', sourceDocs);
-            }
-        }
-
-        // 검색/내지식 → Agent 채팅 이동 (선택 문서를 그대로 전달)
-        if ((fromPage === 'search' || fromPage === 'my-knowledge') && to === 'agent-chat') {
-            const sourceDocs = fromPage === 'search'
-                ? state.pageStates.search.selectedDocuments
-                : state.pageStates.myKnowledge.selectedDocuments;
-            syncDocumentsIfNeeded('agentChat', sourceDocs || []);
-        }
-
-        // 일반 채팅 → 검색/내지식 이동 (기존 로직 유지)
-        if (fromPage === 'chat' && (to === 'search' || to === 'my-knowledge')) {
-            const chatDocs = state.pageStates.chat.selectedDocuments;
-            const targetPage = to === 'search' ? 'search' : 'myKnowledge';
-            const existing = state.pageStates[targetPage]?.selectedDocuments || [];
-            if (chatDocs && chatDocs.length > 0) {
-                const mergedMap: Record<string, Document> = {};
-                existing.forEach((d: Document) => { mergedMap[d.fileId] = d; });
-                chatDocs.forEach((d: Document) => { mergedMap[d.fileId] = d; });
-                const merged = Object.values(mergedMap);
-                if (!documentsEqual(existing, merged)) {
-                    syncDocumentsIfNeeded(targetPage as 'search' | 'myKnowledge', merged);
-                }
-            }
-        }
-
-        // 일반 채팅 → Agent 채팅 이동 (선택 문서를 복사)
-        if (fromPage === 'chat' && to === 'agent-chat') {
-            const chatDocs = state.pageStates.chat.selectedDocuments || [];
-            syncDocumentsIfNeeded('agentChat', chatDocs);
-        }
-
-        // Agent 채팅 → 검색/내지식 이동 (문서 공유)
-        if (fromPage === 'agent-chat' && (to === 'search' || to === 'my-knowledge')) {
-            const agentDocs = state.pageStates.agentChat.selectedDocuments || [];
-            const targetPage = to === 'search' ? 'search' : 'myKnowledge';
-            const existing = state.pageStates[targetPage]?.selectedDocuments || [];
-            if (agentDocs.length > 0) {
-                const mergedMap: Record<string, Document> = {};
-                existing.forEach((d: Document) => { mergedMap[d.fileId] = d; });
-                agentDocs.forEach((d: Document) => { mergedMap[d.fileId] = d; });
-                const merged = Object.values(mergedMap);
-                if (!documentsEqual(existing, merged)) {
-                    syncDocumentsIfNeeded(targetPage as 'search' | 'myKnowledge', merged);
-                }
-            } else if (existing.length > 0) {
-                syncDocumentsIfNeeded(targetPage as 'search' | 'myKnowledge', []);
-            }
-        }
-
-        // Agent 채팅 ↔ 일반 채팅 간 이동 시 선택 문서 동기화
-        if (fromPage === 'agent-chat' && to === 'chat') {
-            const agentDocs = state.pageStates.agentChat.selectedDocuments || [];
-            syncDocumentsIfNeeded('chat', agentDocs);
-        }
-
-        // 1. 상태 업데이트
-        dispatch({
-            type: 'UPDATE_WORK_CONTEXT',
-            payload: {
-                sourcePageType: to,
-                sourcePageState: preserveState,
-                ragMode: options?.ragMode ?? state.workContext.ragMode,
-                selectedAgent: options?.selectedAgent ?? state.workContext.selectedAgent,
-                selectedAgentChain: options?.selectedAgentChain ?? state.workContext.selectedAgentChain,
-                isChainMode: !!options?.selectedAgentChain,
-                mode: options?.selectedAgentChain ? 'chain' : (state.workContext.mode || 'single')
-            }
+        // 1) workContext 업데이트
+        storeActions.updateWorkContext({
+            sourcePageType: to,
+            sourcePageState: preserveState,
+            ragMode: options?.ragMode ?? state.workContext.ragMode,
+            selectedAgent: options?.selectedAgent ?? state.workContext.selectedAgent,
+            selectedAgentChain: options?.selectedAgentChain ?? state.workContext.selectedAgentChain,
+            isChainMode: !!options?.selectedAgentChain,
+            mode: options?.selectedAgentChain ? 'chain' : (state.workContext.mode || 'single'),
         });
 
-        // 2. 실제 페이지 이동
+        // 2) 실제 라우팅
         const navigate = getGlobalNavigate();
         const routeMap: Record<SourcePageType, string> = {
             'my-knowledge': '/user/my-knowledge',
             'search': '/user/search',
             'chat': '/user/chat',
-            'agent-chat': '/user/agent-chat',  // 🆕 Agent 채팅 추가
+            'agent-chat': '/user/agent-chat',
             'dashboard': '/user'
         };
-
         let targetRoute = routeMap[to];
-
-        if (!targetRoute) {
-            console.warn(`⚠️ 알 수 없는 페이지 타입: ${to}`);
-            return false;
-        }
-
-        // 🆕 채팅 페이지(일반/Agent) 이동 시 sessionId가 있으면 URL 파라미터로 추가
+        if (!targetRoute) return false;
         if ((to === 'chat' || to === 'agent-chat') && preserveState?.sessionId) {
             targetRoute = `${targetRoute}?session=${preserveState.sessionId}`;
-            console.log('🔗 채팅 세션 ID 포함하여 이동:', to, preserveState.sessionId);
         }
-
-        // 현재 경로와 동일하면 중복 네비게이션 방지 (단, 쿼리 파라미터가 다른 경우는 허용)
-        const currentFullPath = typeof window !== 'undefined' ? window.location.pathname + window.location.search : '';
-        if (currentFullPath === targetRoute) {
-            console.log('ℹ️ 동일한 경로로 이미 있음, 이동 생략:', targetRoute);
-            return true; // 이미 해당 경로에 있으므로 이동 성공으로 간주
-        }
-
-        // 아주 짧은 시간 내 동일 경로로의 연속 호출 방지 (디바운스)
-        const now = Date.now();
-        if (lastNavigationRef.current && lastNavigationRef.current.route === targetRoute && now - lastNavigationRef.current.at < 300) {
-            try { console.warn('[navigateWithContext] suppressed rapid duplicate navigation to', targetRoute); } catch { }
-            return true;
-        }
-        lastNavigationRef.current = { route: targetRoute, at: now };
-
         if (navigate) {
             navigate(targetRoute);
-            navigated = true;
-        } else if (typeof window !== 'undefined') {
-            window.location.href = targetRoute;
-            navigated = true;
-        } else {
-            console.warn('[navigateWithContext] No navigation method available');
+            return true;
         }
-        return navigated;
-    }, [state.workContext, state.pageStates]); // state의 관련 필드만 의존성에 추가
+        if (typeof window !== 'undefined') {
+            window.location.href = targetRoute;
+            return true;
+        }
+        return false;
+    }, [state.workContext, storeActions]);
 
-    // 편의 함수들 - dispatch만 의존하도록 리팩토링 (state 참조 제거)
     const actions = useMemo(() => ({
-        // 사용자 관련
-        setUser: (user: GlobalAppState['user']) => {
-            dispatch({ type: 'SET_USER', payload: user });
-        },
-
-        // 컨테이너 관련
-        setSelectedContainers: (containers: KnowledgeContainer[]) => {
-            dispatch({ type: 'SET_SELECTED_CONTAINERS', payload: containers });
-        },
-
-        addSelectedContainer: (container: KnowledgeContainer) => {
-            dispatch({ type: 'ADD_SELECTED_CONTAINER', payload: container });
-        },
-
-        removeSelectedContainer: (containerId: string) => {
-            dispatch({ type: 'REMOVE_SELECTED_CONTAINER', payload: containerId });
-        },
-
-        // 문서 관련
-        setSelectedDocuments: (documents: Document[]) => {
-            dispatch({ type: 'SET_SELECTED_DOCUMENTS', payload: documents });
-        },
-
-        addSelectedDocument: (document: Document) => {
-            dispatch({ type: 'ADD_SELECTED_DOCUMENT', payload: document });
-        },
-
-        removeSelectedDocument: (fileId: string) => {
-            // state 참조 제거: 리듀서에서 currentPage 판단하도록 위임
-            dispatch({
-                type: 'REMOVE_SELECTED_DOCUMENT',
-                payload: fileId
-            });
-        },
-
-        clearSelectedDocuments: () => {
-            // state 참조 제거: 리듀서에서 currentPage 판단하도록 위임
-            dispatch({
-                type: 'CLEAR_SELECTED_DOCUMENTS'
-            });
-        },
-
-        // 페이지별 선택된 문서 관리 함수들
-        setPageSelectedDocuments: (page: 'search' | 'myKnowledge' | 'chat' | 'agentChat', documents: Document[]) => {
-            dispatch({
-                type: 'SET_PAGE_SELECTED_DOCUMENTS',
-                payload: { page, documents }
-            });
-        },
-
-        addPageSelectedDocument: (page: 'search' | 'myKnowledge' | 'chat' | 'agentChat', document: Document) => {
-            dispatch({
-                type: 'ADD_PAGE_SELECTED_DOCUMENT',
-                payload: { page, document }
-            });
-        },
-
-        removePageSelectedDocument: (page: 'search' | 'myKnowledge' | 'chat' | 'agentChat', fileId: string) => {
-            dispatch({
-                type: 'REMOVE_PAGE_SELECTED_DOCUMENT',
-                payload: { page, fileId }
-            });
-        },
-
-        clearPageSelectedDocuments: (page: 'search' | 'myKnowledge' | 'chat' | 'agentChat') => {
-            dispatch({
-                type: 'CLEAR_PAGE_SELECTED_DOCUMENTS',
-                payload: { page }
-            });
-        },
-
+        setUser: storeActions.setUser,
+        setSelectedContainers: storeActions.setSelectedContainers,
+        addSelectedContainer: storeActions.addSelectedContainer,
+        removeSelectedContainer: storeActions.removeSelectedContainer,
+        setSelectedDocuments: storeActions.setSelectedDocuments,
+        addSelectedDocument: (document: Document) => storeActions.setSelectedDocuments([...(state.selectedDocuments || []), document]),
+        removeSelectedDocument: (fileId: string) =>
+            storeActions.setSelectedDocuments((state.selectedDocuments || []).filter((d: Document) => d.fileId !== fileId)),
+        clearSelectedDocuments: () => storeActions.setSelectedDocuments([]),
+        setPageSelectedDocuments: storeActions.setPageSelectedDocuments as any,
+        addPageSelectedDocument: storeActions.addPageSelectedDocument as any,
+        removePageSelectedDocument: storeActions.removePageSelectedDocument as any,
+        clearPageSelectedDocuments: storeActions.clearPageSelectedDocuments as any,
         toggleDocumentSelection: (document: Document) => {
-            // state 참조 제거: 리듀서에서 현재 페이지와 선택 상태 판단하도록 위임
-            dispatch({
-                type: 'TOGGLE_DOCUMENT_SELECTION',
-                payload: document
-            });
+            const currentPage = state.workContext.sourcePageType;
+            const targetPage =
+                currentPage === 'search' ? 'search' :
+                    currentPage === 'my-knowledge' ? 'myKnowledge' :
+                        currentPage === 'agent-chat' ? 'agentChat' : 'chat';
+            const selected = (state.pageStates as any)[targetPage]?.selectedDocuments || [];
+            const isSelected = selected.some((d: Document) => d.fileId === document.fileId);
+            if (isSelected) storeActions.removePageSelectedDocument(targetPage as any, document.fileId);
+            else storeActions.addPageSelectedDocument(targetPage as any, document);
         },
+        updateWorkContext: storeActions.updateWorkContext,
+        navigateWithContext,
+        setChatSession: storeActions.setChatSession,
+        addChatMessage: storeActions.addChatMessage,
+        clearChatHistory: storeActions.clearChatHistory,
+        savePageState: (page: any, next: any) => storeActions.savePageState(page, next),
+        restorePageState: (page: any) => storeActions.restorePageState(page),
+        setLoading: storeActions.setLoading,
+        setError: storeActions.setError,
+        addNotification: storeActions.addNotification,
+        removeNotification: storeActions.removeNotification,
+        startWorkflow: (_step: string, _data?: any) => { /* noop */ },
+        updateWorkflowStep: (_step: string, _data?: any) => { /* noop */ },
+        completeWorkflow: (_data?: any) => { /* noop */ },
+        cancelWorkflow: () => { /* noop */ },
+        updateUserActivity: storeActions.updateUserActivity,
+        incrementActivityCount: storeActions.incrementActivityCount,
+        resetState: storeActions.resetState,
+        clearAllDocumentsOnLogout: storeActions.clearAllDocumentsOnLogout,
+    }), [navigateWithContext, state.pageStates, state.selectedDocuments, state.workContext, storeActions]);
 
-        // 작업 컨텍스트 관련
-        updateWorkContext: (context: Partial<GlobalAppState['workContext']>) => {
-            dispatch({ type: 'UPDATE_WORK_CONTEXT', payload: context });
-        },
-
-        // navigateWithContext는 useCallback으로 별도 정의됨 (아래에서 추가)
-
-        // 채팅 관련
-        setChatSession: (session: ChatSession | null) => {
-            dispatch({ type: 'SET_CHAT_SESSION', payload: session });
-        },
-
-        addChatMessage: (message: ChatMessage) => {
-            dispatch({ type: 'ADD_CHAT_MESSAGE', payload: message });
-        },
-
-        clearChatHistory: () => {
-            dispatch({ type: 'CLEAR_CHAT_HISTORY' });
-        },
-
-        // 페이지 상태 관리
-        savePageState: (page: 'search' | 'myKnowledge' | 'chat' | 'agentChat' | 'chatHistory' | 'containerExplorer', state: any) => {
-            dispatch({ type: 'SAVE_PAGE_STATE', payload: { page, state } });
-        },
-
-        restorePageState: (page: 'search' | 'myKnowledge' | 'chat' | 'agentChat' | 'chatHistory' | 'containerExplorer') => {
-            dispatch({ type: 'RESTORE_PAGE_STATE', payload: { page } });
-            return state.pageStates[page];
-        },
-
-        // UI 관련
-        setLoading: (loading: boolean) => {
-            dispatch({ type: 'SET_LOADING', payload: loading });
-        },
-
-        setError: (error: string | null) => {
-            dispatch({ type: 'SET_ERROR', payload: error });
-        },
-
-        addNotification: (type: 'success' | 'error' | 'warning' | 'info', message: string) => {
-            dispatch({ type: 'ADD_NOTIFICATION', payload: { type, message } });
-        },
-
-        removeNotification: (id: string) => {
-            dispatch({ type: 'REMOVE_NOTIFICATION', payload: id });
-        },
-
-        // 🆕 워크플로우 관련 액션들
-        startWorkflow: (step: string, data?: any) => {
-            dispatch({ type: 'START_WORKFLOW', payload: { step, data } });
-        },
-
-        updateWorkflowStep: (step: string, data?: any) => {
-            dispatch({ type: 'UPDATE_WORKFLOW_STEP', payload: { step, data } });
-        },
-
-        completeWorkflow: (data?: any) => {
-            dispatch({ type: 'COMPLETE_WORKFLOW', payload: data });
-        },
-
-        cancelWorkflow: () => {
-            dispatch({ type: 'CANCEL_WORKFLOW' });
-        },
-
-        updateUserActivity: (activity: Partial<UserActivity>) => {
-            dispatch({ type: 'UPDATE_USER_ACTIVITY', payload: activity });
-        },
-
-        incrementActivityCount: (type: 'search' | 'upload' | 'chat' | 'view') => {
-            dispatch({ type: 'INCREMENT_ACTIVITY_COUNT', payload: { type } });
-        },
-
-        // 기타
-        resetState: () => {
-            dispatch({ type: 'RESET_STATE' });
-        },
-
-        clearAllDocumentsOnLogout: () => {
-            // 모든 페이지의 선택된 문서 클리어
-            dispatch({ type: 'CLEAR_PAGE_SELECTED_DOCUMENTS', payload: { page: 'search' } });
-            dispatch({ type: 'CLEAR_PAGE_SELECTED_DOCUMENTS', payload: { page: 'myKnowledge' } });
-            dispatch({ type: 'CLEAR_PAGE_SELECTED_DOCUMENTS', payload: { page: 'chat' } });
-            dispatch({ type: 'CLEAR_PAGE_SELECTED_DOCUMENTS', payload: { page: 'agentChat' } });
-            dispatch({ type: 'SET_SELECTED_DOCUMENTS', payload: [] });
-
-            // 🆕 localStorage 정리
-            try {
-                localStorage.removeItem('pageStates'); // 페이지별 상태 (선택 문서 포함)
-                localStorage.removeItem('ABEKM_chat_state'); // 채팅 상태
-                localStorage.removeItem('ABEKM_agent_chat_state'); // Agent 채팅 상태
-                console.log('🧹 로그아웃: 모든 선택 문서 + localStorage 클리어 완료');
-            } catch (error) {
-                console.warn('⚠️ localStorage 정리 실패:', error);
-            }
-        },
-
-        // navigateWithContext는 useCallback으로 별도 정의되어 아래에서 추가됨
-        navigateWithContext
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }), [dispatch, navigateWithContext]); // navigateWithContext는 이미 useCallback으로 state.pageStates, state.workContext에 의존
-
-    const contextValue: GlobalAppContextType = {
-        state,
-        dispatch,
-        actions
-    };
-
-    return (
-        <GlobalAppContext.Provider value={contextValue}>
-            {children}
-        </GlobalAppContext.Provider>
-    );
-};
-
-// Custom Hook
-export const useGlobalApp = (): GlobalAppContextType => {
-    const context = useContext(GlobalAppContext);
-    if (context === undefined) {
-        throw new Error('useGlobalApp must be used within a GlobalAppProvider');
-    }
-    return context;
+    return { state, dispatch, actions };
 };
 
 // 개별 기능별 커스텀 훅들

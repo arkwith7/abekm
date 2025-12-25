@@ -76,6 +76,7 @@ const AgentChatPage: React.FC = () => {
     const [chatAssetFileName, setChatAssetFileName] = useState<string | null>(null);
     const [ragOpen, setRagOpen] = useState(false);
     const previousDocumentCountRef = useRef(0);
+    const lastAppliedContainerFilterKeyRef = useRef<string>('__init__');
 
     // 메시지 끝 스크롤 ref
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -246,22 +247,25 @@ const AgentChatPage: React.FC = () => {
     // 사이드바는 UserLayout에서 관리하므로 별도 오프셋 계산 불필요
 
     // 선택된 문서가 변경되면 컨테이너 필터 업데이트
+    // ✅ key(정렬된 unique) 기반으로 "변경된 경우에만" setState → 최대 업데이트 깊이(렌더 루프) 방지
+    const selectedContainerIds = useMemo(() => {
+        const ids = selectedDocuments
+            .map(doc => doc.containerId)
+            .filter((id): id is string => Boolean(id));
+        return Array.from(new Set(ids)).sort();
+    }, [selectedDocuments]);
+
+    const selectedContainerIdsKey = useMemo(() => selectedContainerIds.join('|'), [selectedContainerIds]);
+
     useEffect(() => {
-        if (selectedDocuments.length > 0) {
-            const containerIds = Array.from(
-                new Set(
-                    selectedDocuments
-                        .map(doc => doc.containerId)
-                        .filter(id => id)
-                )
-            );
-            setContainerFilter(containerIds);
-            console.log('📁 [AgentChat] 컨테이너 필터 업데이트:', containerIds);
-        } else {
-            setContainerFilter([]);
+        if (lastAppliedContainerFilterKeyRef.current === selectedContainerIdsKey) {
+            return;
         }
+        lastAppliedContainerFilterKeyRef.current = selectedContainerIdsKey;
+        setContainerFilter(selectedContainerIds);
+        console.log('📁 [AgentChat] 컨테이너 필터 업데이트:', selectedContainerIds);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedDocuments]); // setContainerFilter는 안정적인 함수이므로 의존성에서 제거
+    }, [selectedContainerIdsKey]); // 의도적으로 key만 추적 (setContainerFilter는 안정적)
 
     useEffect(() => {
         const previousCount = previousDocumentCountRef.current;

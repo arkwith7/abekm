@@ -1,143 +1,90 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Users, 
   Database, 
   Activity, 
-  TrendingUp, 
   AlertTriangle,
   CheckCircle,
-  XCircle,
-  Server,
-  Cpu,
-  HardDrive,
-  Wifi
+  FileText,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
+import { adminDashboardAPI, AdminDashboardStats } from '../../services/adminService';
+
+interface DashboardState {
+  stats: AdminDashboardStats | null;
+  isLoading: boolean;
+  error: string | null;
+}
 
 export const AdminDashboard: React.FC = () => {
+  const [state, setState] = useState<DashboardState>({
+    stats: null,
+    isLoading: true,
+    error: null
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const fetchStats = async () => {
+    try {
+      // 관리자 대시보드 통계 조회 (실제 API)
+      const dashboardStats = await adminDashboardAPI.getStats();
+      
+      setState({
+        stats: dashboardStats,
+        isLoading: false,
+        error: null
+      });
+    } catch (error) {
+      console.error('대시보드 통계 로드 실패:', error);
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+        error: '통계 데이터를 불러오는데 실패했습니다. 관리자 권한이 필요합니다.'
+      }));
+    }
+  };
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchStats();
+    setIsRefreshing(false);
+  };
+
   const systemStats = [
     {
       title: '총 사용자',
-      value: '1,234',
-      change: '+5.2%',
+      value: state.stats?.total_users.toLocaleString() || '0',
       icon: Users,
-      color: 'blue'
+      color: 'blue',
+      isReal: true
     },
     {
-      title: '활성 세션',
-      value: '89',
-      change: '+12.1%',
+      title: '활성 사용자',
+      value: state.stats?.active_users.toLocaleString() || '0',
       icon: Activity,
-      color: 'green'
+      color: 'green',
+      isReal: true
     },
     {
-      title: '저장소 사용량',
-      value: '2.4TB',
-      change: '+8.5%',
+      title: '총 문서 수',
+      value: state.stats?.total_documents.toLocaleString() || '0',
+      icon: FileText,
+      color: 'purple',
+      isReal: true
+    },
+    {
+      title: '지식 컨테이너',
+      value: state.stats?.total_containers.toLocaleString() || '0',
       icon: Database,
-      color: 'purple'
-    },
-    {
-      title: '시스템 성능',
-      value: '98.5%',
-      change: '+0.3%',
-      icon: TrendingUp,
-      color: 'indigo'
+      color: 'indigo',
+      isReal: true
     }
   ];
-
-  const serverStatus = [
-    {
-      name: 'Web Server',
-      status: 'healthy',
-      cpu: 45,
-      memory: 62,
-      disk: 33
-    },
-    {
-      name: 'Database Server',
-      status: 'healthy',
-      cpu: 32,
-      memory: 78,
-      disk: 56
-    },
-    {
-      name: 'AI Processing Server',
-      status: 'warning',
-      cpu: 89,
-      memory: 91,
-      disk: 41
-    },
-    {
-      name: 'File Storage Server',
-      status: 'healthy',
-      cpu: 23,
-      memory: 45,
-      disk: 67
-    }
-  ];
-
-  const recentAlerts = [
-    {
-      id: 1,
-      type: 'warning',
-      message: 'AI Processing Server CPU 사용률 높음 (89%)',
-      time: '5분 전',
-      resolved: false
-    },
-    {
-      id: 2,
-      type: 'info',
-      message: '시스템 백업 완료',
-      time: '1시간 전',
-      resolved: true
-    },
-    {
-      id: 3,
-      type: 'error',
-      message: '로그인 실패 횟수 임계치 초과 (IP: 192.168.1.100)',
-      time: '2시간 전',
-      resolved: false
-    },
-    {
-      id: 4,
-      type: 'success',
-      message: '보안 패치 적용 완료',
-      time: '3시간 전',
-      resolved: true
-    }
-  ];
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'healthy':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'warning':
-        return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
-      case 'error':
-        return <XCircle className="w-5 h-5 text-red-500" />;
-      default:
-        return <CheckCircle className="w-5 h-5 text-gray-400" />;
-    }
-  };
-
-  const getAlertIcon = (type: string) => {
-    switch (type) {
-      case 'error':
-        return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'warning':
-        return <AlertTriangle className="w-5 h-5 text-yellow-500" />;
-      case 'success':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      default:
-        return <Activity className="w-5 h-5 text-blue-500" />;
-    }
-  };
-
-  const getProgressColor = (value: number) => {
-    if (value >= 80) return 'bg-red-500';
-    if (value >= 60) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
 
   return (
     <div className="p-6 space-y-6">
@@ -145,31 +92,42 @@ export const AdminDashboard: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">시스템 관리 대시보드</h1>
-          <p className="text-gray-600">전체 시스템 상태와 성능을 모니터링하세요</p>
+          <p className="text-gray-600">전체 시스템 상태를 확인하세요</p>
         </div>
         <div className="flex items-center space-x-2">
-          <div className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-            시스템 정상
-          </div>
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            리포트 생성
+          <button 
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>새로고침</span>
           </button>
         </div>
       </div>
+
+      {/* 에러 표시 */}
+      {state.error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center space-x-3">
+          <AlertTriangle className="w-5 h-5 text-red-500" />
+          <span className="text-red-700">{state.error}</span>
+        </div>
+      )}
 
       {/* 시스템 통계 카드 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {systemStats.map((stat) => {
           const Icon = stat.icon;
           return (
-            <div key={stat.title} className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+            <div key={stat.title} className="bg-white rounded-lg shadow-sm p-6 border border-gray-200 relative">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">{stat.title}</p>
-                  <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                  <p className={`text-sm ${stat.change.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
-                    {stat.change} 전월 대비
-                  </p>
+                  {state.isLoading ? (
+                    <Loader2 className="w-6 h-6 text-gray-400 animate-spin mt-2" />
+                  ) : (
+                    <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+                  )}
                 </div>
                 <div className={`p-3 rounded-lg bg-${stat.color}-100`}>
                   <Icon className={`w-6 h-6 text-${stat.color}-600`} />
@@ -180,138 +138,104 @@ export const AdminDashboard: React.FC = () => {
         })}
       </div>
 
+      {/* 시스템 상태 요약 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 서버 상태 */}
+        {/* 시스템 헬스체크 */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center space-x-2">
-              <Server className="w-5 h-5 text-gray-600" />
-              <h2 className="text-lg font-semibold text-gray-900">서버 상태</h2>
+              <Activity className="w-5 h-5 text-gray-600" />
+              <h2 className="text-lg font-semibold text-gray-900">시스템 상태</h2>
             </div>
           </div>
-          <div className="p-6 space-y-4">
-            {serverStatus.map((server) => (
-              <div key={server.name} className="border border-gray-200 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center space-x-3">
-                    {getStatusIcon(server.status)}
-                    <span className="font-medium text-gray-900">{server.name}</span>
-                  </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    server.status === 'healthy' ? 'bg-green-100 text-green-800' :
-                    server.status === 'warning' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {server.status}
-                  </span>
+          <div className="p-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  <span className="font-medium text-gray-900">백엔드 API</span>
                 </div>
-                
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Cpu className="w-4 h-4 text-gray-500" />
-                      <span className="text-sm text-gray-600">CPU</span>
-                    </div>
-                    <span className="text-sm font-medium">{server.cpu}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className={`h-2 rounded-full ${getProgressColor(server.cpu)}`}
-                      style={{ width: `${server.cpu}%` }}
-                    />
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Activity className="w-4 h-4 text-gray-500" />
-                      <span className="text-sm text-gray-600">Memory</span>
-                    </div>
-                    <span className="text-sm font-medium">{server.memory}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className={`h-2 rounded-full ${getProgressColor(server.memory)}`}
-                      style={{ width: `${server.memory}%` }}
-                    />
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <HardDrive className="w-4 h-4 text-gray-500" />
-                      <span className="text-sm text-gray-600">Disk</span>
-                    </div>
-                    <span className="text-sm font-medium">{server.disk}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className={`h-2 rounded-full ${getProgressColor(server.disk)}`}
-                      style={{ width: `${server.disk}%` }}
-                    />
-                  </div>
-                </div>
+                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                  정상
+                </span>
               </div>
-            ))}
+              <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  <span className="font-medium text-gray-900">데이터베이스</span>
+                </div>
+                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                  정상
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
+                <div className="flex items-center space-x-3">
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  <span className="font-medium text-gray-900">인증 서비스</span>
+                </div>
+                <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
+                  정상
+                </span>
+              </div>
+            </div>
+            <p className="mt-4 text-sm text-gray-500 text-center">
+              * 상세 모니터링은 시스템 모니터링 페이지에서 확인하세요
+            </p>
           </div>
         </div>
 
-        {/* 최근 알림 */}
+        {/* 빠른 링크 */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <AlertTriangle className="w-5 h-5 text-gray-600" />
-                <h2 className="text-lg font-semibold text-gray-900">최근 알림</h2>
-              </div>
-              <button className="text-blue-600 hover:text-blue-700 text-sm font-medium">
-                모두 보기
-              </button>
-            </div>
+            <h2 className="text-lg font-semibold text-gray-900">관리 메뉴 바로가기</h2>
           </div>
-          <div className="divide-y divide-gray-200">
-            {recentAlerts.map((alert) => (
-              <div key={alert.id} className="p-4 hover:bg-gray-50">
-                <div className="flex items-start space-x-3">
-                  {getAlertIcon(alert.type)}
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-sm ${alert.resolved ? 'text-gray-500' : 'text-gray-900'}`}>
-                      {alert.message}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">{alert.time}</p>
-                  </div>
-                  {alert.resolved && (
-                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                      해결됨
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="p-6">
+            <div className="grid grid-cols-2 gap-4">
+              <a 
+                href="/admin/users" 
+                className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <Users className="w-5 h-5 text-blue-600" />
+                <span className="font-medium text-gray-900">사용자 관리</span>
+              </a>
+              <a 
+                href="/admin/security" 
+                className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <Activity className="w-5 h-5 text-green-600" />
+                <span className="font-medium text-gray-900">보안 정책</span>
+              </a>
+              <a 
+                href="/admin/audit" 
+                className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <FileText className="w-5 h-5 text-purple-600" />
+                <span className="font-medium text-gray-900">감사 로그</span>
+              </a>
+              <a 
+                href="/admin/monitoring" 
+                className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <Database className="w-5 h-5 text-indigo-600" />
+                <span className="font-medium text-gray-900">시스템 모니터링</span>
+              </a>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 네트워크 상태 */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex items-center space-x-2">
-            <Wifi className="w-5 h-5 text-gray-600" />
-            <h2 className="text-lg font-semibold text-gray-900">네트워크 상태</h2>
-          </div>
-        </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">99.9%</div>
-              <div className="text-sm text-gray-600">가용성</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">45ms</div>
-              <div className="text-sm text-gray-600">평균 응답시간</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">1.2GB/s</div>
-              <div className="text-sm text-gray-600">네트워크 처리량</div>
-            </div>
+      {/* 향후 개발 안내 */}
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-6">
+        <div className="flex items-start space-x-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5" />
+          <div>
+            <h3 className="font-medium text-amber-800">개발 예정 기능</h3>
+            <ul className="mt-2 text-sm text-amber-700 space-y-1">
+              <li>• AI 사용량 모니터링 (토큰 사용량, 비용 추적)</li>
+              <li>• 문서 처리 현황 대시보드</li>
+              <li>• 실시간 알림 시스템</li>
+              <li>• 저장소 사용량 조회</li>
+            </ul>
           </div>
         </div>
       </div>

@@ -3,18 +3,12 @@ import {
   Shield, 
   Lock, 
   Key, 
-  Users, 
   AlertTriangle, 
   CheckCircle, 
-  Settings, 
-  Eye, 
-  EyeOff,
-  RefreshCw,
-  Download,
-  Upload,
-  Server,
+  Info,
   Database,
-  Wifi
+  Wifi,
+  Clock
 } from 'lucide-react';
 
 interface SecurityPolicyType {
@@ -22,142 +16,70 @@ interface SecurityPolicyType {
   name: string;
   description: string;
   status: 'enabled' | 'disabled';
-  lastModified: string;
   category: 'authentication' | 'authorization' | 'data' | 'network';
-}
-
-interface SecurityEvent {
-  id: string;
-  type: 'login_attempt' | 'access_denied' | 'policy_violation' | 'system_alert';
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  description: string;
-  source: string;
-  timestamp: string;
-  resolved: boolean;
+  configurable: boolean;
 }
 
 const SecurityPolicyComponent: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [showPasswords, setShowPasswords] = useState(false);
 
+  // 현재 적용된 보안 정책 (읽기 전용)
   const securityPolicies: SecurityPolicyType[] = [
     {
       id: '1',
       name: '비밀번호 복잡성 정책',
-      description: '최소 8자, 대소문자, 숫자, 특수문자 포함',
+      description: '최소 8자, 대소문자, 숫자, 특수문자 포함 필수',
       status: 'enabled',
-      lastModified: '2024-01-10',
-      category: 'authentication'
+      category: 'authentication',
+      configurable: false
     },
     {
       id: '2',
       name: '계정 잠금 정책',
-      description: '5회 실패 시 30분 잠금',
+      description: '5회 연속 로그인 실패 시 계정 잠금',
       status: 'enabled',
-      lastModified: '2024-01-08',
-      category: 'authentication'
+      category: 'authentication',
+      configurable: false
     },
     {
       id: '3',
-      name: '세션 타임아웃',
-      description: '비활성 30분 후 자동 로그아웃',
+      name: 'JWT 토큰 만료',
+      description: '액세스 토큰 30분, 리프레시 토큰 7일 만료',
       status: 'enabled',
-      lastModified: '2024-01-05',
-      category: 'authentication'
+      category: 'authentication',
+      configurable: false
     },
     {
       id: '4',
-      name: '관리자 권한 분리',
-      description: '시스템 관리와 데이터 관리 권한 분리',
+      name: '역할 기반 접근 제어 (RBAC)',
+      description: '시스템 관리자, 지식 관리자, 일반 사용자 권한 분리',
       status: 'enabled',
-      lastModified: '2024-01-12',
-      category: 'authorization'
+      category: 'authorization',
+      configurable: false
     },
     {
       id: '5',
-      name: '데이터 암호화',
-      description: '저장 데이터 AES-256 암호화',
+      name: '컨테이너별 권한 관리',
+      description: '지식 컨테이너 단위로 읽기/쓰기 권한 설정',
       status: 'enabled',
-      lastModified: '2024-01-01',
-      category: 'data'
+      category: 'authorization',
+      configurable: false
     },
     {
       id: '6',
-      name: '방화벽 규칙',
-      description: '내부 네트워크만 접근 허용',
+      name: '비밀번호 암호화',
+      description: 'bcrypt 해싱 알고리즘으로 비밀번호 저장',
       status: 'enabled',
-      lastModified: '2024-01-15',
-      category: 'network'
-    }
-  ];
-
-  const securityEvents: SecurityEvent[] = [
-    {
-      id: '1',
-      type: 'login_attempt',
-      severity: 'high',
-      description: '알 수 없는 IP에서 관리자 계정 로그인 시도',
-      source: '192.168.1.100',
-      timestamp: '2024-01-15 14:30',
-      resolved: false
+      category: 'data',
+      configurable: false
     },
     {
-      id: '2',
-      type: 'access_denied',
-      severity: 'medium',
-      description: '권한 없는 사용자의 시스템 설정 접근 시도',
-      source: 'user@company.com',
-      timestamp: '2024-01-15 13:45',
-      resolved: true
-    },
-    {
-      id: '3',
-      type: 'policy_violation',
-      severity: 'low',
-      description: '약한 비밀번호 사용 시도',
-      source: 'test@company.com',
-      timestamp: '2024-01-15 12:20',
-      resolved: true
-    },
-    {
-      id: '4',
-      type: 'system_alert',
-      severity: 'critical',
-      description: '비정상적인 데이터베이스 접근 패턴 감지',
-      source: 'Database Server',
-      timestamp: '2024-01-15 11:15',
-      resolved: false
-    }
-  ];
-
-  const securityMetrics = [
-    {
-      title: '활성 정책',
-      value: securityPolicies.filter(p => p.status === 'enabled').length,
-      total: securityPolicies.length,
-      icon: Shield,
-      color: 'green'
-    },
-    {
-      title: '미해결 위험',
-      value: securityEvents.filter(e => !e.resolved && (e.severity === 'high' || e.severity === 'critical')).length,
-      total: securityEvents.filter(e => e.severity === 'high' || e.severity === 'critical').length,
-      icon: AlertTriangle,
-      color: 'red'
-    },
-    {
-      title: '오늘 로그인',
-      value: 234,
-      total: 300,
-      icon: Users,
-      color: 'blue'
-    },
-    {
-      title: '시스템 가동률',
-      value: '99.9%',
-      total: '100%',
-      icon: CheckCircle,
-      color: 'green'
+      id: '7',
+      name: 'HTTPS 통신',
+      description: '모든 API 통신 TLS/SSL 암호화 (운영 환경)',
+      status: 'enabled',
+      category: 'network',
+      configurable: false
     }
   ];
 
@@ -187,37 +109,7 @@ const SecurityPolicyComponent: React.FC = () => {
       case 'network':
         return <Wifi className="w-4 h-4" />;
       default:
-        return <Settings className="w-4 h-4" />;
-    }
-  };
-
-  const getSeverityColor = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-        return 'bg-red-100 text-red-800 border-red-200';
-      case 'high':
-        return 'bg-orange-100 text-orange-800 border-orange-200';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'low':
-        return 'bg-blue-100 text-blue-800 border-blue-200';
-      default:
-        return 'bg-gray-100 text-gray-800 border-gray-200';
-    }
-  };
-
-  const getEventIcon = (type: string) => {
-    switch (type) {
-      case 'login_attempt':
-        return <Key className="w-4 h-4" />;
-      case 'access_denied':
         return <Lock className="w-4 h-4" />;
-      case 'policy_violation':
-        return <AlertTriangle className="w-4 h-4" />;
-      case 'system_alert':
-        return <Server className="w-4 h-4" />;
-      default:
-        return <AlertTriangle className="w-4 h-4" />;
     }
   };
 
@@ -225,205 +117,135 @@ const SecurityPolicyComponent: React.FC = () => {
     ? securityPolicies 
     : securityPolicies.filter(policy => policy.category === selectedCategory);
 
+  const enabledCount = securityPolicies.filter(p => p.status === 'enabled').length;
+
   return (
     <div className="p-6 space-y-6">
       {/* 헤더 */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">보안 정책</h1>
-          <p className="text-gray-600">시스템 보안 정책을 관리하고 모니터링하세요</p>
+          <p className="text-gray-600">현재 적용된 시스템 보안 정책을 확인하세요</p>
         </div>
-        <div className="flex items-center space-x-3">
-          <button className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <Download className="w-4 h-4" />
-            <span>정책 내보내기</span>
-          </button>
-          <button className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <Upload className="w-4 h-4" />
-            <span>정책 가져오기</span>
-          </button>
-          <button className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-            <RefreshCw className="w-4 h-4" />
-            <span>정책 새로고침</span>
-          </button>
+      </div>
+
+      {/* 읽기 전용 안내 */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start space-x-3">
+        <Info className="w-5 h-5 text-blue-500 mt-0.5" />
+        <div>
+          <h3 className="font-medium text-blue-800">읽기 전용 모드</h3>
+          <p className="text-sm text-blue-700 mt-1">
+            보안 정책 설정 변경 API가 아직 구현되지 않아 현재 정책 현황만 표시됩니다.
+            정책 변경이 필요한 경우 시스템 관리자에게 문의하세요.
+          </p>
         </div>
       </div>
 
       {/* 보안 메트릭 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {securityMetrics.map((metric, index) => {
-          const Icon = metric.icon;
-          return (
-            <div key={index} className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">{metric.title}</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {typeof metric.value === 'string' ? metric.value : metric.value}
-                  </p>
-                  {typeof metric.value === 'number' && (
-                    <p className="text-sm text-gray-500">총 {metric.total}개</p>
-                  )}
-                </div>
-                <div className={`p-3 rounded-lg bg-${metric.color}-100`}>
-                  <Icon className={`w-6 h-6 text-${metric.color}-600`} />
-                </div>
-              </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">활성 정책</p>
+              <p className="text-2xl font-bold text-gray-900">{enabledCount} / {securityPolicies.length}</p>
             </div>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 보안 정책 */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Shield className="w-5 h-5 text-gray-600" />
-                <h2 className="text-lg font-semibold text-gray-900">보안 정책</h2>
-              </div>
-              <select 
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              >
-                <option value="all">모든 카테고리</option>
-                <option value="authentication">인증</option>
-                <option value="authorization">권한</option>
-                <option value="data">데이터</option>
-                <option value="network">네트워크</option>
-              </select>
+            <div className="p-3 rounded-lg bg-green-100">
+              <Shield className="w-6 h-6 text-green-600" />
             </div>
-          </div>
-          
-          <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-            {filteredPolicies.map((policy) => (
-              <div key={policy.id} className="p-4 hover:bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-start space-x-3">
-                    <div className="p-2 bg-gray-100 rounded-lg">
-                      {getCategoryIcon(policy.category)}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2">
-                        <h3 className="text-sm font-medium text-gray-900">{policy.name}</h3>
-                        <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
-                          {getCategoryName(policy.category)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">{policy.description}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        마지막 수정: {policy.lastModified}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      policy.status === 'enabled' 
-                        ? 'bg-green-100 text-green-800' 
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {policy.status === 'enabled' ? '활성' : '비활성'}
-                    </span>
-                    <button className="text-gray-400 hover:text-gray-600">
-                      <Settings className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
           </div>
         </div>
-
-        {/* 보안 이벤트 */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-          <div className="p-6 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <AlertTriangle className="w-5 h-5 text-gray-600" />
-                <h2 className="text-lg font-semibold text-gray-900">보안 이벤트</h2>
-              </div>
-              <button 
-                onClick={() => setShowPasswords(!showPasswords)}
-                className="flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-900"
-              >
-                {showPasswords ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                <span>{showPasswords ? '숨기기' : '세부정보'}</span>
-              </button>
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">보안 등급</p>
+              <p className="text-2xl font-bold text-green-600">양호</p>
+            </div>
+            <div className="p-3 rounded-lg bg-green-100">
+              <CheckCircle className="w-6 h-6 text-green-600" />
             </div>
           </div>
-          
-          <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
-            {securityEvents.map((event) => (
-              <div key={event.id} className={`p-4 border-l-4 ${getSeverityColor(event.severity)}`}>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start space-x-3">
-                    <div className="p-2 bg-gray-100 rounded-lg">
-                      {getEventIcon(event.type)}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${getSeverityColor(event.severity)}`}>
-                          {event.severity === 'critical' ? '위험' : 
-                           event.severity === 'high' ? '높음' : 
-                           event.severity === 'medium' ? '보통' : '낮음'}
-                        </span>
-                        {event.resolved && (
-                          <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium">
-                            해결됨
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-sm text-gray-900 mt-1">{event.description}</p>
-                      {showPasswords && (
-                        <div className="text-xs text-gray-500 mt-1 space-y-1">
-                          <p>출처: {event.source}</p>
-                          <p>시간: {event.timestamp}</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  {!event.resolved && (
-                    <button className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition-colors">
-                      처리
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+        </div>
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">마지막 점검</p>
+              <p className="text-2xl font-bold text-gray-900">{new Date().toLocaleDateString()}</p>
+            </div>
+            <div className="p-3 rounded-lg bg-blue-100">
+              <Clock className="w-6 h-6 text-blue-600" />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 빠른 액션 */}
+      {/* 보안 정책 목록 */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200">
         <div className="p-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">빠른 보안 액션</h2>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Shield className="w-5 h-5 text-gray-600" />
+              <h2 className="text-lg font-semibold text-gray-900">적용된 보안 정책</h2>
+            </div>
+            <select 
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+            >
+              <option value="all">모든 카테고리</option>
+              <option value="authentication">인증</option>
+              <option value="authorization">권한</option>
+              <option value="data">데이터</option>
+              <option value="network">네트워크</option>
+            </select>
+          </div>
         </div>
-        <div className="p-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <button className="flex items-center space-x-3 p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <Lock className="w-6 h-6 text-blue-600" />
-              <div className="text-left">
-                <div className="font-medium text-gray-900">모든 세션 종료</div>
-                <div className="text-sm text-gray-500">활성 사용자 세션 강제 종료</div>
+        
+        <div className="divide-y divide-gray-200">
+          {filteredPolicies.map((policy) => (
+            <div key={policy.id} className="p-4 hover:bg-gray-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 bg-gray-100 rounded-lg">
+                    {getCategoryIcon(policy.category)}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-2">
+                      <h3 className="text-sm font-medium text-gray-900">{policy.name}</h3>
+                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                        {getCategoryName(policy.category)}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mt-1">{policy.description}</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    policy.status === 'enabled' 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {policy.status === 'enabled' ? '✓ 활성' : '비활성'}
+                  </span>
+                </div>
               </div>
-            </button>
-            <button className="flex items-center space-x-3 p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <RefreshCw className="w-6 h-6 text-green-600" />
-              <div className="text-left">
-                <div className="font-medium text-gray-900">정책 업데이트</div>
-                <div className="text-sm text-gray-500">최신 보안 정책 적용</div>
-              </div>
-            </button>
-            <button className="flex items-center space-x-3 p-4 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              <AlertTriangle className="w-6 h-6 text-red-600" />
-              <div className="text-left">
-                <div className="font-medium text-gray-900">보안 스캔</div>
-                <div className="text-sm text-gray-500">시스템 취약점 검사</div>
-              </div>
-            </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 향후 개발 안내 */}
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-6">
+        <div className="flex items-start space-x-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5" />
+          <div>
+            <h3 className="font-medium text-amber-800">개발 예정 기능</h3>
+            <ul className="mt-2 text-sm text-amber-700 space-y-1">
+              <li>• 비밀번호 정책 설정 (길이, 복잡도, 만료 주기)</li>
+              <li>• 계정 잠금 임계치 설정</li>
+              <li>• 세션 타임아웃 설정</li>
+              <li>• IP 화이트리스트/블랙리스트</li>
+              <li>• 2단계 인증 (2FA) 활성화</li>
+            </ul>
           </div>
         </div>
       </div>

@@ -1,7 +1,9 @@
 import {
   BarChart3,
   Bell,
+  Brain,
   ChevronDown,
+  Database,
   FileText,
   FolderOpen,
   LogOut,
@@ -19,7 +21,9 @@ import { useAuth } from '../hooks/useAuth';
 
 // 페이지 컴포넌트들 임포트
 import AdminDashboard from '../pages/admin/AdminDashboard';
+import AIManagement from '../pages/admin/AIManagement';
 import AuditLog from '../pages/admin/AuditLog';
+import KnowledgeBaseManagement from '../pages/admin/KnowledgeBaseManagement';
 import SecurityPolicy from '../pages/admin/SecurityPolicy';
 import SystemMonitoring from '../pages/admin/SystemMonitoring';
 import UserManagement from '../pages/admin/UserManagement';
@@ -63,6 +67,18 @@ const adminMenuItems = [
     icon: FileText,
     id: 'audit'
   },
+  {
+    name: '지식베이스 관리',
+    path: '/admin/knowledge-base',
+    icon: Database,
+    id: 'knowledge-base'
+  },
+  {
+    name: 'AI 사용량 관리',
+    path: '/admin/ai',
+    icon: Brain,
+    id: 'ai'
+  },
 ];
 
 export const AdminLayout: React.FC = () => {
@@ -80,6 +96,8 @@ export const AdminLayout: React.FC = () => {
     if (location.pathname.startsWith('/admin/users')) return 'users';
     if (location.pathname.startsWith('/admin/security')) return 'security';
     if (location.pathname.startsWith('/admin/audit')) return 'audit';
+    if (location.pathname.startsWith('/admin/knowledge-base')) return 'knowledge-base';
+    if (location.pathname.startsWith('/admin/ai')) return 'ai';
     return 'dashboard';
   });
 
@@ -94,6 +112,8 @@ export const AdminLayout: React.FC = () => {
     else if (location.pathname.startsWith('/admin/users')) setActiveMenu('users');
     else if (location.pathname.startsWith('/admin/security')) setActiveMenu('security');
     else if (location.pathname.startsWith('/admin/audit')) setActiveMenu('audit');
+    else if (location.pathname.startsWith('/admin/knowledge-base')) setActiveMenu('knowledge-base');
+    else if (location.pathname.startsWith('/admin/ai')) setActiveMenu('ai');
   }, [location.pathname]);
 
   // 메뉴 클릭 핸들러 - 상태 기반 네비게이션
@@ -316,6 +336,12 @@ export const AdminLayout: React.FC = () => {
           </div>
           <div style={{ display: activeMenu === 'audit' ? 'block' : 'none' }}>
             <AuditLog />
+          </div>
+          <div style={{ display: activeMenu === 'knowledge-base' ? 'block' : 'none' }}>
+            <KnowledgeBaseManagement />
+          </div>
+          <div style={{ display: activeMenu === 'ai' ? 'block' : 'none' }}>
+            <AIManagement />
           </div>
         </div>
       </div>
