@@ -174,6 +174,64 @@ export const useGlobalApp = (): GlobalAppContextType => {
         preserveState?: any,
         options?: { ragMode?: boolean; selectedAgent?: AgentType; selectedAgentChain?: string }
     ) => {
+        const normalizeSelectedDocs = (docs: any[]): any[] => {
+            if (!Array.isArray(docs)) return [];
+            return docs
+                .filter(Boolean)
+                .map((doc: any) => {
+                    const fileId = doc?.fileId ?? doc?.id;
+                    const fileName = doc?.fileName ?? doc?.file_name ?? doc?.physicalName ?? doc?.name;
+                    const originalName = doc?.originalName ?? doc?.title ?? fileName;
+                    return {
+                        ...doc,
+                        fileId,
+                        fileName,
+                        originalName,
+                    };
+                });
+        };
+
+        // 0) (search/my-knowledge 등) 현재 페이지에서 선택된 문서를 agent-chat/chat로 이동 시 함께 전달
+        // - useSelectedDocuments()는 workContext.sourcePageType 기반으로 pageStates.*.selectedDocuments를 보므로
+        //   이동 대상 페이지의 selectedDocuments를 미리 채워줘야 "선택된 문서가 없습니다" 상태가 되지 않음
+        const from = state.workContext.sourcePageType;
+        const fromKey =
+            from === 'search' ? 'search' :
+                from === 'my-knowledge' ? 'myKnowledge' :
+                    from === 'agent-chat' ? 'agentChat' : 'chat';
+        const destKey = to === 'agent-chat' ? 'agentChat' : (to === 'chat' ? 'chat' : null);
+
+        // 우선순위:
+        // 1) preserveState.selectedDocsSnapshot(명시 전달)
+        // 2) 현재 페이지 선택 문서(pageStates[fromKey].selectedDocuments) - 우선순위 상향
+        // 3) 통합 선택 문서(state.selectedDocuments)
+        const snapshotFromPreserve = (preserveState && Array.isArray(preserveState.selectedDocsSnapshot))
+            ? preserveState.selectedDocsSnapshot
+            : null;
+        const snapshotFromCurrent = (state.pageStates as any)?.[fromKey]?.selectedDocuments || [];
+        const snapshotFromUnified = (state.selectedDocuments || []);
+        
+        // 문서 전달 로직 개선: preserveState > 현재 페이지 > 통합 선택
+        const shouldCarryDocs = Boolean(destKey) &&
+            (Boolean(snapshotFromPreserve?.length) || Boolean(snapshotFromCurrent?.length) || Boolean(snapshotFromUnified?.length));
+
+        if (destKey && shouldCarryDocs) {
+            // 우선순위대로 선택: preserveState > 현재 페이지 > 통합
+            const docsToCarry = (snapshotFromPreserve?.length 
+                ? snapshotFromPreserve 
+                : (snapshotFromCurrent?.length ? snapshotFromCurrent : snapshotFromUnified)) as any;
+
+            const normalizedDocsToCarry = normalizeSelectedDocs(docsToCarry);
+            
+            // 대상 페이지에 문서 설정
+            storeActions.setPageSelectedDocuments(destKey as any, normalizedDocsToCarry);
+            
+            // 통합 선택 문서도 동기화 (UI 일관성 유지)
+            if (normalizedDocsToCarry?.length) {
+                storeActions.setSelectedDocuments(normalizedDocsToCarry);
+            }
+        }
+
         // 1) workContext 업데이트
         storeActions.updateWorkContext({
             sourcePageType: to,
@@ -208,7 +266,7 @@ export const useGlobalApp = (): GlobalAppContextType => {
             return true;
         }
         return false;
-    }, [state.workContext, storeActions]);
+    }, [state.pageStates, state.selectedDocuments, state.workContext, storeActions]);
 
     const actions = useMemo(() => ({
         setUser: storeActions.setUser,
@@ -260,30 +318,23 @@ export const useGlobalApp = (): GlobalAppContextType => {
 };
 
 // 개별 기능별 커스텀 훅들
-export const useSelectedDocuments = () => {
+export const useSelectedDocuments = (pageOverride?: 'search' | 'myKnowledge' | 'chat' | 'agentChat') => {
     const { state, actions } = useGlobalApp();
 
-    // 현재 페이지에 따라 적절한 선택된 문서들을 반환
+    // 현재 페이지에 따라 적절한 선택된 문서들을 반환 (옵션: pageOverride로 강제)
     const currentPage = state.workContext.sourcePageType;
-    const getCurrentPageDocuments = () => {
-        switch (currentPage) {
-            case 'search':
-                return state.pageStates.search.selectedDocuments;
-            case 'my-knowledge':
-                return state.pageStates.myKnowledge.selectedDocuments;
-            case 'chat':
-                return state.pageStates.chat.selectedDocuments;
-            case 'agent-chat':
-                return state.pageStates.agentChat.selectedDocuments;
-            default:
-                return [];
-        }
-    };
+    const targetPage =
+        pageOverride
+            ? pageOverride
+            : (currentPage === 'search'
+                ? 'search'
+                : currentPage === 'my-knowledge'
+                    ? 'myKnowledge'
+                    : currentPage === 'agent-chat'
+                        ? 'agentChat'
+                        : 'chat');
 
-    const selectedDocuments = getCurrentPageDocuments() || [];
-    const targetPage = currentPage === 'search' ? 'search' :
-        currentPage === 'my-knowledge' ? 'myKnowledge' :
-            currentPage === 'agent-chat' ? 'agentChat' : 'chat';
+    const selectedDocuments = ((state.pageStates as any)[targetPage]?.selectedDocuments || []) as Document[];
 
     return {
         selectedDocuments,
@@ -293,12 +344,52 @@ export const useSelectedDocuments = () => {
         addSelectedDocument: (document: Document) => {
             actions.addPageSelectedDocument(targetPage, document);
         },
-        removeSelectedDocument: actions.removeSelectedDocument,
-        clearSelectedDocuments: actions.clearSelectedDocuments,
+        removeSelectedDocument: (fileId: string) => {
+            actions.removePageSelectedDocument(targetPage, fileId);
+        },
+        clearSelectedDocuments: () => {
+            actions.clearPageSelectedDocuments(targetPage);
+        },
         toggleDocumentSelection: (document: Document) => {
             const isSelected = selectedDocuments.some((doc: Document) => doc.fileId === document.fileId);
-            if (isSelected) actions.removeSelectedDocument(document.fileId); else actions.addPageSelectedDocument(targetPage, document);
+            if (isSelected) actions.removePageSelectedDocument(targetPage, document.fileId);
+            else actions.addPageSelectedDocument(targetPage, document);
         },
+        hasSelectedDocuments: (selectedDocuments?.length || 0) > 0,
+        selectedCount: selectedDocuments?.length || 0
+    };
+};
+
+// ✅ 전역(통합) 선택 문서 훅: 지식검색/지식컨테이너 등에서 선택된 문서를 한 곳에서 관리
+// - 팝업(SelectedDocumentsDisplay)은 이 훅을 사용해야 "통합 선택" UX가 됨
+export const useUnifiedSelectedDocuments = () => {
+    const { state, actions } = useGlobalApp();
+    const selectedDocuments = state.selectedDocuments || [];
+
+    const removeEverywhere = (fileId: string) => {
+        // 1) 전역 선택에서 제거
+        actions.setSelectedDocuments((selectedDocuments || []).filter((d: any) => d?.fileId !== fileId));
+        // 2) 페이지별 선택에서도 제거 (체크박스/버튼 상태 동기화)
+        const pages: Array<'search' | 'myKnowledge' | 'chat' | 'agentChat'> = ['search', 'myKnowledge', 'chat', 'agentChat'];
+        pages.forEach((p) => actions.removePageSelectedDocument(p as any, fileId));
+    };
+
+    const clearEverywhere = () => {
+        actions.setSelectedDocuments([]);
+        const pages: Array<'search' | 'myKnowledge' | 'chat' | 'agentChat'> = ['search', 'myKnowledge', 'chat', 'agentChat'];
+        pages.forEach((p) => actions.clearPageSelectedDocuments(p as any));
+    };
+
+    return {
+        selectedDocuments,
+        setSelectedDocuments: (docs: any[]) => actions.setSelectedDocuments(docs as any),
+        addSelectedDocument: (doc: any) => {
+            const exists = (selectedDocuments || []).some((d: any) => d?.fileId === doc?.fileId);
+            if (exists) return;
+            actions.setSelectedDocuments([...(selectedDocuments || []), doc]);
+        },
+        removeSelectedDocument: removeEverywhere,
+        clearSelectedDocuments: clearEverywhere,
         hasSelectedDocuments: (selectedDocuments?.length || 0) > 0,
         selectedCount: selectedDocuments?.length || 0
     };

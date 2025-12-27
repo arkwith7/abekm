@@ -67,6 +67,7 @@ class DocumentInfo(BaseModel):
     korean_ratio: float = 0.0
     keywords: List[str] = []
     container_path: str = ""
+    path: Optional[str] = None  # S3 URL 또는 파일 경로
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     uploaded_by: str = ""

@@ -3,8 +3,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { SelectedDocumentsDisplay } from '../../components/chat/SelectedDocumentsDisplay';
 import FileViewer from '../../components/common/FileViewer';
-import { useSelectedDocuments, useWorkContext } from '../../contexts/GlobalAppContext';
+import { useSelectedDocuments, useUnifiedSelectedDocuments, useWorkContext } from '../../contexts/GlobalAppContext';
 import { Document as GlobalDocument } from '../../contexts/types';
+import { useGlobalAppStore } from '../../store/globalAppStore';
 import { downloadDocument as downloadDocumentApi } from '../../services/userService';
 import { Document } from '../../types/user.types';
 import {
@@ -27,6 +28,12 @@ const SearchPage: React.FC = () => {
     setSelectedDocuments,
     hasSelectedDocuments
   } = useSelectedDocuments();
+  const {
+    selectedDocuments: unifiedSelectedDocuments,
+    setSelectedDocuments: setUnifiedSelectedDocuments,
+    removeSelectedDocument: removeUnifiedSelectedDocument,
+    clearSelectedDocuments: clearUnifiedSelectedDocuments,
+  } = useUnifiedSelectedDocuments();
   const { navigateWithContext, workContext, updateWorkContext } = useWorkContext();
 
   const {
@@ -171,7 +178,7 @@ const SearchPage: React.FC = () => {
     // 🆕 기존 선택 문서와 병합 (중복 제거)
     if (newDocs.length > 0) {
       // 기존 문서 중 검색 결과에 없는 문서들 (다른 페이지에서 선택한 문서들)
-      const existingDocs = selectedDocuments.filter(doc =>
+      const existingDocs = unifiedSelectedDocuments.filter(doc =>
         !newDocs.some(newDoc => newDoc.fileId === doc.fileId)
       );
 
@@ -185,6 +192,8 @@ const SearchPage: React.FC = () => {
       });
 
       setSelectedDocuments(mergedDocs);
+      // ✅ 통합 선택(전역)도 함께 업데이트
+      setUnifiedSelectedDocuments(mergedDocs as any);
     } else if (selectedResults.size === 0 && searchResults.length > 0) {
       // 검색 결과는 있지만 아무것도 선택하지 않은 경우 - 기존 문서 유지
       console.log('🔍 검색 페이지에서 선택 해제 - 기존 문서 유지');
@@ -242,6 +251,29 @@ const SearchPage: React.FC = () => {
     console.log('📄 선택된 문서 스냅샷:', selectedDocsSnapshot);
     console.log('🔗 navigateWithContext 함수 존재 여부:', typeof navigateWithContext);
 
+    // ✅ 이동 직전에 agent-chat 쪽 선택 문서를 미리 세팅 (fallback navigate 케이스에서도 유지)
+    try {
+      // 현재 페이지(search)의 선택 문서 가져오기
+      const currentPageSelectedDocs = useGlobalAppStore.getState().pageStates.search?.selectedDocuments || [];
+      const unifiedDocs = useGlobalAppStore.getState().selectedDocuments || [];
+      
+      // 우선순위: 스냅샷(현재 선택) > 현재 페이지 선택 문서 > 통합 선택 문서
+      const docsToCarry = selectedDocsSnapshot.length > 0 
+        ? selectedDocsSnapshot 
+        : (currentPageSelectedDocs.length > 0 ? currentPageSelectedDocs : unifiedDocs);
+      
+      // agentChat으로 선택 문서 전달
+      if (docsToCarry.length > 0) {
+        useGlobalAppStore.getState().actions.setSelectedDocuments(docsToCarry);
+        useGlobalAppStore.getState().actions.setPageSelectedDocuments('agentChat', docsToCarry);
+        console.log('✅ AI Agents로 문서 전달:', docsToCarry.length, '개');
+      } else {
+        console.warn('⚠️ 선택된 문서가 없습니다.');
+      }
+    } catch (e) {
+      console.error('❌ agentChat 선택 문서 사전 세팅 실패:', e);
+    }
+
     const targetRoute = '/user/agent-chat';
     let navigated = false;
 
@@ -270,11 +302,31 @@ const SearchPage: React.FC = () => {
   const convertSearchResultToDocument = (result: SearchResult): Document => {
     // metadata가 없거나 undefined일 경우를 대비한 안전한 처리
     const metadata = result.metadata || {};
-    // 파일명 우선순위: metadata.file_name > file_path의 마지막 부분 > title
-    const fileName = metadata.file_name ||
-      (result.file_path ? result.file_path.split('/').pop() : null) ||
-      result.title ||
-      '알 수 없음';
+    // 파일명 우선순위:
+    // - 검색 결과에서는 metadata.file_name이 "제목"만 오는 경우가 많아(확장자 없음) file_path를 참고해야 함
+    const fileNameFromPath = result.file_path ? result.file_path.split('/').pop() : null;
+    const fileName = (metadata.file_name && metadata.file_name.includes('.'))
+      ? metadata.file_name
+      : (fileNameFromPath || metadata.file_name || result.title || '알 수 없음');
+
+    // 파일 확장자 추출 (file_name에 없으면 file_path에서 유추)
+    let fileExtension = fileName && fileName.includes('.') ? (fileName.split('.').pop() || '') : '';
+    if (!fileExtension && result.file_path) {
+      const lowerPath = String(result.file_path).toLowerCase();
+      if (lowerPath.includes('patents.google.com')) {
+        fileExtension = 'url';
+      } else if (lowerPath.endsWith('.pdf')) {
+        fileExtension = 'pdf';
+      } else if (lowerPath.endsWith('.url')) {
+        fileExtension = 'url';
+      }
+    }
+
+    // 문서 타입 결정 (특허 URL인 경우 FileViewer 특허 UI로 유도)
+    const looksLikePatentUrl =
+      fileExtension === 'url' ||
+      (typeof result.file_path === 'string' && result.file_path.includes('patents.google.com'));
+    const documentType = looksLikePatentUrl ? 'patent' : (metadata.document_type || 'Unknown');
 
     return {
       id: result.file_id,
@@ -282,9 +334,8 @@ const SearchPage: React.FC = () => {
       title: result.title || fileName,
       file_name: fileName,
       file_size: 0, // Not available in SearchResult
-      file_extension: fileName && fileName.includes('.') ?
-        fileName.split('.').pop() : '',
-      document_type: metadata.document_type || 'Unknown',
+      file_extension: fileExtension,
+      document_type: documentType,
       quality_score: 0, // Not available in SearchResult
       korean_ratio: 0, // Not available in SearchResult
       keywords: metadata.keywords || [],
@@ -296,7 +347,8 @@ const SearchPage: React.FC = () => {
       download_count: 0,
       created_at: metadata.last_updated || new Date().toISOString(),
       updated_at: metadata.last_updated || new Date().toISOString(),
-      uploaded_by: 'Unknown' // Not available in SearchResult
+      uploaded_by: 'Unknown', // Not available in SearchResult
+      path: result.file_path, // 파일 경로 (S3 URL 또는 외부 URL)
     };
   };
 
@@ -308,7 +360,8 @@ const SearchPage: React.FC = () => {
 
   const handleFileDownload = (result: SearchResult) => {
     const document = convertSearchResultToDocument(result);
-    // 통일된 다운로드 로직 사용: Content-Disposition(filename*) 처리 및 확장자 보정 포함
+
+    // 특허(URL 타입)도 백엔드에서 .url 바로가기 파일로 내려주므로 동일 다운로드 로직 사용
     downloadDocumentApi(String(document.document_id || document.id), document.title, document.file_extension);
   };
 
@@ -459,13 +512,14 @@ const SearchPage: React.FC = () => {
               showActions={true}
               className="mb-0"
               onClearAll={() => {
-                // 패널/글로벌 비우기 + 체크박스 해제
+                // ✅ 통합 선택 비우기 + 체크박스 해제
                 setSelectedDocuments([]);
+                clearUnifiedSelectedDocuments();
                 syncSelectedResults([]);
               }}
               onRemove={(fileId: string) => {
-                // 한 개 제거: 패널/글로벌에서 제거 + 체크박스 해제
-                // fileId는 result.file_id와 동일하므로, 현재 선택 set에서 제외
+                // ✅ 통합 선택에서 제거 + (현재 검색 결과에 있으면) 체크박스 해제
+                removeUnifiedSelectedDocument(fileId);
                 const after = Array.from(selectedResults).filter(id => id !== fileId);
                 syncSelectedResults(after);
               }}

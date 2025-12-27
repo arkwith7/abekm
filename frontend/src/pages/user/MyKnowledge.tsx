@@ -4,6 +4,7 @@ import FileViewer from '../../components/common/FileViewer';
 import SessionWarning from '../../components/common/SessionWarning';
 import { useSelectedDocuments, useWorkContext } from '../../contexts/GlobalAppContext';
 import { Document } from '../../contexts/types';
+import { useGlobalAppStore } from '../../store/globalAppStore';
 import { createPermissionRequest } from '../../services/permissionRequestService';
 import ContainerCreateModal from './my-knowledge/components/ContainerCreateModal';
 import DocumentAccessModal from './my-knowledge/components/DocumentAccessModal';
@@ -34,7 +35,7 @@ const MyKnowledge: React.FC = () => {
     selectedDocuments: globalSelectedDocuments,
     addSelectedDocument,
     removeSelectedDocument
-  } = useSelectedDocuments();
+  } = useSelectedDocuments('myKnowledge');
   const { navigateWithContext, updateWorkContext } = useWorkContext();
 
   const {
@@ -110,7 +111,7 @@ const MyKnowledge: React.FC = () => {
       const globalDoc: Document = {
         fileId: document.id,
         fileName: document.file_name,
-        originalName: document.title,
+        originalName: document.title || document.file_name,
         fileSize: document.file_size,
         fileType: document.file_extension || '',
         uploadDate: document.created_at || '',
@@ -220,6 +221,41 @@ const MyKnowledge: React.FC = () => {
   };
 
   const handleGoToChat = useCallback(() => {
+    console.log('🚀 [MyKnowledge] AI 에이전트 버튼 클릭됨');
+    try {
+      const store = useGlobalAppStore.getState();
+      console.log('📊 [MyKnowledge] pageStates.myKnowledge.selectedDocuments:', store.pageStates?.myKnowledge?.selectedDocuments || []);
+      console.log('📊 [MyKnowledge] selectedDocuments (unified):', store.selectedDocuments || []);
+    } catch {
+      // ignore
+    }
+    
+    // ✅ 이동 직전에 agent-chat 쪽 선택 문서를 미리 세팅 (페이지 타입 전환으로 인해 선택이 비는 현상 방지)
+    try {
+      // 현재 페이지(myKnowledge)의 선택 문서를 가져오기
+      const currentPageSelectedDocs = useGlobalAppStore.getState().pageStates.myKnowledge?.selectedDocuments || [];
+      const unifiedDocs = useGlobalAppStore.getState().selectedDocuments || [];
+      
+      console.log('📄 [MyKnowledge] currentPageSelectedDocs:', currentPageSelectedDocs);
+      console.log('📄 [MyKnowledge] unifiedDocs:', unifiedDocs);
+      
+      // 우선순위: 현재 페이지 선택 문서 > 통합 선택 문서
+      const docsToCarry = currentPageSelectedDocs.length > 0 ? currentPageSelectedDocs : unifiedDocs;
+      
+      console.log('📦 [MyKnowledge] docsToCarry:', docsToCarry);
+      
+      // agentChat으로 선택 문서 전달
+      if (docsToCarry.length > 0) {
+        useGlobalAppStore.getState().actions.setSelectedDocuments(docsToCarry);
+        useGlobalAppStore.getState().actions.setPageSelectedDocuments('agentChat', docsToCarry);
+        console.log('✅ [MyKnowledge] AI Agents로 문서 전달:', docsToCarry.length, '개');
+      } else {
+        console.warn('⚠️ [MyKnowledge] 선택된 문서가 없습니다.');
+      }
+    } catch (e) {
+      console.error('❌ [MyKnowledge] agentChat 선택 문서 사전 세팅 실패:', e);
+    }
+
     // 현재 상태 저장 (확장된 컨테이너 정보 포함)
     const currentState = {
       selectedContainer: selectedContainer?.id || null,
@@ -231,6 +267,8 @@ const MyKnowledge: React.FC = () => {
       currentPage,
       viewMode
     };
+
+    console.log('💾 [MyKnowledge] 현재 상태 저장:', currentState);
 
     navigateWithContext(
       'agent-chat',

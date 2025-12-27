@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Database, Folder, Play, Settings as SettingsIcon, Clock, Tag } from 'lucide-react';
+import { Database, Folder, Play, Settings as SettingsIcon, Clock, Tag, FileText } from 'lucide-react';
 import {
   getMyContainers,
   createPatentCollectionSetting,
@@ -30,8 +30,13 @@ interface PatentCollectionSetting {
   is_active: boolean;
   last_collection_date?: string | null;
   last_collection_result?: {
-    collected: number;
-    errors: number;
+    new?: number;          // 신규 저장
+    skipped?: number;      // 이미 존재 (스킵)
+    errors?: number;       // 오류
+    total_owned?: number;  // 총 보유
+    searched?: number;     // 검색 결과 수
+    // 레거시 호환
+    collected?: number;
   } | null;
 }
 
@@ -41,7 +46,8 @@ interface TaskStatus {
   status: 'pending' | 'running' | 'completed' | 'failed';
   progressCurrent: number;
   progressTotal: number;
-  collected: number;
+  newCount: number;      // 신규 저장
+  skippedCount: number;  // 스킵됨
   errors: number;
   message?: string;
   completedAt?: string;
@@ -73,6 +79,7 @@ const PatentCollectionSettings: React.FC = () => {
   const [keywords, setKeywords] = useState('');
   const [applicants, setApplicants] = useState('');
   const [maxResults, setMaxResults] = useState(100);
+  const [autoDownloadPdf, setAutoDownloadPdf] = useState(false);
   const [activeTasks, setActiveTasks] = useState<Record<number, TaskStatus>>({});
   const [isCreatingContainer, setIsCreatingContainer] = useState(false);
   const [newContainerName, setNewContainerName] = useState('');
@@ -140,6 +147,7 @@ const PatentCollectionSettings: React.FC = () => {
     setKeywords('');
     setApplicants('');
     setMaxResults(100);
+    setAutoDownloadPdf(false);
     if (!keepContainer) {
       setSelectedContainer('');
     }
@@ -153,6 +161,7 @@ const PatentCollectionSettings: React.FC = () => {
     setKeywords((keywords || []).join(', '));
     setApplicants((applicants || []).join(', '));
     setMaxResults(setting.max_results ?? 100);
+    setAutoDownloadPdf(setting.auto_download_pdf ?? false);
   };
 
   const handleCreateContainer = async () => {
@@ -188,17 +197,24 @@ const PatentCollectionSettings: React.FC = () => {
     try {
       const res = await getPatentCollectionStatus(taskId);
       const status = (res.status || 'running') as TaskStatus['status'];
-      const collected = res.collected_count || 0;
       const total = res.progress_total || 0;
       const errors = res.error_count || 0;
+      
+      // 신규/스킵 정보 (새 API 응답 형식)
+      const newCount = res.new_count || res.collected_count || 0;
+      const skippedCount = res.skipped_count || 0;
 
       // 상태별 메시지 생성
       let message = '';
       if (status === 'completed') {
-        if (collected === 0) {
+        if (total === 0) {
           message = '⚠️ 검색 조건에 맞는 특허가 없습니다. 검색 조건을 조정해보세요.';
+        } else if (newCount === 0 && skippedCount > 0) {
+          message = `✅ 최신 상태입니다 (${skippedCount}건 보유 중)`;
+        } else if (newCount > 0) {
+          message = `✅ 수집 완료: 신규 ${newCount}건${skippedCount > 0 ? `, 기존 ${skippedCount}건` : ''}${errors > 0 ? `, 오류 ${errors}건` : ''}`;
         } else {
-          message = `✅ 수집 완료: ${collected}건 성공${errors > 0 ? `, ${errors}건 실패` : ''}`;
+          message = '✅ 수집 완료';
         }
       } else if (status === 'failed') {
         message = '❌ 수집 작업이 실패했습니다.';
@@ -214,14 +230,15 @@ const PatentCollectionSettings: React.FC = () => {
           status,
           progressCurrent: res.progress_current || 0,
           progressTotal: total,
-          collected,
+          newCount,
+          skippedCount,
           errors,
           message,
           completedAt: (status === 'completed' || status === 'failed') ? new Date().toISOString() : undefined,
         },
       }));
 
-      // 완료 또는 실패 시 5초 후 상태 제거
+      // 완료 또는 실패 시 8초 후 상태 제거
       if (status === 'completed' || status === 'failed') {
         setTimeout(() => {
           setActiveTasks((prev) => {
@@ -229,7 +246,7 @@ const PatentCollectionSettings: React.FC = () => {
             delete copy[settingId];
             return copy;
           });
-        }, 5000);
+        }, 8000);
         await loadSettings();
       }
     } catch (err) {
@@ -265,8 +282,7 @@ const PatentCollectionSettings: React.FC = () => {
           applicants: toArray(applicants),
         },
         max_results: maxResults,
-        // 정책: PDF는 필요 시 뷰어에서 다운로드, 서지정보는 항상 색인/임베딩
-        auto_download_pdf: false,
+        auto_download_pdf: autoDownloadPdf,
         auto_generate_embeddings: true,
         schedule_type: 'manual',
       };
@@ -323,7 +339,8 @@ const PatentCollectionSettings: React.FC = () => {
           status: 'pending',
           progressCurrent: 0,
           progressTotal: 0,
-          collected: 0,
+          newCount: 0,
+          skippedCount: 0,
           errors: 0,
           message: '🚀 수집 작업을 시작합니다...',
         },
@@ -494,6 +511,23 @@ const PatentCollectionSettings: React.FC = () => {
               />
             </div>
 
+            {/* PDF 전문 다운로드 옵션 */}
+            <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <input
+                type="checkbox"
+                id="autoDownloadPdf"
+                checked={autoDownloadPdf}
+                onChange={(e) => setAutoDownloadPdf(e.target.checked)}
+                className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label htmlFor="autoDownloadPdf" className="flex-1">
+                <span className="text-sm font-medium text-gray-900">📄 전문 PDF 다운로드</span>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  KIPRIS에서 공개전문 PDF를 다운로드하여 뷰어에서 직접 볼 수 있습니다
+                </p>
+              </label>
+            </div>
+
             <button
               onClick={handleSave}
               disabled={loading}
@@ -558,13 +592,26 @@ const PatentCollectionSettings: React.FC = () => {
                       >
                         삭제
                       </button>
+                      {(() => {
+                        const result = s.last_collection_result;
+                        const isUpToDate = result && (result.new === 0 || result.collected === 0) && (result.skipped || 0) > 0;
+                        const hasPatents = result && ((result.total_owned || 0) > 0 || (result.skipped || 0) > 0);
+                        
+                        return (
                       <button
                         onClick={() => handleStart(s.setting_id)}
-                        disabled={isStarting}
-                        className="flex items-center gap-2 bg-green-600 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-green-700 disabled:bg-gray-400"
+                            disabled={isStarting || activeTasks[s.setting_id]?.status === 'running'}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold disabled:bg-gray-400 ${
+                              isUpToDate 
+                                ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                                : 'bg-green-600 text-white hover:bg-green-700'
+                            }`}
                       >
-                        <Play className="w-4 h-4" /> 수집 시작
+                            <Play className="w-4 h-4" /> 
+                            {isUpToDate ? '새로고침 확인' : hasPatents ? '새로고침 확인' : '수집 시작'}
                       </button>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -577,19 +624,26 @@ const PatentCollectionSettings: React.FC = () => {
                     ))}
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm text-gray-700">
-                    <div className="flex items-center gap-2">
-                      <SettingsIcon className="w-4 h-4 text-gray-400" />
+                  <div className="mt-3 flex flex-wrap gap-2 text-sm text-gray-700">
+                    <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded">
+                      <SettingsIcon className="w-3 h-3 text-gray-500" />
                       <span>서지정보 수집 + 검색 색인/임베딩</span>
                     </div>
+                    {s.auto_download_pdf && (
+                      <div className="flex items-center gap-1 bg-green-100 text-green-700 px-2 py-1 rounded">
+                        <FileText className="w-3 h-3" />
+                        <span>PDF 다운로드</span>
+                      </div>
+                    )}
                   </div>
 
                   {task && (
                     <div className="mt-3 space-y-2">
                       {/* 상태 메시지 */}
                       <div className={`text-sm font-medium ${
-                        task.status === 'completed' && task.collected > 0 ? 'text-green-700' :
-                        task.status === 'completed' && task.collected === 0 ? 'text-yellow-700' :
+                        task.status === 'completed' && task.newCount > 0 ? 'text-green-700' :
+                        task.status === 'completed' && task.skippedCount > 0 ? 'text-blue-700' :
+                        task.status === 'completed' ? 'text-yellow-700' :
                         task.status === 'failed' ? 'text-red-700' :
                         'text-blue-700'
                       }`}>
@@ -602,7 +656,8 @@ const PatentCollectionSettings: React.FC = () => {
                           <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
                             <span>진행률</span>
                             <span>
-                              {task.progressCurrent}/{task.progressTotal} (성공 {task.collected}건{task.errors > 0 ? `, 실패 ${task.errors}건` : ''})
+                              {task.progressCurrent}/{task.progressTotal} 
+                              (신규 {task.newCount}건, 기존 {task.skippedCount}건{task.errors > 0 ? `, 오류 ${task.errors}건` : ''})
                             </span>
                           </div>
                           <div className="w-full bg-gray-100 rounded-full h-2">
@@ -617,9 +672,21 @@ const PatentCollectionSettings: React.FC = () => {
                       {/* 완료 시 결과 요약 */}
                       {task.status === 'completed' && (
                         <div className="bg-gray-50 rounded p-3 text-xs space-y-1">
+                          {task.newCount > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">신규 저장:</span>
+                              <span className="font-semibold text-green-600">{task.newCount}건</span>
+                            </div>
+                          )}
+                          {task.skippedCount > 0 && (
                           <div className="flex justify-between">
-                            <span className="text-gray-600">총 수집:</span>
-                            <span className="font-semibold">{task.collected}건</span>
+                              <span className="text-gray-600">이미 보유:</span>
+                              <span className="font-semibold text-blue-600">{task.skippedCount}건</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between border-t border-gray-200 pt-1 mt-1">
+                            <span className="text-gray-600">총 보유:</span>
+                            <span className="font-semibold">{task.newCount + task.skippedCount}건</span>
                           </div>
                           {task.errors > 0 && (
                             <div className="flex justify-between">
@@ -649,14 +716,48 @@ const PatentCollectionSettings: React.FC = () => {
                         <span className="font-medium text-gray-900">{new Date(s.last_collection_date).toLocaleString('ko-KR')}</span>
                       </div>
                       {s.last_collection_result && (
-                        <div className="mt-2 flex items-center justify-between text-xs">
+                        <div className="mt-2 space-y-1">
+                          {/* 새 형식: new, skipped, total_owned */}
+                          {(s.last_collection_result.new !== undefined || s.last_collection_result.skipped !== undefined) ? (
+                            <>
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-gray-600">결과</span>
+                                <span className={`font-semibold ${
+                                  (s.last_collection_result.new || 0) > 0 ? 'text-green-600' : 
+                                  (s.last_collection_result.skipped || 0) > 0 ? 'text-blue-600' : 'text-yellow-600'
+                                }`}>
+                                  {(s.last_collection_result.new || 0) > 0 
+                                    ? `신규 ${s.last_collection_result.new}건` 
+                                    : '✅ 최신 상태'}
+                                  {(s.last_collection_result.skipped || 0) > 0 && ` (기존 ${s.last_collection_result.skipped}건)`}
+                                </span>
+                              </div>
+                              {(s.last_collection_result.total_owned || 0) > 0 && (
+                                <div className="flex items-center justify-between text-xs">
+                                  <span className="text-gray-600">총 보유</span>
+                                  <span className="font-semibold text-gray-900">
+                                    📊 {s.last_collection_result.total_owned}건
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            /* 레거시 형식: collected */
+                            <div className="flex items-center justify-between text-xs">
                           <span className="text-gray-600">결과</span>
                           <span className={`font-semibold ${
-                            s.last_collection_result.collected > 0 ? 'text-green-600' : 'text-yellow-600'
+                                (s.last_collection_result.collected || 0) > 0 ? 'text-green-600' : 'text-yellow-600'
                           }`}>
-                            {s.last_collection_result.collected}건 수집
-                            {s.last_collection_result.errors > 0 && `, ${s.last_collection_result.errors}건 실패`}
+                                {s.last_collection_result.collected || 0}건 수집
                           </span>
+                            </div>
+                          )}
+                          {(s.last_collection_result.errors || 0) > 0 && (
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="text-gray-600">오류</span>
+                              <span className="font-semibold text-red-600">{s.last_collection_result.errors}건</span>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

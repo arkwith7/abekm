@@ -436,8 +436,8 @@ export const getMyDocuments = async (options?: {
 
       return {
         id: doc.file_bss_info_sno?.toString() || doc.id?.toString() || 'unknown',
-        title: doc.file_lgc_nm || doc.title || doc.sj || 'Untitled',
-        file_name: doc.file_lgc_nm || doc.file_name || 'unknown',
+        title: doc.file_lgc_nm || doc.title || doc.sj || 'Untitled',  // 논리 파일명 (발명의 명칭)
+        file_name: doc.file_phsc_nm || doc.file_name || 'unknown',     // 실제 물리 파일명 (PDF 파일명)
         file_size: doc.file_sz || doc.file_size || 0,
         file_extension: doc.file_extsn || doc.file_extension || '',
         container_path: doc.knowledge_container_id || doc.container_path || doc.container_id || '',
@@ -1190,6 +1190,10 @@ export interface PatentCollectionStatusResponse {
   progress_total: number;
   collected_count: number;
   error_count: number;
+  new_count?: number;
+  skipped_count?: number;
+  total_owned?: number;
+  searched?: number;
 }
 
 export const getPatentCollectionSettings = async (): Promise<PatentCollectionSettingResponse[]> => {

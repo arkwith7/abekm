@@ -21,6 +21,7 @@ export interface Document {
   file_size: number;
   file_extension?: string;
   document_type?: string;
+  path?: string;  // S3 URL 또는 파일 경로
   quality_score?: number;
   korean_ratio?: number;
   keywords?: string[];

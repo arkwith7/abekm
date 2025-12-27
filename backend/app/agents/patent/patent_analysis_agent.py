@@ -1,10 +1,9 @@
 """
-Patent Analysis Agent V2 - Autonomous ReAct Pattern
+Patent Analysis Agent - Autonomous ReAct Pattern
 
-기존 patent_analysis_agent.py의 자율형 버전:
+자율형 특허 분석 에이전트:
 - BaseAutonomousAgent 상속
 - LangChain ReAct 패턴으로 LLM이 도구를 자율 선택
-- analysis_type 파라미터 제거 (LLM이 자율 판단)
 - 특허 검색/분석/비교 도구를 조합하여 복잡한 분석 수행
 """
 from __future__ import annotations
@@ -36,15 +35,14 @@ from app.tools.retrieval.patent_analysis_tool import PatentAnalysisTool
 from app.services.core.ai_service import ai_service
 
 
-class PatentAnalysisAgentV2(BaseAutonomousAgent):
+class PatentAnalysisAgent(BaseAutonomousAgent):
     """
-    자율형 특허 분석 에이전트 V2
+    자율형 특허 분석 에이전트
     
-    주요 개선점:
-    1. analysis_type 파라미터 제거 - LLM이 분석 유형 자동 결정
-    2. LangChain ReAct 패턴으로 도구 자율 선택
-    3. 복잡한 다단계 분석을 LLM이 계획하고 실행
-    4. 경쟁사 비교, 트렌드 분석 등을 단일 질의로 처리
+    주요 기능:
+    1. LangChain ReAct 패턴으로 도구 자율 선택
+    2. 복잡한 다단계 분석을 LLM이 계획하고 실행
+    3. 경쟁사 비교, 트렌드 분석 등을 단일 질의로 처리
     
     사용 가능한 도구:
     - patent_search: 기본 특허 검색
@@ -62,9 +60,9 @@ class PatentAnalysisAgentV2(BaseAutonomousAgent):
     def __init__(self):
         super().__init__()
 
-        self.name = "patent_analysis_v2"
+        self.name = "patent_analysis"
         self.description = "자율형 특허 검색 및 분석 에이전트 (LangGraph ReAct)"
-        self.version = "2.0.0"
+        self.version = "1.0.0"
         
         # 특허 도구 등록
         self._tools: List[BaseTool] = [
@@ -127,7 +125,7 @@ class PatentAnalysisAgentV2(BaseAutonomousAgent):
             messages: List[BaseMessage] = [SystemMessage(content=system_prompt), HumanMessage(content=query)]
             react_agent = create_react_agent(llm, self._tools)
 
-            AgentStateManager.update_step("react_execution", "started")
+            logger.info(f"[PatentAnalysis] ReAct 실행 시작: {query[:50]}...")
 
             async def _run():
                 return await react_agent.ainvoke(
@@ -141,7 +139,7 @@ class PatentAnalysisAgentV2(BaseAutonomousAgent):
             answer = self._extract_final_answer(out_messages)
             steps = self._extract_tool_steps(out_messages)
 
-            AgentStateManager.update_step("react_execution", "completed")
+            logger.info(f"[PatentAnalysis] ReAct 실행 완료: {len(steps)}개 스텝")
 
             total_latency_ms = (datetime.utcnow() - started_at).total_seconds() * 1000
             tools_used = [s.action for s in steps if s.action]
@@ -205,12 +203,15 @@ class PatentAnalysisAgentV2(BaseAutonomousAgent):
     
     async def _get_llm(self) -> BaseLanguageModel:
         """LLM 인스턴스 가져오기"""
-        llm = await self.ai_service.get_model(
+        llm = self.ai_service.get_chat_model(
             provider="azure",
-            model_name="gpt-4o",
             temperature=0.0,  # 특허 분석은 정확성 우선
-            streaming=True,
         )
+        if llm is None:
+            # Azure 실패 시 OpenAI 시도
+            llm = self.ai_service.get_chat_model(provider="openai", temperature=0.0)
+        if llm is None:
+            raise ValueError("사용 가능한 LLM 제공자가 없습니다")
         return llm
     
     def get_capabilities(self) -> List[AgentCapability]:
@@ -297,14 +298,14 @@ class PatentAnalysisAgentV2(BaseAutonomousAgent):
 # 팩토리 함수
 # =============================================================================
 
-def create_patent_analysis_agent_v2() -> PatentAnalysisAgentV2:
-    """PatentAnalysisAgentV2 인스턴스 생성"""
-    return PatentAnalysisAgentV2()
+def create_patent_analysis_agent() -> PatentAnalysisAgent:
+    """PatentAnalysisAgent 인스턴스 생성"""
+    return PatentAnalysisAgent()
 
 
 # 전역 싱글톤
-patent_analysis_agent_v2 = create_patent_analysis_agent_v2()
+patent_analysis_agent = create_patent_analysis_agent()
 
-# 하위 호환성 Alias (기존 코드가 PatentAnalysisAgentTool을 기대하는 경우)
-PatentAnalysisAgentTool = PatentAnalysisAgentV2
-patent_analysis_agent_tool = patent_analysis_agent_v2
+# 하위 호환성 Alias
+PatentAnalysisAgentTool = PatentAnalysisAgent
+patent_analysis_agent_tool = patent_analysis_agent

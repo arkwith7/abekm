@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useSelectedDocuments, useWorkContext } from '../../contexts/GlobalAppContext';
+import { useSelectedDocuments, useUnifiedSelectedDocuments, useWorkContext } from '../../contexts/GlobalAppContext';
 import { Document as GlobalDocument } from '../../contexts/types';
 
 // 재사용 컴포넌트
@@ -37,10 +37,18 @@ const AgentChatPage: React.FC = () => {
     const [inputCentered, setInputCentered] = useState(true);
     const [isRealtimeSttSupported, setRealtimeSttSupported] = useState(true);
 
-    // 글로벌 상태
-    const { selectedDocuments, setSelectedDocuments } = useSelectedDocuments();
+    // 글로벌 상태 - 명시적으로 agentChat 페이지의 문서 사용
+    const { selectedDocuments, setSelectedDocuments } = useSelectedDocuments('agentChat');
+    const { selectedDocuments: unifiedSelectedDocuments } = useUnifiedSelectedDocuments();
     const { workContext, updateWorkContext } = useWorkContext();
     const hasInitializedContext = useRef(false);
+    const hasRestoredCarriedDocsRef = useRef(false);
+
+    // 🆕 선택된 문서 디버깅
+    useEffect(() => {
+        console.log('📄 [AgentChatPage] selectedDocuments:', selectedDocuments.length, '개');
+        if (selectedDocuments.length > 0) console.log('📄 [AgentChatPage] 첫 문서:', selectedDocuments[0]);
+    }, [selectedDocuments]);
 
     // Agent 채팅 hook - 🆕 SSE 스트리밍 사용
     const {
@@ -86,11 +94,46 @@ const AgentChatPage: React.FC = () => {
         if (hasInitializedContext.current) return;
         hasInitializedContext.current = true;
 
+        console.log('🚀 [AgentChatPage] 컨텍스트 초기화 - workContext:', workContext);
+
         // 🆕 Agent 채팅은 'agent-chat' 타입으로 설정
         if (workContext.sourcePageType !== 'agent-chat') {
+            console.log('🔄 [AgentChatPage] sourcePageType을 agent-chat로 변경');
             updateWorkContext({ sourcePageType: 'agent-chat' });
         }
     }, [workContext.sourcePageType, updateWorkContext]);
+
+    // ✅ 네비게이션 직후 선택 문서가 "사라지는" 케이스 방지:
+    // - navigateWithContext로 전달된 preserveState(workContext.sourcePageState)에서 한 번만 복원
+    useEffect(() => {
+        if (hasRestoredCarriedDocsRef.current) return;
+        // 이미 문서가 있으면 복원 필요 없음
+        if (selectedDocuments.length > 0) {
+            hasRestoredCarriedDocsRef.current = true;
+            return;
+        }
+
+        const srcState: any = (workContext as any)?.sourcePageState;
+        const carried =
+            (srcState && Array.isArray(srcState.selectedDocsSnapshot) ? srcState.selectedDocsSnapshot : null) ||
+            (srcState && Array.isArray(srcState.selectedDocuments) ? srcState.selectedDocuments : null) ||
+            null;
+
+        if (Array.isArray(carried) && carried.length > 0) {
+            console.log('🛟 [AgentChatPage] 전달받은 선택 문서 복원:', carried.length, '개');
+            setSelectedDocuments(carried as GlobalDocument[]);
+            hasRestoredCarriedDocsRef.current = true;
+            return;
+        }
+
+        // ✅ 메뉴로 바로 이동한 케이스 등: preserveState가 없으면 통합 선택(전역)을 fallback으로 복원
+        if (Array.isArray(unifiedSelectedDocuments) && unifiedSelectedDocuments.length > 0) {
+            console.log('🧩 [AgentChatPage] 통합 선택 문서 fallback 복원:', unifiedSelectedDocuments.length, '개');
+            setSelectedDocuments(unifiedSelectedDocuments as unknown as GlobalDocument[]);
+        }
+
+        hasRestoredCarriedDocsRef.current = true;
+    }, [selectedDocuments.length, setSelectedDocuments, unifiedSelectedDocuments, workContext]);
 
     // 🆕 PPT 생성 이벤트 리스너 (하이브리드 모드 지원)
     useEffect(() => {
@@ -252,13 +295,26 @@ const AgentChatPage: React.FC = () => {
         const ids = selectedDocuments
             .map(doc => doc.containerId)
             .filter((id): id is string => Boolean(id));
-        return Array.from(new Set(ids)).sort();
+        const uniqueIds = Array.from(new Set(ids)).sort();
+        console.log('🔍 [AgentChat] 컨테이너 ID 계산:', uniqueIds);
+        return uniqueIds;
     }, [selectedDocuments]);
 
-    const selectedContainerIdsKey = useMemo(() => selectedContainerIds.join('|'), [selectedContainerIds]);
+    const selectedContainerIdsKey = useMemo(() => {
+        const key = selectedContainerIds.join('|');
+        console.log('🔑 [AgentChat] 컨테이너 필터 키:', key || '(빈 문자열)');
+        return key;
+    }, [selectedContainerIds]);
 
     useEffect(() => {
+        console.log('📌 [AgentChat] 컨테이너 필터 체크:', {
+            현재키: selectedContainerIdsKey,
+            이전키: lastAppliedContainerFilterKeyRef.current,
+            스킵여부: lastAppliedContainerFilterKeyRef.current === selectedContainerIdsKey
+        });
+        
         if (lastAppliedContainerFilterKeyRef.current === selectedContainerIdsKey) {
+            console.log('⏭️ [AgentChat] 컨테이너 필터 업데이트 스킵 (동일한 키)');
             return;
         }
         lastAppliedContainerFilterKeyRef.current = selectedContainerIdsKey;
@@ -288,11 +344,13 @@ const AgentChatPage: React.FC = () => {
     // 문서 열기 핸들러 (향후 사용 예정)
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const handleOpenDocument = (doc: GlobalDocument) => {
-        const resolvedFileName = doc.fileName || doc.originalName || '문서';
+        // UI 표시는 originalName(논리명) 우선, 실제 파일 접근은 fileName(물리명) 우선
+        const displayName = doc.originalName || doc.fileName || '문서';
+        const physicalName = doc.fileName || doc.originalName || '문서';
         const viewerDoc: ViewerDocument = {
             id: doc.fileId,
-            title: resolvedFileName,
-            file_name: resolvedFileName,
+            title: displayName,
+            file_name: physicalName,
             file_extension: doc.fileType || '',
             container_path: doc.containerName || '',
             created_at: new Date().toISOString(),
@@ -324,7 +382,8 @@ const AgentChatPage: React.FC = () => {
     const simplifiedSelectedDocuments = useMemo(() => (
         selectedDocuments.map(doc => ({
             id: String(doc.fileId),
-            name: doc.fileName || doc.originalName || '문서',
+            // ✅ RAG 패널에는 논리명(발명의 명칭) 우선 표시
+            name: doc.originalName || doc.fileName || '문서',
             fileType: doc.fileType
         }))
     ), [selectedDocuments]);

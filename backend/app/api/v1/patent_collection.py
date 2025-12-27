@@ -115,6 +115,7 @@ async def create_patent_collection_setting(
         schedule_config=setting.schedule_config,
         is_active=setting.is_active,
         last_collection_date=setting.last_collection_date.isoformat() if setting.last_collection_date else None,
+        last_collection_result=setting.last_collection_result,
     )
 
 
@@ -139,6 +140,7 @@ async def get_patent_collection_settings(
             schedule_config=s.schedule_config,
             is_active=s.is_active,
             last_collection_date=s.last_collection_date.isoformat() if s.last_collection_date else None,
+            last_collection_result=s.last_collection_result,
         )
         for s in settings
     ]
@@ -181,6 +183,7 @@ async def update_patent_collection_setting(
         schedule_config=updated.schedule_config,
         is_active=updated.is_active,
         last_collection_date=updated.last_collection_date.isoformat() if updated.last_collection_date else None,
+        last_collection_result=updated.last_collection_result,
     )
 
 
@@ -224,9 +227,9 @@ async def start_patent_collection(
         container_id=setting.container_id,
         search_config=setting.search_config,
         max_results=setting.max_results,
-        # 정책: PDF는 필요 시 뷰어에서 다운로드, 서지정보는 항상 색인/임베딩
-        auto_download_pdf=False,
-        auto_generate_embeddings=True,
+        # 사용자 설정에 따라 PDF 다운로드 여부 결정
+        auto_download_pdf=setting.auto_download_pdf,
+        auto_generate_embeddings=setting.auto_generate_embeddings,
     )
 
     return PatentCollectionTaskResponse(

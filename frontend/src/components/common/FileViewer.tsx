@@ -1,4 +1,4 @@
-import { Download, Maximize2, Minimize2, RotateCw, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { Download, ExternalLink, FileText, Maximize2, Minimize2, RotateCw, X, ZoomIn, ZoomOut } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Document } from '../../types/user.types';
 import { getApiUrl } from '../../utils/apiConfig';
@@ -73,6 +73,9 @@ const FileViewer: React.FC<FileViewerProps> = ({
 
     let url: string;
 
+    // ⚠️ S3 URL도 직접 열면 AccessDenied가 발생할 수 있으므로(버킷 private),
+    // 항상 백엔드 iframe-view 엔드포인트를 통해 presigned URL로 리다이렉트 받도록 한다.
+
     // 템플릿 파일인지 확인 (container_path가 'templates'인 경우)
     if (document.container_path === 'templates') {
       // 템플릿 파일용 특별 엔드포인트 사용 (Query Parameter와 Header 모두 전달)
@@ -131,7 +134,8 @@ const FileViewer: React.FC<FileViewerProps> = ({
   };
 
   const renderViewer = () => {
-    const fileExt = getFileExtension(document.file_name || '');
+    // 검색 화면에서는 file_name에 확장자가 없는 경우가 많아서 file_extension을 우선 사용
+    const fileExt = (document.file_extension?.toLowerCase() || getFileExtension(document.file_name || '')).toLowerCase();
     const fileUrl = getFileViewerUrl(document);
 
     console.log('Rendering viewer for:', {
@@ -140,6 +144,90 @@ const FileViewer: React.FC<FileViewerProps> = ({
       documentId: document.id,
       fileName: document.file_name
     });
+
+    // 특허 URL(.url) 문서는 링크 전용 뷰어 제공 (PDF는 기존 뷰어 유지)
+    const isPatentUrl =
+      fileExt === 'url' ||
+      (document.document_type === 'patent' && fileExt !== 'pdf') ||
+      (typeof document.path === 'string' && document.path.includes('patents.google.com'));
+    if (isPatentUrl) {
+      const fileName = document.file_name || '';
+      const path = document.path || '';
+      // 출원번호 추출 우선순위:
+      // 1) file_name에 .url이 있으면 그 앞의 숫자
+      // 2) URL(q=KR...)에서 숫자 추출
+      // 3) 파일명에서 숫자 덩어리 추출
+      let applicationNumber = '';
+      const m1 = fileName.match(/(\d{10,})/);
+      if (fileName.toLowerCase().endsWith('.url')) {
+        applicationNumber = fileName.replace(/\.url$/i, '');
+      } else if (path) {
+        const m2 = path.match(/KR(\d{10,})/i) || path.match(/(\d{10,})/);
+        if (m2 && m2[1]) applicationNumber = m2[1];
+      }
+      if (!applicationNumber && m1 && m1[1]) applicationNumber = m1[1];
+
+      const googlePatentsUrl = `https://patents.google.com/?q=KR${applicationNumber}`;
+      
+      // KIPRIS 원문 PDF 프록시 URL (백엔드 API 경유)
+      const token = localStorage.getItem('ABEKM_token') || localStorage.getItem('access_token') || '';
+      const kiprisPdfUrl = `${getApiUrl()}/api/files/patent-fulltext/${applicationNumber}?token=${encodeURIComponent(token)}`;
+
+      return (
+        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+          <div className="text-center max-w-2xl mx-auto p-8">
+            {/* 특허 아이콘 */}
+            <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
+              <FileText className="w-10 h-10 text-white" />
+            </div>
+            
+            {/* 특허 제목 */}
+            <h2 className="text-xl font-bold text-gray-900 mb-4 leading-relaxed">
+              {document.title || '특허 문서'}
+            </h2>
+            
+            {/* 출원번호 */}
+            <div className="inline-flex items-center px-4 py-2 bg-white rounded-full shadow-sm mb-6">
+              <span className="text-sm text-gray-500 mr-2">출원번호:</span>
+              <span className="text-sm font-mono font-semibold text-blue-600">KR{applicationNumber}</span>
+            </div>
+            
+            {/* 안내 메시지 */}
+            <p className="text-gray-600 mb-6">
+              특허 원문을 확인할 수 있습니다.
+            </p>
+            
+            {/* 버튼들 */}
+            <div className="flex flex-row justify-center gap-4 mb-6">
+              <a
+                href={kiprisPdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors shadow-lg"
+              >
+                <FileText className="w-5 h-5 mr-2" />
+                KIPRIS 원문 PDF
+              </a>
+              <a
+                href={googlePatentsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors shadow-lg"
+              >
+                <ExternalLink className="w-5 h-5 mr-2" />
+                Google Patents
+              </a>
+            </div>
+            
+            {/* 추가 안내 */}
+            <div className="p-4 bg-white/60 rounded-lg text-sm text-gray-500 border border-gray-100">
+              <p>📄 KIPRIS 원문 PDF에서 한글 공개공보를,</p>
+              <p className="mt-1">Google Patents에서 영문 번역본을 확인할 수 있습니다.</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     switch (fileExt) {
       case 'pdf':

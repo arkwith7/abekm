@@ -28,6 +28,21 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     checkAuthStatus();
   }, []);
 
+  // ✅ authService.logout()가 발행하는 이벤트를 받아 SPA 메모리 상태까지 확실히 초기화
+  useEffect(() => {
+    const onLogout = () => {
+      try {
+        actions.clearAllDocumentsOnLogout();
+      } catch {
+        // ignore
+      }
+      setUser(null);
+    };
+
+    window.addEventListener('abekm:logout', onLogout as EventListener);
+    return () => window.removeEventListener('abekm:logout', onLogout as EventListener);
+  }, [actions]);
+
   const checkAuthStatus = async () => {
     try {
       const token = authService.getToken();
@@ -82,10 +97,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const logout = () => {
-    // 로그아웃 시 선택된 문서 클리어 후 authService logout 호출
-    authService.logout(() => {
+    // ✅ 로그아웃: localStorage/sessionStorage 먼저 완전 초기화(토큰 제거) →
+    //    이후 발생할 수 있는 언마운트 flush(savePageState)가 이전 선택을 되살리지 않도록 함
+    authService.logout();
+
+    // ✅ 메모리 상태도 즉시 정리 (이벤트 리스너에서도 재차 방어)
+    try {
       actions.clearAllDocumentsOnLogout();
-    });
+    } catch {
+      // ignore
+    }
     setUser(null);
   };
 

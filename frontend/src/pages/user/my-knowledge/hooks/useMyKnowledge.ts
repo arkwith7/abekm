@@ -57,10 +57,18 @@ export const useMyKnowledge = () => {
   const [currentPage, setCurrentPage] = useState(
     savedMyKnowledgeState?.currentPage || 1
   );
-  const [itemsPerPage, setItemsPerPage] = useState(5);
-  const [totalItems, setTotalItems] = useState(0);
-  const [hasNext, setHasNext] = useState(false);
-  const [hasPrevious, setHasPrevious] = useState(false);
+  const [itemsPerPage, setItemsPerPage] = useState(
+    savedMyKnowledgeState?.itemsPerPage || 5
+  );
+  const [totalItems, setTotalItems] = useState(
+    savedMyKnowledgeState?.totalItems || 0
+  );
+  const [hasNext, setHasNext] = useState(
+    savedMyKnowledgeState?.hasNext || false
+  );
+  const [hasPrevious, setHasPrevious] = useState(
+    savedMyKnowledgeState?.hasPrevious || false
+  );
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(false);
 
   // 검색 및 필터링
@@ -89,7 +97,28 @@ export const useMyKnowledge = () => {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 
   // 선택 관련
-  const [selectedDocuments, setSelectedDocuments] = useState<Set<string>>(new Set());
+  // ✅ 메뉴 이동 후에도 체크박스 상태가 복원되도록, 전역 pageStates.myKnowledge.selectedDocuments 기준으로 초기화
+  const [selectedDocuments, setSelectedDocuments] = useState<Set<string>>(() => {
+    const saved = (savedMyKnowledgeState?.selectedDocuments || []) as any[];
+    const ids = saved.map((d) => d?.fileId).filter(Boolean);
+    return new Set(ids);
+  });
+
+  // ✅ 전역(pageStates) 선택 문서 변경을 로컬(Set)로 동기화 (AgentChat → MyKnowledge 복귀 포함)
+  const lastSyncedSelectionKeyRef = useRef<string>('__init__');
+  useEffect(() => {
+    const selectedGlobal = (globalState.pageStates?.myKnowledge?.selectedDocuments || []) as any[];
+    const key = selectedGlobal.map((d) => d?.fileId).filter(Boolean).sort().join('|');
+    if (lastSyncedSelectionKeyRef.current === key) return;
+    lastSyncedSelectionKeyRef.current = key;
+    setSelectedDocuments(new Set(selectedGlobal.map((d) => d?.fileId).filter(Boolean)));
+  }, [globalState.pageStates?.myKnowledge?.selectedDocuments]);
+
+  // ✅ 선택 변경을 savePageState 디바운스 effect가 감지하도록 key 생성
+  const selectedDocsKey = useMemo(() => {
+    const selectedGlobal = (globalState.pageStates?.myKnowledge?.selectedDocuments || []) as any[];
+    return selectedGlobal.map((d) => d?.fileId).filter(Boolean).sort().join('|');
+  }, [globalState.pageStates?.myKnowledge?.selectedDocuments]);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const expandedContainersRef = useRef(expandedContainers);
@@ -120,6 +149,10 @@ export const useMyKnowledge = () => {
       sortOrder,
       selectedDocuments: globalState.pageStates?.myKnowledge?.selectedDocuments || [],
       currentPage,
+      itemsPerPage,
+      totalItems,
+      hasNext,
+      hasPrevious,
       viewMode,
       lastLoadTime: Date.now(),
     };
@@ -136,7 +169,7 @@ export const useMyKnowledge = () => {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedContainerId, searchTerm, filterStatus, sortBy, sortOrder, currentPage, viewMode, containers, documents]);
+  }, [selectedContainerId, searchTerm, filterStatus, sortBy, sortOrder, currentPage, itemsPerPage, totalItems, hasNext, hasPrevious, viewMode, containers, documents, selectedDocsKey]);
 
   // ✅ 메뉴 이동으로 언마운트될 때 마지막 상태를 즉시 저장 (디바운스 취소로 인한 캐시 누락 방지)
   useEffect(() => {
@@ -543,8 +576,15 @@ export const useMyKnowledge = () => {
       setSelectedContainerId(savedMyKnowledgeState.selectedContainer || null);
       setExpandedContainers(new Set(savedMyKnowledgeState.expandedContainers || []));
       setCurrentPage(savedMyKnowledgeState.currentPage || 1);
+      setItemsPerPage(savedMyKnowledgeState.itemsPerPage || 5);
+      setTotalItems(savedMyKnowledgeState.totalItems || 0);
+      setHasNext(savedMyKnowledgeState.hasNext || false);
+      setHasPrevious(savedMyKnowledgeState.hasPrevious || false);
       setSearchTerm(savedMyKnowledgeState.searchTerm || '');
       setViewMode(savedMyKnowledgeState.viewMode || 'list');
+      // ✅ 선택된 문서(체크박스)도 복원
+      const restoredSelected = (savedMyKnowledgeState.selectedDocuments || []) as any[];
+      setSelectedDocuments(new Set(restoredSelected.map((d) => d?.fileId).filter(Boolean)));
       // ✅ 리마운트 시 restore 직후 selectedContainerId effect가 불필요하게 재호출(fetch)하지 않도록 마킹
       // - restore된 상태(메모리 캐시)가 가장 신뢰할 UX 상태임
       lastLoadedContainerRef.current = savedMyKnowledgeState.selectedContainer || null;
@@ -645,6 +685,8 @@ export const useMyKnowledge = () => {
   const handleSelectContainer = (container: KnowledgeContainer) => {
     setSelectedContainerId(container.id);
     setSelectedDocuments(new Set());
+    // ✅ 컨테이너 변경 시 전역 선택도 클리어 (AI 에이전트 연계/버튼 상태 일관성)
+    actions.setPageSelectedDocuments('myKnowledge', []);
   };
 
   const handleToggleExpand = (containerId: string) => {
@@ -717,20 +759,86 @@ export const useMyKnowledge = () => {
   };
 
   const handleDocumentSelect = (documentId: string, selected: boolean) => {
+    console.log('🔄 [useMyKnowledge] handleDocumentSelect 호출:', { documentId, selected });
+    
     setSelectedDocuments(prev => {
       const newSet = new Set(prev);
       if (selected) newSet.add(documentId);
       else newSet.delete(documentId);
+      console.log('📊 [useMyKnowledge] 로컬 selectedDocuments 업데이트:', newSet);
       return newSet;
     });
+
+    // ✅ 전역(pageStates.myKnowledge.selectedDocuments)도 즉시 동기화 (AgentChat으로 전달되는 선택 문서)
+    const doc = documents.find(d => d.id === documentId);
+    if (selected && doc) {
+      const docToAdd = {
+        fileId: doc.id,
+        fileName: doc.file_name,
+        originalName: doc.title || doc.file_name,
+        fileSize: doc.file_size || 0,
+        fileType: doc.file_extension || '',
+        uploadDate: doc.created_at || '',
+        containerName: doc.container_path || '',
+        containerId: doc.container_path || '',
+        keywords: doc.keywords || [],
+        isSelected: true
+      } as any;
+      
+      console.log('✅ [useMyKnowledge] 문서를 pageStates.myKnowledge에 추가:', docToAdd);
+      actions.addPageSelectedDocument('myKnowledge', docToAdd);
+      
+      // ✅ 통합 선택(전역 selectedDocuments)에도 추가
+      const currentUnified = (globalState.selectedDocuments || []) as any[];
+      const exists = currentUnified.some((d) => d?.fileId === doc.id);
+      if (!exists) {
+        const updatedUnified = [
+          ...currentUnified,
+          docToAdd
+        ];
+        console.log('✅ [useMyKnowledge] 통합 selectedDocuments에 추가:', updatedUnified.length, '개');
+        actions.setSelectedDocuments(updatedUnified as any);
+      }
+    } else if (!selected) {
+      console.log('➖ [useMyKnowledge] 문서 선택 해제:', documentId);
+      actions.removePageSelectedDocument('myKnowledge', documentId);
+      // ✅ 통합 선택(전역)에서도 제거
+      actions.setSelectedDocuments(((globalState.selectedDocuments || []) as any[]).filter((d) => d?.fileId !== documentId) as any);
+    }
   };
 
   const handleSelectAll = () => {
-    if (selectedDocuments.size === filteredDocuments.length) {
+    const isAllSelected = selectedDocuments.size === filteredDocuments.length && filteredDocuments.length > 0;
+    if (isAllSelected) {
       setSelectedDocuments(new Set());
-    } else {
-      setSelectedDocuments(new Set(filteredDocuments.map(doc => doc.id)));
+      actions.setPageSelectedDocuments('myKnowledge', []);
+      // ✅ 통합 선택은 "전체 삭제"로만 비우고, 여기서는 myKnowledge 페이지만 해제
+      return;
     }
+
+    const ids = filteredDocuments.map(doc => doc.id);
+    setSelectedDocuments(new Set(ids));
+
+    const globalDocs = filteredDocuments.map((doc) => ({
+      fileId: doc.id,
+      fileName: doc.file_name,
+      originalName: doc.title || doc.file_name,
+      fileSize: doc.file_size || 0,
+      fileType: doc.file_extension || '',
+      uploadDate: doc.created_at || '',
+      containerName: doc.container_path || '',
+      containerId: doc.container_path || '',
+      keywords: doc.keywords || [],
+      isSelected: true
+    })) as any[];
+    actions.setPageSelectedDocuments('myKnowledge', globalDocs as any);
+
+    // ✅ 통합 선택(전역)에는 union으로 추가 (지식검색 선택과 합쳐짐)
+    const currentUnified = (globalState.selectedDocuments || []) as any[];
+    const map = new Map<string, any>();
+    currentUnified.forEach((d) => d?.fileId && map.set(d.fileId, d));
+    globalDocs.forEach((d) => d?.fileId && map.set(d.fileId, d));
+    actions.setSelectedDocuments(Array.from(map.values()) as any);
   };
 
   const handleDownload = async (document: ExtendedDocument) => {

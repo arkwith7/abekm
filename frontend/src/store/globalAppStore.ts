@@ -48,6 +48,50 @@ function deepMerge<T>(base: T, patch: any): T {
   return out as T;
 }
 
+function getPath(obj: any, path: string): any {
+  return path.split('.').reduce((acc, key) => (acc == null ? acc : acc[key]), obj);
+}
+
+function setPath(obj: any, path: string, value: any): void {
+  const parts = path.split('.');
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const key = parts[i];
+    if (!cur[key] || typeof cur[key] !== 'object') cur[key] = {};
+    cur = cur[key];
+  }
+  cur[parts[parts.length - 1]] = value;
+}
+
+function mergePersistedState(currentState: any, persistedState: any): any {
+  // 기본은 persisted → current 로 deep merge 하되,
+  // "persisted가 빈 배열로 덮어써서 런타임 선택 문서가 사라지는" 케이스는 방지한다.
+  const merged = deepMerge(currentState, persistedState);
+
+  const protectedArrayPaths = [
+    'selectedDocuments',
+    'pageStates.search.selectedDocuments',
+    'pageStates.myKnowledge.selectedDocuments',
+    'pageStates.chat.selectedDocuments',
+    'pageStates.agentChat.selectedDocuments',
+  ];
+
+  for (const p of protectedArrayPaths) {
+    const curVal = getPath(currentState, p);
+    const persistedVal = getPath(persistedState, p);
+
+    // persisted가 비어있음([]/null/undefined)인데 current가 이미 선택 문서를 갖고 있으면 current를 보존
+    // (구버전 persisted 스키마에서 null이 들어온 경우도 방어)
+    const persistedIsEmptyArray = Array.isArray(persistedVal) && persistedVal.length === 0;
+    const persistedIsNil = persistedVal == null;
+    if (Array.isArray(curVal) && curVal.length > 0 && (persistedIsEmptyArray || persistedIsNil)) {
+      setPath(merged, p, curVal);
+    }
+  }
+
+  return merged;
+}
+
 export type GlobalAppActions = {
   // 사용자/권한
   setUser: (user: UserInfo | null) => void;
@@ -165,15 +209,31 @@ export const useGlobalAppStore = create<GlobalAppStore>()(
           })),
 
         savePageState: (page: PageKey, pageStatePatch: any) =>
-          set((state: GlobalAppStore) => ({
-            pageStates: {
-              ...state.pageStates,
-              [page]: {
-                ...(state.pageStates as any)[page],
-                ...(pageStatePatch || {}),
-              },
-            } as any,
-          })),
+          set((state: GlobalAppStore) => {
+            // ✅ 로그아웃 직후(localStorage.clear 이후) 언마운트 flush/save가
+            //    이전 선택 문서를 다시 저장(persist)하는 것을 방지
+            try {
+              const hasToken = Boolean(
+                localStorage.getItem('ABEKM_token') ||
+                localStorage.getItem('abkms_token') ||
+                localStorage.getItem('access_token') ||
+                localStorage.getItem('token')
+              );
+              if (!hasToken) return state;
+            } catch {
+              // ignore (SSR/blocked storage)
+            }
+
+            return {
+              pageStates: {
+                ...state.pageStates,
+                [page]: {
+                  ...(state.pageStates as any)[page],
+                  ...(pageStatePatch || {}),
+                },
+              } as any,
+            };
+          }),
 
         restorePageState: (page: PageKey) => {
           const saved = (get().pageStates as any)[page];
@@ -263,26 +323,19 @@ export const useGlobalAppStore = create<GlobalAppStore>()(
           }),
 
         clearAllDocumentsOnLogout: () => {
-          // 선택 문서/페이지 상태 정리 + persisted state도 정리
-          set((state: GlobalAppStore) => ({
-            selectedDocuments: [],
-            selectedContainers: [],
-            currentChatSession: null,
-            chatHistory: [],
-            pageStates: {
-              ...state.pageStates,
-              search: { ...state.pageStates.search, selectedDocuments: [] },
-              myKnowledge: { ...state.pageStates.myKnowledge, selectedDocuments: [] },
-              chat: { ...state.pageStates.chat, selectedDocuments: [] },
-              agentChat: { ...state.pageStates.agentChat, selectedDocuments: [] },
-            } as any,
-          }));
+          // ✅ 로그아웃 후 재로그인 시 "항상 초기 상태"로 시작해야 하므로
+          // - 선택 문서뿐 아니라 검색/필터/페이지 등 모든 UI 상태를 초기화
+          // - actions는 유지되어야 하므로 state.actions는 건드리지 않음
+          set(() => ({
+            ...initialGlobalState,
+          } as any));
           try {
             localStorage.removeItem(STORAGE_KEY);
             // 기존 키들(레거시)도 함께 제거
             localStorage.removeItem('pageStates');
             localStorage.removeItem('ABEKM_chat_state');
             localStorage.removeItem('ABEKM_agent_chat_state');
+            localStorage.removeItem('bedrock_conversations');
           } catch {
             // ignore
           }
@@ -341,7 +394,7 @@ export const useGlobalAppStore = create<GlobalAppStore>()(
           },
         },
       }),
-      merge: (persistedState: unknown, currentState: unknown) => deepMerge(currentState as any, persistedState as any),
+      merge: (persistedState: unknown, currentState: unknown) => mergePersistedState(currentState as any, persistedState as any),
       version: 1,
     }
   )

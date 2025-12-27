@@ -253,31 +253,35 @@ class KIPRISClient:
             # 새로운 KIPO API 엔드포인트 (getAdvancedSearch)
             endpoint = f"{self.KIPO_API_URL}/patUtiModInfoSearchSevice/getAdvancedSearch"
             
+            # KIPRIS Plus API 파라미터 (getAdvancedSearch)
+            # - numOfRows: 페이지당 건수 (기본 30, 최대 500)
+            # - pageNo: 페이지 번호
+            # - sortSpec: 정렬기준 (AD-출원일자, PD-공고일자, GD-등록일자, OPD-공개일자)
+            # - descSort: 정렬방식 (true-내림차순, false-오름차순)
             params = {
                 "ServiceKey": self.api_key,
-                "patent": "true" if patent_type == "patent" else "false",
-                "utility": "true" if patent_type == "utility" else "false",
-                "num_of_rows": str(min(max_results, 100)),
-                "page_no": str(page),
-                "desc_sort": "true",
-                "sort_spec": "AD"  # 출원일 기준 정렬
+                "patent": "true" if patent_type in ["patent", "all"] else "false",
+                "utility": "true" if patent_type in ["utility", "all"] else "false",
+                "numOfRows": str(min(max_results, 500)),
+                "pageNo": str(page),
+                "descSort": "true",
+                "sortSpec": "AD"  # 출원일 기준 정렬
             }
             
-            # word 파라미터: 키워드가 있는 경우에만 추가
+            # word 파라미터: 키워드가 있는 경우에만 추가 (자유검색)
             if encoded_query:
                 params["word"] = encoded_query
             
-            # 🔧 출원인 필터: 항상 별도로 추가 (출원인 검색은 applicant 파라미터 사용)
+            # 🔧 출원인 필터: applicant 파라미터 사용 (URL 인코딩 하지 않음 - httpx가 처리)
             if applicant:
-                params["applicant"] = urllib.parse.quote(applicant)
+                params["applicant"] = applicant
+            # IPC 코드: ipcNumber 파라미터 사용
             if ipc_code:
-                params["ipc_number"] = ipc_code
+                params["ipcNumber"] = ipc_code
+            # 출원일자: applicationDate 파라미터 사용 (YYYYMMDD 형식)
             if date_from:
-                # KIPRIS 날짜 형식: YYYYMMDD
-                params["application_date"] = date_from.replace("-", "")
-            if date_to:
-                # KIPRIS API는 단일 날짜 필터만 지원하는 경우가 있음
-                pass
+                params["applicationDate"] = date_from.replace("-", "")
+            # 참고: KIPRIS API는 날짜 범위가 아닌 단일 날짜 검색만 지원
             
             logger.info(f"🔍 [KIPRIS] 검색 요청: endpoint={endpoint}, query='{search_query}', applicant='{applicant}'")
             logger.debug(f"[KIPRIS] 파라미터: {params}")

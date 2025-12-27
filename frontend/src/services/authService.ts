@@ -106,6 +106,16 @@ export const authService = {
       clearDocumentsCallback();
     }
 
+    // ✅ SPA 메모리 상태(zustand persist 포함)도 함께 초기화할 수 있도록 이벤트 발행
+    // - 토큰 만료/자동 로그아웃 경로에서도 동일하게 동작
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('abekm:logout'));
+      }
+    } catch {
+      // ignore
+    }
+
     console.log('🚪 로그아웃 처리 완료 (전체 localStorage 초기화 포함)');
   },
 

@@ -341,13 +341,20 @@ const ResultItem: React.FC<{
               >
                 자세히 보기
               </button>
+              {(() => {
+                // 특허 URL 타입 확인
+                const fileName = result.metadata?.file_name || '';
+                const isPatentUrl = fileName.endsWith('.url') || result.metadata?.document_type === '특허';
+                return (
               <button
-                className="text-green-600 hover:text-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 rounded px-2 py-1"
+                    className={`${isPatentUrl ? 'text-purple-600 hover:text-purple-800' : 'text-green-600 hover:text-green-800'} focus:outline-none focus:ring-2 focus:ring-offset-2 rounded px-2 py-1`}
                 onClick={() => onFileDownload(result)}
-                aria-label={`${result.title} 다운로드`}
+                    aria-label={`${result.title} ${isPatentUrl ? '외부 링크' : '다운로드'}`}
               >
-                다운로드
+                    {isPatentUrl ? '🔗 외부 링크' : '다운로드'}
               </button>
+                );
+              })()}
             </div>
           </div>
         </div>

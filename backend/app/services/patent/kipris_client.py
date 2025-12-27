@@ -37,61 +37,113 @@ class KIPRISClient:
         ipc_codes: Optional[List[str]] = None,
         keywords: Optional[List[str]] = None,
         applicants: Optional[List[str]] = None,
+        invention_title: Optional[str] = None,
+        abstract_text: Optional[str] = None,
         max_results: int = 100,
         sort: str = "application_date_desc"
     ) -> List[Dict[str, Any]]:
         """
-        특허 검색
+        특허 검색 (KIPRIS Plus API - getAdvancedSearch)
+        
+        KIPRIS Plus API 파라미터:
+            - word: 자유검색 (키워드)
+            - inventionTitle: 발명의 명칭
+            - astrtCont: 초록
+            - ipcNumber: IPC 코드
+            - applicant: 출원인명/특허고객번호
+            - patent: 특허 포함 (true/false)
+            - utility: 실용 포함 (true/false)
+            - numOfRows: 페이지당 건수 (기본 30, 최대 500)
+            - pageNo: 페이지 번호
+            - sortSpec: 정렬기준 (PD-공고일자, AD-출원일자, GD-등록일자, OPD-공개일자)
+            - descSort: 정렬방식 (asc: false, desc: true)
         
         Args:
             ipc_codes: IPC 분류 코드 리스트 (예: ["G06N", "G06F"])
-            keywords: 키워드 리스트 (제목/요약 검색)
+            keywords: 키워드 리스트 (word 파라미터 - 자유검색)
             applicants: 출원인 리스트
-            max_results: 최대 결과 수 (KIPRIS API 제한: 100건/요청)
+            invention_title: 발명의 명칭 검색어
+            abstract_text: 초록 검색어
+            max_results: 최대 결과 수 (KIPRIS API 제한: 500건/요청)
             sort: 정렬 (application_date_desc, publication_date_desc)
         
         Returns:
             특허 서지정보 리스트
         """
         try:
-            # KIPRIS API는 한 번에 최대 100건까지만 조회 가능
-            page_size = min(max_results, 100)
+            # KIPRIS API는 한 번에 최대 500건까지 조회 가능
+            page_size = min(max_results, 500)
 
-            # 검색 조건 구성 (KIPRIS 검색식). 기존 SearchService 형식과 동일하게 word 파라미터로 전달.
-            query_parts = []
+            # 정렬 설정
+            sort_spec = "AD"  # 기본: 출원일자
+            desc_sort = "true"  # 기본: 내림차순
+            if sort == "publication_date_desc":
+                sort_spec = "OPD"  # 공개일자
+            elif sort == "registration_date_desc":
+                sort_spec = "GD"  # 등록일자
 
-            if ipc_codes:
-                ipc_query = " OR ".join([f"IPC:{code}" for code in ipc_codes])
-                query_parts.append(f"({ipc_query})")
-
-            if keywords:
-                # KIPRIS Plus API는 TI: 필드 지정자가 제대로 작동하지 않을 수 있음
-                # 필드 지정 없이 일반 키워드 검색 사용 (제목+초록+청구항 등 전체 텍스트 검색)
-                keyword_query = " OR ".join([kw for kw in keywords])
-                query_parts.append(f"({keyword_query})")
-
-            if applicants:
-                applicant_query = " OR ".join([f"PA:{app}" for app in applicants])
-                query_parts.append(f"({applicant_query})")
-
-            if not query_parts:
-                logger.warning("⚠️ 검색 조건이 없습니다")
-                return []
-
-            query_string = " AND ".join(query_parts)
-
+            # API 파라미터 구성
             params = {
                 "ServiceKey": self.api_key,
-                "word": query_string,
                 "patent": "true",
                 "utility": "true",
                 "numOfRows": str(page_size),
                 "pageNo": "1",
+                "sortSpec": sort_spec,
+                "descSort": desc_sort,
             }
+
+            # 자유검색 (word) - 여러 키워드를 공백으로 연결
+            if keywords:
+                word_query = " ".join(keywords)
+                params["word"] = word_query
+
+            # 발명의 명칭 검색 (inventionTitle)
+            if invention_title:
+                params["inventionTitle"] = invention_title
+
+            # 초록 검색 (astrtCont)
+            if abstract_text:
+                params["astrtCont"] = abstract_text
+
+            # IPC 코드 검색 (ipcNumber)
+            if ipc_codes:
+                # IPC 코드가 여러 개면 공백으로 연결
+                ipc_query = " ".join(ipc_codes)
+                params["ipcNumber"] = ipc_query
+
+            # 출원인 검색 (applicant)
+            if applicants:
+                # 출원인이 여러 명이면 첫 번째만 사용 (API 제한)
+                params["applicant"] = applicants[0]
+
+            # 검색 조건이 없으면 경고
+            has_search_condition = any([
+                params.get("word"),
+                params.get("inventionTitle"),
+                params.get("astrtCont"),
+                params.get("ipcNumber"),
+                params.get("applicant"),
+            ])
+            if not has_search_condition:
+                logger.warning("⚠️ 검색 조건이 없습니다")
+                return []
 
             url = f"{self.base_url.rstrip('/')}/{self.search_path.lstrip('/')}"
 
-            logger.info(f"🔍 KIPRIS 검색 시작: url={url}, word={query_string}, max={max_results}")
+            # 로그에 검색 조건 상세 표시
+            log_parts = []
+            if params.get("word"):
+                log_parts.append(f"word={params['word']}")
+            if params.get("inventionTitle"):
+                log_parts.append(f"inventionTitle={params['inventionTitle']}")
+            if params.get("astrtCont"):
+                log_parts.append(f"astrtCont={params['astrtCont']}")
+            if params.get("ipcNumber"):
+                log_parts.append(f"ipcNumber={params['ipcNumber']}")
+            if params.get("applicant"):
+                log_parts.append(f"applicant={params['applicant']}")
+            logger.info(f"🔍 KIPRIS 검색 시작: {', '.join(log_parts)}, max={max_results}")
 
             response = await self.client.get(url, params=params)
             response.raise_for_status()
@@ -109,28 +161,51 @@ class KIPRISClient:
             import xml.etree.ElementTree as ET
 
             root = ET.fromstring(text)
+            
+            # 응답 성공 여부 확인
+            success_yn = root.find('.//successYN')
+            if success_yn is None or success_yn.text != 'Y':
+                result_msg = root.find('.//resultMsg')
+                msg = result_msg.text if result_msg is not None else "알 수 없는 오류"
+                logger.warning(f"⚠️ KIPRIS API 응답 오류: {msg}")
+                return []
+            
             items_el = root.find('.//items')
             results: List[Dict[str, Any]] = []
             if items_el is not None:
                 for item_el in items_el.findall('item'):
                     def _get(tag: str) -> Optional[str]:
                         el = item_el.find(tag)
-                        return el.text if el is not None else None
+                        return el.text.strip() if el is not None and el.text else None
 
+                    # KIPRIS API 응답 필드에 맞게 파싱
+                    # applicantName, applicationDate, applicationNumber, astrtCont,
+                    # bigDrawing, drawing, indexNo, inventionTitle, ipcNumber,
+                    # openDate, openNumber, publicationDate, publicationNumber,
+                    # registerDate, registerNumber, registerStatus
                     results.append({
                         "applicationNumber": _get('applicationNumber'),
-                        "publicationNumber": _get('publicationNumber'),
                         "inventionTitle": _get('inventionTitle'),
-                        "abstract": _get('abstract'),
+                        "abstract": _get('astrtCont'),  # 초록은 astrtCont 필드
+                        "applicantName": _get('applicantName'),
                         "applicationDate": _get('applicationDate'),
+                        "openNumber": _get('openNumber'),
+                        "openDate": _get('openDate'),
+                        "publicationNumber": _get('publicationNumber'),
                         "publicationDate": _get('publicationDate'),
-                        "country": _get('countryCode'),
-                        "office": _get('officeCode'),
-                        "patentType": _get('patentType'),
-                        "legalStatus": _get('legalStatus'),
+                        "registerNumber": _get('registerNumber'),
+                        "registerDate": _get('registerDate'),
+                        "registerStatus": _get('registerStatus'),
+                        "ipcNumber": _get('ipcNumber'),
+                        "bigDrawing": _get('bigDrawing'),
+                        "drawing": _get('drawing'),
                     })
 
-            logger.info(f"✅ KIPRIS 검색 완료: {len(results)}건")
+            # 전체 건수 확인
+            total_count_el = root.find('.//totalCount')
+            total_count = int(total_count_el.text) if total_count_el is not None and total_count_el.text else len(results)
+
+            logger.info(f"✅ KIPRIS 검색 완료: {len(results)}건 (전체 {total_count}건)")
             return results
 
         except httpx.HTTPStatusError as e:
@@ -142,7 +217,7 @@ class KIPRISClient:
     
     async def get_patent_detail(self, application_number: str) -> Optional[Dict[str, Any]]:
         """
-        특허 상세 정보 조회
+        특허 상세 정보 조회 (서지정보 상세)
         
         Args:
             application_number: 출원번호 (예: 1020210012345)
@@ -151,8 +226,11 @@ class KIPRISClient:
             특허 상세 서지정보 (dict) 또는 None
         """
         try:
+            import xml.etree.ElementTree as ET
+            
+            url = f"{self.base_url}/kipi/patUtiModInfoSearchSevice/getBibliographyDetailInfoSearch"
             response = await self.client.get(
-                f"{self.BASE_URL}/BibliographicService/detail",
+                url,
                 params={
                     "ServiceKey": self.api_key,
                     "applicationNumber": application_number
@@ -160,8 +238,33 @@ class KIPRISClient:
             )
             response.raise_for_status()
             
-            data = response.json()
-            detail = data.get("response", {}).get("body", {}).get("item", {})
+            text = response.text or ""
+            if "<successYN>Y</successYN>" not in text:
+                logger.warning(f"⚠️ 특허 상세 조회 실패: {application_number}")
+                return None
+            
+            # XML 파싱
+            root = ET.fromstring(text)
+            item = root.find('.//item')
+            if item is None:
+                return None
+            
+            # 주요 필드 추출
+            def _get(tag: str) -> Optional[str]:
+                el = item.find(f'.//{tag}')
+                return el.text if el is not None else None
+            
+            detail = {
+                "applicationNumber": _get('applicationNumber'),
+                "inventionTitle": _get('inventionTitle'),
+                "inventionTitleEng": _get('inventionTitleEng'),
+                "openNumber": _get('openNumber'),
+                "openDate": _get('openDate'),
+                "registerNumber": _get('registerNumber'),
+                "registerDate": _get('registerDate'),
+                "registerStatus": _get('registerStatus'),
+                "abstract": _get('astrtCont'),
+            }
             
             logger.info(f"✅ 특허 상세 조회 완료: {application_number}")
             return detail
@@ -173,13 +276,74 @@ class KIPRISClient:
             logger.error(f"❌ 특허 상세 조회 실패: {application_number}, {e}")
             return None
     
-    async def download_patent_pdf(
+    async def get_full_text_pdf_url(self, application_number: str) -> Optional[Dict[str, str]]:
+        """
+        공개전문 PDF 다운로드 URL 조회
+        
+        Args:
+            application_number: 출원번호 (예: 1020240027504)
+        
+        Returns:
+            {"docName": "파일명", "path": "다운로드URL"} 또는 None
+        """
+        try:
+            import xml.etree.ElementTree as ET
+            
+            url = f"{self.base_url}/kipi/patUtiModInfoSearchSevice/getPubFullTextInfoSearch"
+            response = await self.client.get(
+                url,
+                params={
+                    "ServiceKey": self.api_key,
+                    "applicationNumber": application_number
+                }
+            )
+            response.raise_for_status()
+            
+            text = response.text or ""
+            if "<successYN>Y</successYN>" not in text:
+                logger.warning(f"⚠️ 전문 PDF URL 조회 실패: {application_number}")
+                return None
+            
+            # XML 파싱
+            root = ET.fromstring(text)
+            item = root.find('.//item')
+            if item is None:
+                logger.warning(f"⚠️ 전문 PDF 없음: {application_number}")
+                return None
+            
+            doc_name = item.find('docName')
+            path = item.find('path')
+            
+            if path is None or not path.text:
+                logger.warning(f"⚠️ 전문 PDF URL 없음: {application_number}")
+                return None
+            
+            result = {
+                "docName": doc_name.text if doc_name is not None else f"{application_number}.pdf",
+                "path": path.text
+            }
+            
+            logger.info(f"✅ 전문 PDF URL 조회 완료: {application_number} → {result['docName']}")
+            return result
+        
+        except httpx.HTTPStatusError as e:
+            logger.error(f"❌ 전문 PDF URL 조회 HTTP 오류: {application_number}, {e.response.status_code}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ 전문 PDF URL 조회 실패: {application_number}, {e}")
+            return None
+    
+    async def download_full_text_pdf(
         self,
         application_number: str,
         save_path: str
     ) -> bool:
         """
-        특허 PDF 다운로드
+        공개전문 PDF 다운로드
+        
+        1. getPubFullTextInfoSearch로 다운로드 URL 조회
+        2. 해당 URL에서 PDF 다운로드
+        3. save_path에 저장
         
         Args:
             application_number: 출원번호
@@ -189,24 +353,34 @@ class KIPRISClient:
             다운로드 성공 여부
         """
         try:
-            response = await self.client.get(
-                f"{self.BASE_URL}/DocumentService/pdf",
-                params={
-                    "ServiceKey": self.api_key,
-                    "applicationNumber": application_number
-                },
-                follow_redirects=True  # PDF 다운로드 리다이렉트 처리
-            )
+            from pathlib import Path
+            
+            # 1. PDF URL 조회
+            pdf_info = await self.get_full_text_pdf_url(application_number)
+            if not pdf_info:
+                logger.warning(f"⚠️ PDF URL을 찾을 수 없음: {application_number}")
+                return False
+            
+            pdf_url = pdf_info["path"]
+            logger.info(f"📥 PDF 다운로드 시작: {application_number} from {pdf_url[:60]}...")
+            
+            # 2. PDF 다운로드
+            response = await self.client.get(pdf_url, follow_redirects=True)
             response.raise_for_status()
             
-            # 파일 저장
-            from pathlib import Path
+            # PDF 유효성 확인
+            if not response.content or response.content[:4] != b'%PDF':
+                logger.error(f"❌ 유효하지 않은 PDF: {application_number}")
+                return False
+            
+            # 3. 파일 저장
             Path(save_path).parent.mkdir(parents=True, exist_ok=True)
             
             with open(save_path, "wb") as f:
                 f.write(response.content)
             
-            logger.info(f"✅ PDF 다운로드 완료: {application_number} → {save_path}")
+            file_size = len(response.content) / 1024  # KB
+            logger.info(f"✅ PDF 다운로드 완료: {application_number} → {save_path} ({file_size:.1f} KB)")
             return True
         
         except httpx.HTTPStatusError as e:

@@ -16,7 +16,8 @@ import asyncio
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models import User
-from app.agents.patent import patent_analysis_agent_tool
+from app.agents.patent import patent_analysis_agent
+from app.agents.base import AgentExecutionContext
 from loguru import logger
 
 
@@ -105,58 +106,62 @@ async def analyze_patents(
         user_emp_no = str(current_user.emp_no)
         logger.info(f"🔬 [PatentAPI] 사용자: {user_emp_no}, 분석: {request.analysis_type}, 쿼리: '{request.query[:50]}...'")
         
-        # 에이전트 실행
-        result = await patent_analysis_agent_tool._arun(
-            query=request.query,
-            analysis_type=request.analysis_type,
-            our_company=request.our_company,
-            competitor=request.competitor,
-            jurisdiction=request.jurisdiction,
-            date_from=request.date_from,
-            date_to=request.date_to,
-            ipc_codes=request.ipc_codes,
-            max_results=request.max_results,
-            include_visualization=request.include_visualization,
-            time_range_years=request.time_range_years
+        # 에이전트 실행 컨텍스트 생성
+        context = AgentExecutionContext(
+            request_id=str(uuid.uuid4()),
+            user_id=user_emp_no,
+            max_iterations=10,
+            timeout_seconds=120,
         )
         
-        # 특허 목록 변환
-        patents_summary = []
-        for p in result.get("patents", []):
-            patents_summary.append(PatentSummary(
-                patent_number=p.get("patent_number", ""),
-                title=p.get("title", ""),
-                applicant=p.get("applicant", ""),
-                application_date=p.get("application_date"),
-                status=p.get("status", "unknown"),
-                jurisdiction=p.get("jurisdiction", "KR"),
-                relevance_score=p.get("relevance_score", 0.0),
-                url=p.get("url")
-            ))
+        # 에이전트 실행
+        agent_result = await patent_analysis_agent.execute(
+            input_data={
+                "query": request.query,
+                "analysis_type": request.analysis_type,
+                "our_company": request.our_company,
+                "competitor": request.competitor,
+                "jurisdiction": request.jurisdiction,
+                "date_from": request.date_from,
+                "date_to": request.date_to,
+                "ipc_codes": request.ipc_codes,
+                "max_results": request.max_results,
+            },
+            context=context,
+        )
         
-        # 시각화 데이터 변환
-        visualizations = []
-        for v in result.get("visualizations", []):
-            visualizations.append(VisualizationData(
-                chart_type=v.get("chart_type", "bar"),
-                title=v.get("title", ""),
-                data=v.get("data", {}),
-                options=v.get("options", {})
-            ))
+        # 결과 추출 - Agent 출력은 {"answer": "..."} 형태
+        output = agent_result.output or {}
+        answer = output.get("answer", "")
+        
+        # Agent가 성공하면 answer에 분석 결과가 포함됨
+        result = {
+            "success": agent_result.success,
+            "summary": answer,
+            "patents": [],  # Agent는 answer 텍스트로 결과를 반환
+            "insights": [],
+            "recommendations": [],
+        }
+        
+        # 특허 목록 변환 (Agent가 구조화된 데이터를 반환하지 않으므로 빈 리스트)
+        patents_summary = []
+        
+        # 실행 시간 계산
+        elapsed_ms = agent_result.total_latency_ms if agent_result else 0.0
         
         return PatentAnalysisResponse(
-            success=result.get("success", False),
-            analysis_type=result.get("analysis_type", request.analysis_type),
-            summary=result.get("summary", ""),
+            success=agent_result.success,
+            analysis_type=request.analysis_type,
+            summary=answer or "분석이 완료되었습니다.",
             patents=patents_summary,
-            total_patents=result.get("total_patents", len(patents_summary)),
-            analysis_result=result.get("analysis_result"),
-            visualizations=visualizations,
-            insights=result.get("insights", []),
-            recommendations=result.get("recommendations", []),
-            trace_id=result.get("trace_id", str(uuid.uuid4())),
-            elapsed_ms=result.get("elapsed_ms", 0),
-            errors=result.get("errors", [])
+            total_patents=len(patents_summary),
+            analysis_result=None,
+            visualizations=[],
+            insights=[],
+            recommendations=[],
+            trace_id=str(uuid.uuid4()),
+            elapsed_ms=elapsed_ms,
+            errors=agent_result.errors if agent_result else []
         )
         
     except Exception as e:
@@ -196,19 +201,28 @@ async def analyze_patents_stream(
             # 분석 실행
             yield f"data: {json.dumps({'event': 'step', 'step': 'analyzing', 'message': f'{request.analysis_type} 분석 수행 중...'})}\n\n"
             
-            result = await patent_analysis_agent_tool._arun(
-                query=request.query,
-                analysis_type=request.analysis_type,
-                our_company=request.our_company,
-                competitor=request.competitor,
-                jurisdiction=request.jurisdiction,
-                date_from=request.date_from,
-                date_to=request.date_to,
-                ipc_codes=request.ipc_codes,
-                max_results=request.max_results,
-                include_visualization=request.include_visualization,
-                time_range_years=request.time_range_years
+            context = AgentExecutionContext(
+                request_id=trace_id,
+                user_id=user_emp_no,
+                max_iterations=10,
+                timeout_seconds=120,
             )
+            
+            agent_result = await patent_analysis_agent.execute(
+                input_data={
+                    "query": request.query,
+                    "analysis_type": request.analysis_type,
+                    "our_company": request.our_company,
+                    "competitor": request.competitor,
+                    "jurisdiction": request.jurisdiction,
+                    "date_from": request.date_from,
+                    "date_to": request.date_to,
+                    "ipc_codes": request.ipc_codes,
+                    "max_results": request.max_results,
+                },
+                context=context,
+            )
+            result = agent_result.output if agent_result.success else {"success": False, "summary": "분석 실패"}
             
             # 시각화 생성 단계
             if request.include_visualization:
@@ -249,20 +263,32 @@ async def search_patents(
     빠른 검색을 위한 단순화된 엔드포인트
     """
     try:
-        result = await patent_analysis_agent_tool._arun(
-            query=query,
-            analysis_type="search",
-            our_company=applicant,
-            jurisdiction=jurisdiction,
-            max_results=max_results,
-            include_visualization=False
+        user_emp_no = str(current_user.emp_no)
+        context = AgentExecutionContext(
+            request_id=str(uuid.uuid4()),
+            user_id=user_emp_no,
+            max_iterations=5,
+            timeout_seconds=60,
         )
         
+        agent_result = await patent_analysis_agent.execute(
+            input_data={
+                "query": query,
+                "analysis_type": "search",
+                "our_company": applicant,
+                "jurisdiction": jurisdiction,
+                "max_results": max_results,
+            },
+            context=context,
+        )
+        
+        result = agent_result.output if agent_result.success else {}
+        
         return {
-            "success": result.get("success", False),
+            "success": agent_result.success,
             "patents": result.get("patents", []),
             "total": result.get("total_patents", 0),
-            "summary": result.get("summary", "")
+            "summary": result.get("answer", result.get("summary", ""))
         }
         
     except Exception as e:

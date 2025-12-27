@@ -13,7 +13,7 @@ import {
     X
 } from 'lucide-react';
 import React, { useState } from 'react';
-import { useSelectedDocuments, useWorkContext } from '../../contexts/GlobalAppContext';
+import { useUnifiedSelectedDocuments, useWorkContext } from '../../contexts/GlobalAppContext';
 
 interface SelectedDocumentsDisplayProps {
     maxDisplay?: number;
@@ -35,14 +35,15 @@ export const SelectedDocumentsDisplay: React.FC<SelectedDocumentsDisplayProps> =
     onRemove,
     onViewDocument
 }) => {
-    const { selectedDocuments, removeSelectedDocument, clearSelectedDocuments } = useSelectedDocuments();
+    // ✅ 통합 선택 문서(전역) 기준으로 표시
+    const { selectedDocuments, removeSelectedDocument, clearSelectedDocuments } = useUnifiedSelectedDocuments();
     const { workContext } = useWorkContext();
     const [showAll, setShowAll] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
-    // 검색 필터링
+    // 검색 필터링 - originalName(논리 파일명, 발명의 명칭) 사용
     const filteredDocuments = selectedDocuments.filter((doc: any) =>
-        doc.fileName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (doc.originalName || doc.fileName).toLowerCase().includes(searchQuery.toLowerCase()) ||
         doc.containerName?.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
@@ -113,9 +114,10 @@ export const SelectedDocumentsDisplay: React.FC<SelectedDocumentsDisplayProps> =
                         <h3 className="text-sm font-medium text-gray-900">
                             선택된 문서 ({selectedDocuments.length})
                         </h3>
+                        {/* 통합 선택이므로 특정 페이지 출처 배지는 고정 텍스트로 표시 */}
                         {workContext.sourcePageType && (
                             <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                                from {workContext.sourcePageType}
+                                통합 선택
                             </span>
                         )}
                     </div>
@@ -162,7 +164,7 @@ export const SelectedDocumentsDisplay: React.FC<SelectedDocumentsDisplayProps> =
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center space-x-2 min-w-0 flex-1 text-left">
                                         <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                                        <span className="text-sm text-gray-900 truncate text-left">{doc.fileName}</span>
+                                        <span className="text-sm text-gray-900 truncate text-left">{doc.originalName || doc.fileName}</span>
                                         <span className={`px-1.5 py-0.5 text-xs rounded ${getFileTypeColor(doc.fileType)}`}>
                                             {doc.fileType.toUpperCase()}
                                         </span>
@@ -206,7 +208,7 @@ export const SelectedDocumentsDisplay: React.FC<SelectedDocumentsDisplayProps> =
                                             <FileText className="w-5 h-5 text-gray-500 flex-shrink-0 mt-0.5" />
                                             <div className="min-w-0 flex-1">
                                                 <h4 className="text-sm font-medium text-gray-900 text-left line-clamp-2">
-                                                    {doc.fileName}
+                                                    {doc.originalName || doc.fileName}
                                                 </h4>
                                             </div>
                                         </div>

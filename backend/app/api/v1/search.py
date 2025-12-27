@@ -80,7 +80,8 @@ class UnifiedSearchResult(BaseModel):
     file_id: str
     title: str
     content_preview: str
-    similarity_score: float
+    similarity_score: Optional[float] = None  # 청크 레벨 유사도
+    max_similarity_score: Optional[float] = None  # 파일 레벨 최대 유사도
     match_type: str
     container_id: str
     container_name: Optional[str] = None  # 사용자 친화적인 컨테이너 이름
@@ -88,6 +89,8 @@ class UnifiedSearchResult(BaseModel):
     container_icon: Optional[str] = None  # 폴더 아이콘
     file_path: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
+    chunk_count: Optional[int] = None
+    top_chunks: Optional[List[Dict[str, Any]]] = None
 
 class UnifiedSearchResponse(BaseModel):
     """통합검색 응답 모델"""

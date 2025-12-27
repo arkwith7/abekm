@@ -52,7 +52,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Query, Form, BackgroundTasks, Response
 from fastapi.responses import JSONResponse, FileResponse
 from starlette.responses import RedirectResponse
 import mimetypes
@@ -1104,7 +1104,9 @@ async def get_documents(
                 file_name=file_info.file_psl_nm or "",
                 file_size=file_size or 0,
                 file_extension=file_extension,
+                document_type=getattr(file_info, 'document_type', '') or '',  # 문서 유형 (patent 등)
                 container_path=file_info.knowledge_container_id or "no_container",
+                path=getattr(file_info, 'path', None),  # S3 URL 또는 파일 경로
                 created_at=file_info.created_date,
                 updated_at=file_info.last_modified_date,
                 uploaded_by=file_info.created_by or "",
@@ -1269,7 +1271,9 @@ async def filter_academic_documents(
                     file_name=file_info.file_psl_nm or "",
                     file_size=file_size or 0,
                     file_extension=file_extension,
+                    document_type=getattr(file_info, 'document_type', '') or '',  # 문서 유형 (patent 등)
                     container_path=file_info.knowledge_container_id or "no_container",
+                    path=getattr(file_info, 'path', None),  # S3 URL 또는 파일 경로
                     created_at=file_info.created_date,
                     updated_at=file_info.last_modified_date,
                     uploaded_by=file_info.created_by or "",
@@ -1377,11 +1381,59 @@ async def download_document(
         
         logger.info(f"✅ 다운로드 권한 확인 완료 - 사용자: {user.emp_no}, 문서: {document_id}")
 
-        # ✅ URL 기반 문서(특허 등): 프론트는 blob 다운로드를 사용하므로
-        # 외부 도메인 리다이렉트는 CORS로 실패할 수 있다.
-        # 따라서 URL 자체를 담은 .url(바로가기) 파일로 다운로드 제공.
+        # ✅ URL 기반 문서(특허 등)
+        # - S3 URL(https://...amazonaws.com/...)은 presigned URL로 attachment 다운로드 제공
+        # - 그 외 외부 URL은 URL 자체를 담은 .url(바로가기) 파일로 제공
         file_path_value = str(getattr(file_info, 'path', '') or '')
         if file_path_value.startswith('http://') or file_path_value.startswith('https://'):
+            # S3 URL인 경우: presigned redirect는 XHR(blob 다운로드)에서 CORS 이슈가 날 수 있으므로
+            # 서버가 S3에서 임시로 내려받아 동일 오리진으로 FileResponse 제공
+            if ('.amazonaws.com' in file_path_value) or ('.s3.' in file_path_value):
+                try:
+                    from app.services.core.aws_service import S3Service
+                    import tempfile
+                    import os as _os
+
+                    s3 = S3Service()
+                    parsed = urllib.parse.urlparse(file_path_value)
+
+                    # virtual-hosted style: https://bucket.s3.region.amazonaws.com/key  -> /key
+                    object_key = parsed.path.lstrip('/')
+
+                    # path-style: https://s3.region.amazonaws.com/bucket/key -> /bucket/key
+                    bucket = getattr(settings, 's3_bucket_name', None)
+                    if bucket and object_key.startswith(f"{bucket}/"):
+                        object_key = object_key[len(bucket) + 1:]
+
+                    filename = (
+                        str(getattr(file_info, 'file_psl_nm', '') or '').strip()
+                        or str(getattr(file_info, 'file_lgc_nm', '') or '').strip()
+                        or f"document_{document_id}.pdf"
+                    )
+                    # MIME 타입
+                    mime_type, _ = mimetypes.guess_type(filename)
+                    if not mime_type:
+                        mime_type = "application/octet-stream"
+
+                    encoded_filename = urllib.parse.quote(filename)
+                    disposition = f"attachment; filename*=UTF-8''{encoded_filename}"
+
+                    # 임시 파일로 다운로드 후 동일 오리진으로 반환
+                    tmp_fd, tmp_path = tempfile.mkstemp(prefix='dl_', suffix=Path(filename).suffix or '.bin')
+                    _os.close(tmp_fd)
+                    await s3.download_file(object_key=object_key, local_path=tmp_path)
+
+                    background_tasks.add_task(lambda p=tmp_path: _os.path.exists(p) and _os.remove(p))
+                    logger.info(f"[DOWNLOAD] S3 URL 서버 프록시 다운로드: key={object_key}, filename={filename}")
+                    return FileResponse(
+                        path=tmp_path,
+                        media_type=mime_type,
+                        headers={"Content-Disposition": disposition},
+                    )
+                except Exception as e:
+                    logger.error(f"[DOWNLOAD] S3 URL presign 실패: {e}")
+                    raise HTTPException(status_code=500, detail="S3 파일 다운로드 중 오류가 발생했습니다.")
+
             logical_name = (
                 str(getattr(file_info, 'file_lgc_nm', '') or '').strip()
                 or str(getattr(file_info, 'file_psl_nm', '') or '').strip()

@@ -320,9 +320,35 @@ async def iframe_view_file(
             logger.error("❌ iframe 파일 경로가 없음")
             raise HTTPException(status_code=404, detail="파일 경로를 찾을 수 없습니다.")
 
-        # URL 기반 문서(특허 등): 외부 사이트를 iframe에 직접 넣으면 차단(X-Frame-Options)될 수 있어
-        # 최소한의 안내 링크 HTML을 반환한다.
+        # URL 기반 문서 처리
         if isinstance(file_path, str) and (file_path.startswith('http://') or file_path.startswith('https://')):
+            # S3 URL인 경우: object key를 추출해 presigned URL로 리다이렉트 (inline)
+            if '.amazonaws.com' in file_path or '.s3.' in file_path:
+                try:
+                    from app.services.core.aws_service import S3Service
+                    parsed = urllib.parse.urlparse(file_path)
+                    object_key = parsed.path.lstrip('/')  # "/patents/xxx.pdf" -> "patents/xxx.pdf"
+                    filename = file_info.get("file_logical_name", f"file_{file_id}")
+                    mime_type, _ = mimetypes.guess_type(filename)
+                    if not mime_type:
+                        mime_type = "application/pdf"
+                    encoded_filename = urllib.parse.quote(filename)
+                    disposition = f"inline; filename*=UTF-8''{encoded_filename}"
+                    
+                    s3 = S3Service()
+                    url = s3.generate_presigned_url(
+                        object_key=object_key,
+                        expires_in=getattr(settings, 's3_presign_expiry_seconds', 3600),
+                        response_content_disposition=disposition,
+                        response_content_type=mime_type,
+                    )
+                    logger.info(f"🔗 S3 presigned URL로 리다이렉트 (iframe): {object_key}")
+                    return RedirectResponse(url, status_code=307)
+                except Exception as e:
+                    logger.error(f"S3 URL presign 실패(iframe): {e}. 원본 URL로 fallback")
+                    return RedirectResponse(file_path, status_code=307)
+            
+            # 다른 외부 URL(특허 등): iframe에서 차단될 수 있어 안내 링크 HTML 반환
             safe_url = file_path
             html = (
                 "<!doctype html><html><head><meta charset='utf-8'/><title>External Link</title></head>"
@@ -909,3 +935,83 @@ async def download_file(
     except Exception as e:
         logger.error(f"파일 다운로드 오류: {e}")
         raise HTTPException(status_code=500, detail="파일 다운로드 중 오류가 발생했습니다.")
+
+
+# =============================================================================
+# 📄 특허 원문 PDF 프록시 (KIPRIS API)
+# =============================================================================
+
+@router.get("/files/patent-fulltext/{application_number}")
+async def get_patent_fulltext_pdf(
+    application_number: str,
+    token: str = Query(..., description="인증 토큰"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    KIPRIS Plus API를 통해 특허 원문 PDF를 조회하여 반환
+    
+    1. KIPRIS API로 PDF 다운로드 URL 조회
+    2. PDF 다운로드
+    3. 클라이언트에 스트리밍 반환
+    """
+    logger.info(f"📄 특허 원문 PDF 요청: {application_number}")
+    
+    # 사용자 인증
+    user = await get_user_from_token(db, token)
+    if not user:
+        logger.error("❌ 사용자 인증 실패")
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+    
+    logger.info(f"✅ 사용자 인증 성공: {user.username}")
+    
+    try:
+        from app.services.patent.kipris_client import KIPRISClient
+        
+        client = KIPRISClient(settings.kipris_api_key)
+        
+        # 1. PDF 다운로드 URL 조회
+        pdf_info = await client.get_full_text_pdf_url(application_number)
+        
+        if not pdf_info:
+            logger.warning(f"⚠️ 특허 원문 PDF를 찾을 수 없음: {application_number}")
+            raise HTTPException(
+                status_code=404, 
+                detail="특허 원문 PDF를 찾을 수 없습니다. 공개 전문이 없는 특허일 수 있습니다."
+            )
+        
+        pdf_url = pdf_info.get("path")
+        doc_name = pdf_info.get("docName", f"{application_number}.pdf")
+        
+        logger.info(f"📥 PDF 다운로드 시작: {application_number}")
+        
+        # 2. PDF 다운로드
+        import httpx
+        async with httpx.AsyncClient(timeout=60.0) as http_client:
+            response = await http_client.get(pdf_url, follow_redirects=True)
+            response.raise_for_status()
+            pdf_content = response.content
+        
+        logger.info(f"✅ PDF 다운로드 완료: {application_number} ({len(pdf_content)/1024:.1f} KB)")
+        
+        await client.close()
+        
+        # 3. PDF 반환
+        encoded_filename = urllib.parse.quote(doc_name)
+        
+        return Response(
+            content=pdf_content,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"inline; filename*=UTF-8''{encoded_filename}",
+                "Content-Length": str(len(pdf_content)),
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 특허 원문 PDF 조회 실패: {application_number}, {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"특허 원문 PDF 조회 중 오류가 발생했습니다: {str(e)}"
+        )

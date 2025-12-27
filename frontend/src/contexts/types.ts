@@ -188,6 +188,10 @@ export interface MyKnowledgeState {
   sortOrder?: string;
   selectedDocuments?: Document[];
   currentPage?: number;
+  itemsPerPage?: number;
+  totalItems?: number;
+  hasNext?: boolean;
+  hasPrevious?: boolean;
   viewMode?: 'grid' | 'list';
   containers?: any[]; // KnowledgeContainer[]
   documents?: any[]; // ExtendedDocument[]
