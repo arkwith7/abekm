@@ -45,6 +45,7 @@ services:
       dockerfile: Dockerfile
     image: abkms-backend
     container_name: abkms-backend
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     env_file:
       - ./backend/.env
     ports:
@@ -79,6 +80,7 @@ services:
       dockerfile: Dockerfile
     image: abkms-backend
     container_name: abkms-celery-worker
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     env_file:
       - ./backend/.env
     command: celery -A app.core.celery_app worker --loglevel=info --concurrency=2

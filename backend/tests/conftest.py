@@ -1,35 +1,27 @@
+from __future__ import annotations
+
+"""Pytest configuration and fixtures for backend tests.
+
+Important:
+- Keep module import side-effects minimal so unit tests can run without
+  requiring DB/env configuration.
+- Integration fixtures lazily import app + DB config when actually used.
 """
-Pytest configuration and fixtures for backend tests
-"""
+
 import asyncio
+from typing import AsyncGenerator, Generator
+
 import pytest
 import pytest_asyncio
-from typing import AsyncGenerator, Generator
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import NullPool
-
-from app.main import app
-from app.core.database import Base, get_db
-from app.core.config import settings
 
 
-# Test database URL
-TEST_DATABASE_URL = settings.database_url.replace("postgresql://", "postgresql+asyncpg://") + "_test"
+def _build_test_db_url() -> str:
+    from app.core.config import settings
 
-# Create async engine for testing
-test_engine = create_async_engine(
-    TEST_DATABASE_URL,
-    echo=False,
-    poolclass=NullPool
-)
+    if not getattr(settings, "database_url", None):
+        raise RuntimeError("settings.database_url is not configured")
 
-# Create async session factory
-TestAsyncSessionLocal = async_sessionmaker(
-    test_engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
+    return settings.database_url.replace("postgresql://", "postgresql+asyncpg://") + "_test"
 
 
 @pytest.fixture(scope="session")
@@ -41,24 +33,45 @@ def event_loop() -> Generator:
 
 
 @pytest_asyncio.fixture(scope="function")
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
+async def db_session() -> AsyncGenerator["AsyncSession", None]:
     """Create a fresh database session for each test."""
+    try:
+        from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+        from sqlalchemy.pool import NullPool
+        from app.core.database import Base
+    except Exception as e:
+        pytest.skip(f"DB test dependencies not available: {e}")
+
+    try:
+        test_db_url = _build_test_db_url()
+    except Exception as e:
+        pytest.skip(f"Database not configured for tests: {e}")
+
+    test_engine = create_async_engine(test_db_url, echo=False, poolclass=NullPool)
+    TestAsyncSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+
     async with test_engine.begin() as conn:
-        # Create all tables
         await conn.run_sync(Base.metadata.create_all)
-    
+
     async with TestAsyncSessionLocal() as session:
         yield session
         await session.rollback()
-    
+
     async with test_engine.begin() as conn:
-        # Drop all tables after test
         await conn.run_sync(Base.metadata.drop_all)
+
+    await test_engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")
-async def async_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+async def async_client(db_session: "AsyncSession") -> AsyncGenerator["AsyncClient", None]:
     """Create an async HTTP client for testing."""
+    try:
+        from httpx import AsyncClient
+        from app.main import app
+        from app.core.database import get_db
+    except Exception as e:
+        pytest.skip(f"App test dependencies not available: {e}")
     
     async def override_get_db():
         yield db_session
@@ -75,3 +88,4 @@ async def async_client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, 
 def anyio_backend():
     """Configure anyio backend for async tests."""
     return "asyncio"
+

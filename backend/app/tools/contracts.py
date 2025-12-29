@@ -151,6 +151,7 @@ class ToolProtocol(Protocol):
 
 class AgentIntent(str, Enum):
     """에이전트 의도 분류"""
+    GENERAL = "general"                  # 기본/미분류
     FACTUAL_QA = "factual_qa"              # 사실 확인 질문
     KEYWORD_SEARCH = "keyword_search"      # 키워드 검색
     EXPLORATORY = "exploratory"            # 탐색적 질문

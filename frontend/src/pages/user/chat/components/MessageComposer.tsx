@@ -69,7 +69,7 @@ const formatFileSize = (size: number) => {
   return `${(size / (1024 * 1024)).toFixed(1)}MB`;
 };
 
-type ToolType = 'ppt' | 'web-search' | 'deep-research' | 'patent';
+type ToolType = 'ppt' | 'web-search' | 'deep-research' | 'patent' | 'prior-art';
 
 interface ToolConfig {
   id: ToolType;
@@ -103,6 +103,15 @@ const TOOLS: Record<ToolType, ToolConfig> = {
   'patent': {
     id: 'patent',
     name: '특허 분석',
+    icon: FileIcon,
+    colorClass: 'text-teal-600',
+    bgClass: 'bg-teal-50',
+    textClass: 'text-teal-700',
+    iconBgClass: 'bg-teal-100'
+  },
+  'prior-art': {
+    id: 'prior-art',
+    name: '선행기술조사',
     icon: FileIcon,
     colorClass: 'text-teal-600',
     bgClass: 'bg-teal-50',
@@ -654,7 +663,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedTool('patent');
+                        setSelectedTool('prior-art');
                         setIsToolMenuOpen(false);
                       }}
                       className="flex w-full items-center gap-3 px-3 py-2.5 text-sm text-gray-700 rounded-lg transition-colors hover:bg-blue-50 hover:text-blue-700"
@@ -663,8 +672,8 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
                         <FileIcon className="h-4 w-4" />
                       </div>
                       <div className="flex flex-col items-start">
-                        <span className="font-medium">특허 분석</span>
-                        <span className="text-xs text-gray-500">특허 검색 및 경쟁사 비교</span>
+                        <span className="font-medium">선행기술조사</span>
+                        <span className="text-xs text-gray-500">특허 PDF 기반 검색 및 조사보고서</span>
                       </div>
                     </button>
 

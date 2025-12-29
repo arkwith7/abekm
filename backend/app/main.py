@@ -164,14 +164,36 @@ def configure_logging():
     # 2. Add File Handler (JSON or Plain)
     # Note: We use the same format as standard logging for consistency if needed,
     # but Loguru's power is in its own formatting. Here we align with settings.
-    loguru_logger.add(
-        settings.log_file_path(),
-        rotation=settings.log_max_bytes,  # Pass int directly for bytes
-        retention=settings.log_backup_count,
-        level=settings.log_level.upper(),
-        encoding="utf-8",
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}"
-    )
+    from pathlib import Path
+    log_path = settings.log_file_path()
+    try:
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        loguru_logger.add(
+            log_path,
+            rotation=settings.log_max_bytes,  # Pass int directly for bytes
+            retention=settings.log_backup_count,
+            level=settings.log_level.upper(),
+            encoding="utf-8",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}"
+        )
+    except Exception as e:
+        fallback_dir = Path("/tmp/.abkms/logs")
+        fallback_dir.mkdir(parents=True, exist_ok=True)
+        fallback_path = str(fallback_dir / Path(log_path).name)
+        # Do not crash startup if the intended log path is not writable.
+        loguru_logger.add(
+            fallback_path,
+            rotation=settings.log_max_bytes,
+            retention=settings.log_backup_count,
+            level=settings.log_level.upper(),
+            encoding="utf-8",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name}:{function}:{line} - {message}"
+        )
+        loguru_logger.warning(
+            "⚠️  로그 파일에 접근할 수 없어 임시 경로로 대체합니다: {} (원인: {})",
+            fallback_path,
+            e,
+        )
 
     # 3. Add Console Handler
     loguru_logger.add(

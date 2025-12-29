@@ -515,12 +515,20 @@ async def agent_chat_stream(
     """
     import json
     import asyncio
+    import re
     from fastapi.responses import StreamingResponse
     
     async def event_generator():
         try:
             user_emp_no = str(current_user.emp_no)
             logger.info(f"🤖 [AgentChatStream] 사용자: {user_emp_no}, 질의: '{request.message[:50]}...'")
+
+            # Normalize tool early (needed for attachment selection rules)
+            normalized_tool = (request.tool or "").lower()
+            if request.tool and request.tool != normalized_tool:
+                request.tool = normalized_tool
+            is_prior_art_tool = request.tool in {'prior-art', 'prior_art', 'priorart'}
+            is_patent_tool = request.tool == 'patent'
             
             # 제약 조건 생성
             effective_threshold = request.similarity_threshold
@@ -582,31 +590,61 @@ async def agent_chat_stream(
             
             # 🆕 문서 첨부 처리 (Chat with File)
             attached_document_context = ""
+            attached_document_raw_text = ""  # 키워드/분석용 (파일명 헤더 제거)
             attached_files = []  # 첨부 파일 메타데이터 (프론트엔드 표시용)
             
+            def _looks_like_generated_prior_art_report(file_name: str, mime_type: str, category: str) -> bool:
+                name = (file_name or "").lower()
+                mime = (mime_type or "").lower()
+                cat = (category or "").lower()
+                if cat in {"generated", "report"}:
+                    return True
+                if name.startswith("prior-art-report") or name.startswith("prior_art_report"):
+                    return True
+                if name.endswith(".md") or name.endswith(".markdown"):
+                    return True
+                if mime in {"text/markdown", "text/x-markdown"}:
+                    return True
+                return False
+
             # 🆕 세션에 저장된 첨부 파일을 기본으로 사용
             all_attachments = []
-            if session_attached_files:
+            # NOTE: prior-art는 "이번 요청의 원본 문서"가 핵심 입력이므로
+            # 세션에 저장된 과거 생성물(리포트 .md 등)을 기본으로 복원하면 검색어/요약이 오염된다.
+            # - prior-art: request.attachments만 우선 사용, 없으면 세션 첨부 중 "문서"만 필터링하여 사용
+            # - 기타 도구/일반 채팅: 기존 동작 유지
+            if session_attached_files and (not is_prior_art_tool or not request.attachments):
                 # 세션의 첨부 파일을 첨부 목록으로 변환
                 for sf in session_attached_files:
+                    file_name = sf.get('file_name', '')
+                    mime_type = sf.get('mime_type', '')
+                    category = sf.get('category', 'document')
+                    if is_prior_art_tool and _looks_like_generated_prior_art_report(file_name, mime_type, category):
+                        continue
+
                     all_attachments.append({
                         'asset_id': sf.get('asset_id') or sf.get('id'),
                         'id': sf.get('asset_id') or sf.get('id'),
-                        'category': sf.get('category', 'document'),
-                        'file_name': sf.get('file_name', ''),
-                        'mime_type': sf.get('mime_type', ''),
+                        'category': category,
+                        'file_name': file_name,
+                        'mime_type': mime_type,
                         'file_size': sf.get('file_size', 0)
                     })
                 logger.info(f"📎 [AgentChatStream] 세션 첨부 파일 복원: {len(all_attachments)}개")
             
             # 현재 요청의 첨부 파일 추가 (중복 제거)
             if request.attachments:
-                existing_ids = {att.get('asset_id') or att.get('id') for att in all_attachments}
-                for att in request.attachments:
-                    att_id = att.get('asset_id') or att.get('id')
-                    if att_id and att_id not in existing_ids:
-                        all_attachments.append(att)
-                        logger.info(f"🆕 [AgentChatStream] 새 첨부 파일 추가: {att.get('file_name', att_id)}")
+                if is_prior_art_tool:
+                    # prior-art는 이번 요청 첨부를 "정답 입력"으로 취급
+                    all_attachments = list(request.attachments)
+                    logger.info(f"📎 [AgentChatStream] prior-art 입력 첨부 사용: {len(all_attachments)}개")
+                else:
+                    existing_ids = {att.get('asset_id') or att.get('id') for att in all_attachments}
+                    for att in request.attachments:
+                        att_id = att.get('asset_id') or att.get('id')
+                        if att_id and att_id not in existing_ids:
+                            all_attachments.append(att)
+                            logger.info(f"🆕 [AgentChatStream] 새 첨부 파일 추가: {att.get('file_name', att_id)}")
             
             if all_attachments:
                 # 🆕 첨부 파일에서 이미지 추출하여 분석 대상에 추가
@@ -674,14 +712,23 @@ async def agent_chat_stream(
                 # 문서 파일 필터링 (이미지/오디오 제외)
                 yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'started', 'message': '첨부된 문서를 분석하고 있습니다...'}, ensure_ascii=False)}\n\n"
                 
-                doc_attachments = [
-                    att for att in all_attachments 
-                    if not att.get('mime_type', '').startswith('image/') and not att.get('mime_type', '').startswith('audio/')
-                ]
+                doc_attachments = []
+                for att in all_attachments:
+                    mime_type = att.get('mime_type', '')
+                    if mime_type.startswith('image/') or mime_type.startswith('audio/'):
+                        continue
+                    if is_prior_art_tool and _looks_like_generated_prior_art_report(
+                        att.get('file_name', ''),
+                        mime_type,
+                        att.get('category', ''),
+                    ):
+                        continue
+                    doc_attachments.append(att)
                 
                 if doc_attachments:
                     text_extractor = TextExtractorService()
                     extracted_texts = []
+                    extracted_texts_raw = []
                     
                     for doc_att in doc_attachments:
                         asset_id = doc_att.get('asset_id') or doc_att.get('id')
@@ -742,8 +789,10 @@ async def agent_chat_stream(
                                 MAX_TEXT_LENGTH = 30000
                                 if len(text_content) > MAX_TEXT_LENGTH:
                                     text_content = text_content[:MAX_TEXT_LENGTH] + "\n...(내용이 너무 길어 생략됨)"
-                                    
+
+                                # 표시용 컨텍스트(파일명 포함) + 분석용 원문(파일명 헤더 제거) 분리
                                 extracted_texts.append(f"[첨부 파일 내용: {stored_file.file_name}]\n{text_content}")
+                                extracted_texts_raw.append(text_content)
                                 attached_files.append({
                                     "file_name": stored_file.file_name,
                                     "file_size": stored_file.size,
@@ -763,13 +812,11 @@ async def agent_chat_stream(
                             
                     if extracted_texts:
                         attached_document_context = "\n\n".join(extracted_texts)
+                        attached_document_raw_text = "\n\n".join(extracted_texts_raw)
                         yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'completed', 'message': f'첨부 문서 {len(extracted_texts)}개 내용을 추출했습니다.'}, ensure_ascii=False)}\n\n"
 
             # 🆕 특허 에이전트는 UI에서 명시적으로 선택되었을 때만 실행
-            normalized_tool = (request.tool or "").lower()
-            if request.tool and request.tool != normalized_tool:
-                request.tool = normalized_tool
-            skip_rewrite = request.tool == 'patent'
+            skip_rewrite = is_patent_tool or is_prior_art_tool
 
             # 🆕 Query Rewrite 적용 (특허 의도는 원문 유지)
             rewritten_query = request.message
@@ -778,10 +825,21 @@ async def agent_chat_stream(
                 if rewritten_query != request.message:
                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'query_analysis', 'status': 'started', 'message': f'문맥을 고려하여 질문을 구체화했습니다: {rewritten_query}'}, ensure_ascii=False)}\n\n"
             elif skip_rewrite:
-                logger.info("🛑 [AgentChatStream] 특허 도구 질의는 리라이트를 건너뜁니다")
+                logger.info("🛑 [AgentChatStream] tool={} 질의는 리라이트를 건너뜁니다", request.tool)
 
-            intent = await paper_search_agent.classify_intent(rewritten_query)
-            keywords = await paper_search_agent._extract_keywords(rewritten_query)
+            # Tool이 명시된 경우, 의도 분류(LLM 의존)를 우회하여 실패 가능성을 낮춘다.
+            # - prior-art: 첨부 문서 텍스트에서 키워드 추출
+            # - patent: 도구가 자체적으로 분석 수행 (키워드는 참고용)
+            if is_prior_art_tool:
+                intent = AgentIntent.GENERAL
+                keyword_source = (attached_document_raw_text or attached_document_context or rewritten_query or "")
+                keywords = await paper_search_agent._extract_keywords(keyword_source[:8000])
+            elif is_patent_tool:
+                intent = AgentIntent.GENERAL
+                keywords = await paper_search_agent._extract_keywords(rewritten_query)
+            else:
+                intent = await paper_search_agent.classify_intent(rewritten_query)
+                keywords = await paper_search_agent._extract_keywords(rewritten_query)
 
             # 🆕 PPT 강제 모드 (도구 선택 또는 명시적 질의)
             if _should_force_ppt_generation(request.message, request.tool):
@@ -938,72 +996,350 @@ async def agent_chat_stream(
                 elif request.tool == 'ppt':
                     intent = AgentIntent.PPT_GENERATION
                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': ['presentation_agent']}, 'message': '사용자 요청에 따라 PPT 생성을 수행합니다.'}, ensure_ascii=False)}\n\n"
-                elif request.tool == 'patent':
-                    # 🆕 특허 분석 에이전트 실행
-                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': ['patent_analysis']}, 'message': '특허 분석 전문가에게 작업을 위임합니다.'}, ensure_ascii=False)}\n\n"
-                    
-                    yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'patent_analysis', 'status': 'started', 'message': 'KIPRIS/Google Patents에서 특허를 검색하고 있습니다...'}, ensure_ascii=False)}\n\n"
-                    
+                elif request.tool in {'prior-art', 'prior_art', 'priorart'}:
+                    # 🆕 선행기술조사 (Prior Art) - MVP: KIPRIS 검색 + Markdown 리포트 생성
+                    yield (
+                        "event: reasoning_step\n"
+                        f"data: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': ['prior_art']}, 'message': '선행기술조사를 수행합니다 (KIPRIS 기반).'}, ensure_ascii=False)}\n\n"
+                    )
+
+                    def _chunk_text(text: str, size: int = 120):
+                        for i in range(0, len(text), size):
+                            yield text[i:i + size]
+
                     try:
-                        from app.agents.patent import patent_analysis_agent_tool
-                        
-                        # 특허 분석 실행
-                        patent_result = await patent_analysis_agent_tool._arun(
-                            query=request.message,
-                            analysis_type="search",  # 기본: 검색
-                            jurisdiction="KR",
-                            max_results=20,
-                            include_visualization=True
+                        from app.tools.prior_art.orchestrator import prior_art_orchestrator
+
+                        yield (
+                            "event: reasoning_step\n"
+                            f"data: {json.dumps({'stage': 'prior_art_prep', 'status': 'started', 'message': '입력 특허/문서 내용을 요약하고 검색 질의를 준비하고 있습니다...'}, ensure_ascii=False)}\n\n"
                         )
-                        
-                        # 특허 분석 결과를 답변으로 포맷
-                        total_patents = patent_result.get("total_patents", 0)
-                        summary = patent_result.get("summary", "")
-                        
-                        completed_msg = f"특허 검색 완료: {total_patents}건"
-                        yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'patent_analysis', 'status': 'completed', 'message': completed_msg}, ensure_ascii=False)}\n\n"
-                        patents = patent_result.get("patents", [])
-                        visualizations = patent_result.get("visualizations", [])
-                        insights = patent_result.get("insights", [])
-                        
-                        # 답변 전송
-                        yield f"event: content\ndata: {json.dumps({'delta': summary}, ensure_ascii=False)}\n\n"
-                        
-                        # 메타데이터 전송 (특허 목록, 시각화 포함)
+
+                        analysis_result = await prior_art_orchestrator.analyze_input(
+                            attached_document_context=(attached_document_raw_text or attached_document_context),
+                            rewritten_query=rewritten_query,
+                            fallback_keywords=keywords,
+                        )
+
+                        merged_keywords = analysis_result.get('keywords') or []
+                        input_excerpt = analysis_result.get('summary_excerpt') or ''
+
+                        ipc_code = analysis_result.get('ipc_code')
+                        applicant = analysis_result.get('applicant')
+
+                        def _normalize_ipc_for_kipris(value: Any) -> Optional[str]:
+                            v = (str(value or "").strip() if value is not None else "")
+                            if not v:
+                                return None
+                            # Prefer a broader prefix to avoid over-filtering (e.g., H04W).
+                            m = re.match(r"^([A-H]\d{2}[A-Z])", v)
+                            if m:
+                                return m.group(1)
+                            return None
+
+                        def _normalize_applicant(value: Any) -> Optional[str]:
+                            v = (str(value or "").strip() if value is not None else "")
+                            if not v:
+                                return None
+                            v = re.split(r"\s{2,}|\t|\n|\(|\[", v)[0].strip()
+                            # If it looks like an address fragment, skip it.
+                            if any(tok in v for tok in ("시", "구", "로", "동")) and any(ch.isdigit() for ch in v):
+                                return None
+                            if len(v) < 2 or len(v) > 40:
+                                return None
+                            return v
+
+                        applicant_for_search = _normalize_applicant(applicant)
+                        ipc_prefix_for_search = _normalize_ipc_for_kipris(ipc_code)
+
+                        planned_queries = prior_art_orchestrator.plan_search(
+                            analysis_result=analysis_result,
+                            # prior-art에서는 사용자 질의는 "의도/요청"으로만 취급하고,
+                            # 검색 질의는 문서 파싱 결과(키워드)에서 생성한다.
+                            base_query=None if (attached_document_raw_text or attached_document_context) else rewritten_query,
+                        )
+
+                        # SSE payload에 broad/balanced 값을 그대로 유지하기 위해, 계획된 질의에서 채운다.
+                        broad_query = ''
+                        balanced_query = ''
+                        for label, q in planned_queries:
+                            if label == 'broad' and not broad_query:
+                                broad_query = q
+                            if label == 'balanced' and not balanced_query:
+                                balanced_query = q
+
+                        # fallback: 기존 변수 유지
+                        broad_query = broad_query or (rewritten_query or '')
+                        balanced_query = balanced_query or broad_query or (rewritten_query or '')
+
+                        yield (
+                            "event: reasoning_step\n"
+                            f"data: {json.dumps({'stage': 'prior_art_prep', 'status': 'completed', 'result': {'broad_query': broad_query, 'balanced_query': balanced_query}, 'message': '검색 질의 준비 완료'}, ensure_ascii=False)}\n\n"
+                        )
+
+                        # Search
+                        all_patents: List[Any] = []
+                        search_runs: List[Dict[str, Any]] = []
+                        for label, q in planned_queries:
+                            yield (
+                                "event: reasoning_step\n"
+                                f"data: {json.dumps({'stage': 'prior_art_search', 'status': 'started', 'message': f'KIPRIS 검색({label}) 수행 중...'}, ensure_ascii=False)}\n\n"
+                            )
+
+                            run = await prior_art_orchestrator.execute_search_step(
+                                label=label,
+                                query=q,
+                                applicant=applicant_for_search,
+                                # IPC 필터는 너무 강하면 0건이 쉽게 나오므로 balanced에서만, 그리고 prefix로만 적용
+                                ipc_code=ipc_prefix_for_search if label == 'balanced' else None,
+                                max_results=20,
+                            )
+                            search_runs.append({
+                                'label': run.get('label'),
+                                'query': run.get('query'),
+                                'total_found': int(run.get('total_found') or 0),
+                                'returned': int(run.get('returned') or 0),
+                            })
+                            all_patents.extend(run.get('patents') or [])
+
+                        unique_patents, screening_stats = prior_art_orchestrator.screen_results(
+                            all_patents,
+                            target_keywords=merged_keywords,
+                            # 너무 공격적이지 않게 기본값(None) 사용: 키워드 있으면 1, 없으면 0
+                            min_relevance_score=None,
+                            max_candidates=None,
+                        )
+
+                        yield (
+                            "event: reasoning_step\n"
+                            f"data: {json.dumps({'stage': 'prior_art_search', 'status': 'completed', 'message': f'검색 완료 (후보 {len(unique_patents)}건)'}, ensure_ascii=False)}\n\n"
+                        )
+
+                        # Report
+                        report_out = prior_art_orchestrator.create_report_content(
+                            session_id=context.get('session_id'),
+                            user_message=request.message,
+                            document_ids=request.document_ids,
+                            analysis_result=analysis_result,
+                            search_metadata={
+                                'search_runs': search_runs,
+                                'broad_query': broad_query,
+                                'balanced_query': balanced_query,
+                            },
+                            unique_patents=unique_patents,
+                        )
+                        report_md = report_out.get('report_md') or ''
+                        report_filename = report_out.get('report_filename') or 'prior-art-report.md'
+
+                        yield (
+                            "event: reasoning_step\n"
+                            f"data: {json.dumps({'stage': 'prior_art_report', 'status': 'started', 'message': '조사 리포트를 생성/저장하고 있습니다...'}, ensure_ascii=False)}\n\n"
+                        )
+
+                        stored = await prior_art_orchestrator.save_final_report(
+                            chat_attachment_service=chat_attachment_service,
+                            owner_emp_no=user_emp_no,
+                            report_md=report_md,
+                            report_filename=report_filename,
+                        )
+                        download_url = f"/api/v1/agent/chat/assets/{stored.asset_id}"
+
+                        attached_files.append({
+                            'asset_id': stored.asset_id,
+                            'id': stored.asset_id,
+                            'category': stored.category,
+                            'file_name': stored.file_name,
+                            'mime_type': stored.mime_type,
+                            'file_size': stored.size,
+                            'download_url': download_url,
+                        })
+
+                        yield (
+                            "event: reasoning_step\n"
+                            f"data: {json.dumps({'stage': 'prior_art_report', 'status': 'completed', 'message': f'리포트 생성 완료 ({stored.file_name})'}, ensure_ascii=False)}\n\n"
+                        )
+
+                        final_prefix = f"✅ **선행기술조사 리포트 생성 완료**\n\n📎 [{stored.file_name}]({download_url})\n\n---\n\n"
+                        for chunk in _chunk_text(final_prefix + report_md):
+                            yield f"event: content\ndata: {json.dumps({'delta': chunk}, ensure_ascii=False)}\n\n"
+
+                        # Metadata
+                        preview_patents = []
+                        for p in unique_patents[:10]:
+                            preview_patents.append({
+                                'application_number': getattr(p, 'application_number', None),
+                                'title': getattr(p, 'title', None),
+                                'applicant': getattr(p, 'applicant', None),
+                                'application_date': getattr(p, 'application_date', None),
+                                'ipc_code': getattr(p, 'ipc_code', None),
+                                'abstract': getattr(p, 'abstract', None),
+                            })
+
                         metadata = {
-                            "intent": "patent_analysis",
-                            "strategy_used": ["patent_analysis"],
-                            "detailed_chunks": [],
-                            "patent_results": {
-                                "patents": patents[:10],  # 상위 10건
-                                "total_patents": patent_result.get("total_patents", 0),
-                                "visualizations": visualizations,
-                                "insights": insights,
-                                "source": patent_result.get("analysis_result", {}).get("source", "kipris")
-                            }
+                            'intent': 'prior_art',
+                            'strategy_used': ['prior_art'],
+                            'detailed_chunks': [],
+                            'attached_files': attached_files,
+                            'prior_art_results': {
+                                'queries': search_runs,
+                                'total_unique': len(unique_patents),
+                                'screening': screening_stats,
+                                'patents': preview_patents,
+                                'source': 'kipris',
+                            },
+                            'has_attachments': bool(attached_files),
                         }
                         yield f"event: metadata\ndata: {json.dumps(metadata, ensure_ascii=False)}\n\n"
-                        
-                        # 히스토리 저장
+
+                        # Persist to session history
                         try:
-                            from app.models.chat.chat_models import TbChatHistory
-                            
+                            from app.models.chat.chat_models import TbChatSessions, TbChatHistory
+                            from sqlalchemy import select, update
+                            from datetime import datetime as dt
+
+                            session_id = context.get('session_id')
+                            session_stmt = select(TbChatSessions).where(TbChatSessions.session_id == session_id)
+                            session_result = await db.execute(session_stmt)
+                            existing_session = session_result.scalar_one_or_none()
+                            if not existing_session:
+                                new_session = TbChatSessions(
+                                    session_id=session_id,
+                                    user_emp_no=user_emp_no,
+                                    session_name=f"Agent Chat - {request.message[:30]}...",
+                                    session_description="AI Agent 채팅 세션",
+                                    default_container_id=request.container_ids[0] if request.container_ids else None,
+                                    allowed_containers=request.container_ids,
+                                    is_active=True,
+                                    last_activity=dt.utcnow(),
+                                    message_count=1,
+                                )
+                                db.add(new_session)
+                            else:
+                                update_stmt = (
+                                    update(TbChatSessions)
+                                    .where(TbChatSessions.session_id == session_id)
+                                    .values(
+                                        last_activity=dt.utcnow(),
+                                        message_count=TbChatSessions.message_count + 1,
+                                    )
+                                )
+                                await db.execute(update_stmt)
+
                             history_entry = TbChatHistory(
-                                session_id=context.get("session_id"),
+                                session_id=session_id,
                                 user_emp_no=user_emp_no,
+                                knowledge_container_id=request.container_ids[0] if request.container_ids else None,
+                                accessible_containers=request.container_ids,
                                 user_message=request.message,
-                                assistant_response=summary,
-                                model_parameters={"tool": "patent", "total_patents": total_patents},
-                                created_date=datetime.utcnow()
+                                assistant_response=(final_prefix + report_md)[:60000],
+                                search_query=rewritten_query,
+                                search_results={
+                                    'prior_art': {
+                                        'queries': search_runs,
+                                        'total_unique': len(unique_patents),
+                                    }
+                                },
+                                referenced_documents=None,
+                                model_used='agent/prior_art',
+                                model_parameters={
+                                    'tool': 'prior-art',
+                                    'attached_files': attached_files,
+                                },
+                                conversation_context={
+                                    'prior_art': True,
+                                },
                             )
                             db.add(history_entry)
                             await db.commit()
                         except Exception as save_error:
                             logger.warning(f"⚠️ 히스토리 저장 실패: {save_error}")
-                        
+
                         yield f"event: done\ndata: {json.dumps({'success': True, 'session_id': context.get('session_id')}, ensure_ascii=False)}\n\n"
                         return
-                        
+                    except Exception as prior_error:
+                        error_text = (str(prior_error) or "").strip()
+                        if not error_text:
+                            error_text = f"{type(prior_error).__name__} (no message)"
+
+                        try:
+                            logger.opt(exception=prior_error).error("❌ 선행기술조사 실패: {}", error_text)
+                        except Exception:
+                            logger.exception("❌ 선행기술조사 실패")
+
+                        error_msg = f"선행기술조사 실패: {error_text}"
+                        yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'prior_art', 'status': 'error', 'message': error_msg}, ensure_ascii=False)}\n\n"
+                        yield f"event: error\ndata: {json.dumps({'error': error_text}, ensure_ascii=False)}\n\n"
+                        return
+
+                elif request.tool == 'patent':
+                    # 🆕 특허 분석 에이전트 실행 (ReAct)
+                    yield (
+                        "event: reasoning_step\n"
+                        f"data: {json.dumps({'stage': 'strategy_selection', 'status': 'completed', 'result': {'strategy': ['patent_analysis']}, 'message': '특허 분석 전문가에게 작업을 위임합니다.'}, ensure_ascii=False)}\n\n"
+                    )
+
+                    yield (
+                        "event: reasoning_step\n"
+                        f"data: {json.dumps({'stage': 'patent_analysis', 'status': 'started', 'message': '특허 분석을 수행하고 있습니다...'}, ensure_ascii=False)}\n\n"
+                    )
+
+                    try:
+                        from app.agents.patent import patent_analysis_agent
+                        from app.agents.base.agent_protocol import AgentExecutionContext
+
+                        exec_ctx = AgentExecutionContext(
+                            session_id=context.get('session_id'),
+                            user_id=int(user_emp_no) if str(user_emp_no).isdigit() else None,
+                            max_tokens=request.max_tokens,
+                            max_iterations=10,
+                            timeout_seconds=300,
+                        )
+
+                        result = await patent_analysis_agent.execute({'query': request.message}, exec_ctx)
+                        summary = ((result.output or {}).get('answer') or '').strip()
+                        if not summary:
+                            summary = '특허 분석 결과를 생성하지 못했습니다.' if result.success else '특허 분석 실패'
+
+                        yield (
+                            "event: reasoning_step\n"
+                            f"data: {json.dumps({'stage': 'patent_analysis', 'status': 'completed', 'message': '특허 분석 완료'}, ensure_ascii=False)}\n\n"
+                        )
+
+                        yield f"event: content\ndata: {json.dumps({'delta': summary}, ensure_ascii=False)}\n\n"
+
+                        metadata = {
+                            'intent': 'patent_analysis',
+                            'strategy_used': ['patent_analysis'],
+                            'detailed_chunks': [],
+                            'agent_steps': [
+                                {
+                                    'step_number': s.step_number,
+                                    'tool': s.action,
+                                    'latency_ms': s.latency_ms,
+                                }
+                                for s in (result.steps or [])[:20]
+                            ],
+                        }
+                        yield f"event: metadata\ndata: {json.dumps(metadata, ensure_ascii=False)}\n\n"
+
+                        # 히스토리 저장
+                        try:
+                            from app.models.chat.chat_models import TbChatHistory
+                            history_entry = TbChatHistory(
+                                session_id=context.get('session_id'),
+                                user_emp_no=user_emp_no,
+                                user_message=request.message,
+                                assistant_response=summary[:60000],
+                                model_parameters={'tool': 'patent'},
+                                created_date=datetime.utcnow(),
+                            )
+                            db.add(history_entry)
+                            await db.commit()
+                        except Exception as save_error:
+                            logger.warning(f"⚠️ 히스토리 저장 실패: {save_error}")
+
+                        yield f"event: done\ndata: {json.dumps({'success': True, 'session_id': context.get('session_id')}, ensure_ascii=False)}\n\n"
+                        return
                     except Exception as patent_error:
                         logger.error(f"❌ 특허 분석 실패: {patent_error}")
                         error_msg = f"특허 분석 실패: {str(patent_error)}"
@@ -1557,9 +1893,18 @@ async def agent_chat_stream(
             yield f"event: done\ndata: {json.dumps({'success': True, 'session_id': context.get('session_id')}, ensure_ascii=False)}\n\n"
             
         except Exception as e:
-            error_msg = str(e)
-            logger.error(f"❌ [AgentChatStream] 오류: {error_msg}", exc_info=True)
-            yield f"event: error\ndata: {json.dumps({'error': error_msg}, ensure_ascii=False)}\n\n"
+            error_text = (str(e) or "").strip()
+            if not error_text:
+                error_text = f"{type(e).__name__} (no message)"
+
+            # NOTE: This project uses loguru; stdlib `exc_info=True` is ignored.
+            # Use loguru's exception capture to include traceback.
+            try:
+                logger.opt(exception=e).error("❌ [AgentChatStream] 오류: {}", error_text)
+            except Exception:
+                logger.exception("❌ [AgentChatStream] 오류")
+
+            yield f"event: error\ndata: {json.dumps({'error': error_text}, ensure_ascii=False)}\n\n"
     
     return StreamingResponse(
         event_generator(),

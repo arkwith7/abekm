@@ -97,12 +97,29 @@ class KiprisClient:
             
         session = await self._get_session()
         endpoint = f"{self.BASE_URL}/{service}/{operation}"
-        
+
+        # KIPRIS PLUS API는 일반적으로 camelCase 파라미터를 사용한다.
+        # 기존 코드/호출부의 snake_case 입력도 안전하게 수용하기 위해 정규화한다.
+        param_aliases = {
+            "num_of_rows": "numOfRows",
+            "page_no": "pageNo",
+            "desc_sort": "descSort",
+            "sort_spec": "sortSpec",
+            "ipc_number": "ipcNumber",
+            "application_date": "applicationDate",
+            "open_date": "openDate",
+            "publication_date": "publicationDate",
+            "register_date": "registerDate",
+        }
+        normalized_params: Dict[str, str] = {}
+        for key, value in params.items():
+            normalized_params[param_aliases.get(key, key)] = value
+
         # 기본 파라미터 추가
-        params["ServiceKey"] = self.api_key
+        normalized_params["ServiceKey"] = self.api_key
         
         try:
-            async with session.get(endpoint, params=params) as response:
+            async with session.get(endpoint, params=normalized_params) as response:
                 if response.status != 200:
                     logger.error(f"❌ [KIPRIS] API Error ({response.status}): {endpoint}")
                     return None
@@ -166,10 +183,10 @@ class KiprisClient:
         params = {
             "patent": "true",
             "utility": "true",
-            "num_of_rows": str(min(max_results, 100)),
-            "page_no": "1",
-            "desc_sort": "true",
-            "sort_spec": "AD"  # 출원일순
+            "numOfRows": str(min(max_results, 100)),
+            "pageNo": "1",
+            "descSort": "true",
+            "sortSpec": "AD"  # 출원일순
         }
         
         # 쿼리 구성
@@ -183,9 +200,9 @@ class KiprisClient:
             params["applicant"] = applicant
             
         if ipc_code:
-            params["ipc_number"] = ipc_code
+            params["ipcNumber"] = ipc_code
         if date_from:
-            params["application_date"] = date_from.replace("-", "")
+            params["applicationDate"] = date_from.replace("-", "")
             
         xml_response = await self._request("patUtiModInfoSearchSevice", "getAdvancedSearch", params)
         if not xml_response:
