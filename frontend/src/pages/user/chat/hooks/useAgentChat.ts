@@ -18,6 +18,7 @@ import {
   readPersistedAgentChatState,
   writePersistedAgentChatState
 } from '../../../../utils/agentChatState';
+import { isAgentChatRoute } from '../utils/isAgentChatRoute';
 import {
   AgentMessage,
   AgentMetrics,
@@ -72,8 +73,7 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
    */
   const persistAgentChatState = useCallback(() => {
     // ⚠️ 중요: AgentChatPage에서만 저장되어야 함
-    const isAgentChatPage = window.location.pathname.includes('/agent-chat');
-    if (!isAgentChatPage) {
+    if (!isAgentChatRoute(window.location.pathname)) {
       return;
     }
 
@@ -140,8 +140,7 @@ export const useAgentChat = (options: UseAgentChatOptions = {}) => {
   useEffect(() => {
     // ⚠️ 중요: AgentChatPage에서만 복원되어야 함
     // 일반 채팅 페이지에서는 복원하지 않음
-    const isAgentChatPage = window.location.pathname.includes('/agent-chat');
-    if (!isAgentChatPage) {
+    if (!isAgentChatRoute(window.location.pathname)) {
       console.log('🚫 [useAgentChat] Agent 채팅 페이지가 아니므로 복원 건너뜀');
       return;
     }

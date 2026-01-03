@@ -6,7 +6,7 @@
     </linearGradient>
   </defs>
   <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#g)" stroke="#0f296c" stroke-width="2"/>
-  <!-- Stylized ABEKM monogram: W + I + K + L combined -->
+  <!-- Stylized IPBridge monogram -->
   <path d="M14 44 L20 20 L28 40 L32 28 L36 40 L44 20 L50 44" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
   <!-- Vertical I accent -->
   <line x1="32" y1="18" x2="32" y2="24" stroke="#a5b4fc" stroke-width="3" stroke-linecap="round"/>

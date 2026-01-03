@@ -17,6 +17,7 @@ import FileViewer from '../../components/common/FileViewer';
 import ChatHeader from './chat/components/ChatHeader';
 import ChatAssetViewerModal from './chat/components/ChatAssetViewerModal';
 import MessageComposer from './chat/components/MessageComposer';
+import { ToolType } from './chat/components/MessageComposer';
 import MessageList from './chat/components/MessageList';
 import PresentationOutlineModal from './chat/components/presentation/PresentationOutlineModal';
 import { usePresentation } from './chat/components/presentation/usePresentation';
@@ -33,7 +34,17 @@ const DEFAULT_AGENT_SETTINGS = {
     container_ids: []
 };
 
-const AgentChatPage: React.FC = () => {
+interface AgentChatPageProps {
+    defaultTool?: ToolType;
+    emptyStateTitle?: string;
+    emptyStateDescription?: string;
+}
+
+const AgentChatPage: React.FC<AgentChatPageProps> = ({
+    defaultTool,
+    emptyStateTitle,
+    emptyStateDescription
+}) => {
     const [inputCentered, setInputCentered] = useState(true);
     const [isRealtimeSttSupported, setRealtimeSttSupported] = useState(true);
 
@@ -486,12 +497,12 @@ const AgentChatPage: React.FC = () => {
                                         <span className="text-3xl">🤖</span>
                                     </div>
                                     <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                                        {isSessionRestored ? '세션 복원됨' : 'AI Agent 채팅'}
+                                        {isSessionRestored ? '세션 복원됨' : (emptyStateTitle || 'AI Agent 채팅')}
                                     </h2>
                                     <p className="text-gray-600 max-w-md mx-auto">
                                         {isSessionRestored
                                             ? '이전 대화 내역을 불러왔습니다. 계속해서 대화를 진행하세요.'
-                                            : '질문을 입력하시면 AI Agent가 최적의 검색 전략을 선택하여 정확한 답변을 제공합니다.'}
+                                            : (emptyStateDescription || '질문을 입력하시면 AI Agent가 최적의 검색 전략을 선택하여 정확한 답변을 제공합니다.')}
                                     </p>
                                 </div>
 
@@ -500,6 +511,7 @@ const AgentChatPage: React.FC = () => {
                                     onSendMessage={handleSendMessage}
                                     onRealtimeSupportChange={setRealtimeSttSupported}
                                     isLoading={isLoading}
+                                    defaultTool={defaultTool}
                                     ragState={{
                                         isActive: ragActive,
                                         isCollapsed: !ragOpen,
@@ -551,6 +563,7 @@ const AgentChatPage: React.FC = () => {
                                         onSendMessage={handleSendMessage}
                                         onRealtimeSupportChange={setRealtimeSttSupported}
                                         isLoading={isLoading}
+                                        defaultTool={defaultTool}
                                         ragState={{
                                             isActive: ragActive,
                                             isCollapsed: !ragOpen,

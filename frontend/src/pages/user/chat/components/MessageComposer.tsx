@@ -30,6 +30,7 @@ interface MessageComposerProps {
   onStopStreaming?: () => void;
   isLoading: boolean;
   placeholder?: string;
+  defaultTool?: ToolType;
   onRealtimeSupportChange?: (supported: boolean) => void;
   ragState?: {
     isActive: boolean;
@@ -69,7 +70,7 @@ const formatFileSize = (size: number) => {
   return `${(size / (1024 * 1024)).toFixed(1)}MB`;
 };
 
-type ToolType = 'ppt' | 'web-search' | 'deep-research' | 'patent' | 'prior-art';
+export type ToolType = 'ppt' | 'web-search' | 'deep-research' | 'patent' | 'prior-art';
 
 interface ToolConfig {
   id: ToolType;
@@ -134,6 +135,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
   onStopStreaming,
   isLoading,
   placeholder = '메시지를 입력하세요...',
+  defaultTool,
   onRealtimeSupportChange,
   ragState
 }) => {
@@ -144,7 +146,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [sttLanguage, setSttLanguage] = useState('ko-KR');
   const [isSTTPreparing, setIsSTTPreparing] = useState(false);
-  const [selectedTool, setSelectedTool] = useState<ToolType | null>(null);
+  const [selectedTool, setSelectedTool] = useState<ToolType | null>(defaultTool ?? null);
 
   const toolMenuButtonRef = useRef<HTMLButtonElement>(null);
   const toolMenuPopupRef = useRef<HTMLDivElement>(null);
@@ -208,7 +210,7 @@ const MessageComposer: React.FC<MessageComposerProps> = ({
     setMessage('');
     cleanupPreviews(fileDrafts);
     setFileDrafts([]);
-    setSelectedTool(null); // 🆕 전송 후 도구 선택 초기화
+    setSelectedTool(defaultTool ?? null); // 🆕 전송 후 도구 선택 초기화 (defaultTool이 있으면 유지)
   };
 
   // 🆕 실시간 텍스트 동기화

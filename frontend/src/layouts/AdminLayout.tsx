@@ -184,7 +184,7 @@ export const AdminLayout: React.FC = () => {
                     <span className="text-white font-bold">W</span>
                   </div>
                   <div>
-                    <h1 className="text-lg font-bold text-gray-900">ABEKM</h1>
+                    <h1 className="text-lg font-bold text-gray-900">IPBridge</h1>
                     <p className="text-xs text-red-500">시스템관리자</p>
                   </div>
                 </div>

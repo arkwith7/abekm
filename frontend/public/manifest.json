@@ -1,7 +1,7 @@
 {
-  "short_name": "WKMS",
-  "name": "WKMS - Knowledge Management System",
-  "description": "웅진 지식 관리 시스템",
+  "short_name": "IPBridge",
+  "name": "IPBridge",
+  "description": "AI-powered IP Portfolio & Copilot",
   "icons": [
     {
       "src": "favicon.svg",

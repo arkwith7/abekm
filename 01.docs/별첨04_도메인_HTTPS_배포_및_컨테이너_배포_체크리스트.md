@@ -212,7 +212,7 @@ curl -fk https://wkms.example.com/api/health
 
 ## 2. 컨테이너 배포 체크리스트 및 가이드
 
-### 별첨07 - ABEKM 컨테이너 배포 체크리스트 및 가이드
+### 별첨07 - IPBridge 컨테이너 배포 체크리스트 및 가이드
 
 > **문서 정보**  
 >
@@ -375,7 +375,7 @@ docker compose -f docker-compose.prod.yml config >/dev/null
 
 **🎯 핵심 정리**:
 
-ABEKM은 **Docker Compose 기반 배포**를 사용하며, 현재는 **`backend/.env`를 단일 소스(SSOT)**로 사용합니다.
+IPBridge은 **Docker Compose 기반 배포**를 사용하며, 현재는 **`backend/.env`를 단일 소스(SSOT)**로 사용합니다.
 
 **환경 변수 파일 역할**:
 
@@ -1055,7 +1055,7 @@ CREATE FUNCTION multilang_tsvector(text) RETURNS tsvector;
 -- 4. 검증
 -- ============================================================
 -- 초기화 성공 시 로그 출력:
--- ✅ ABEKM PostgreSQL Initialized Successfully
+-- ✅ IPBridge PostgreSQL Initialized Successfully
 -- Extensions installed: 4 / 4
 -- Text search configurations: 2 / 2
 -- Helper functions created: 3
@@ -2120,7 +2120,7 @@ docker-compose exec frontend curl http://backend:8000/health
 
 # 예상 출력:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#   ABEKM 배포 전 환경 검증
+#   IPBridge 배포 전 환경 검증
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 
 # [1/5] 루트 .env 파일 확인...
@@ -2641,4 +2641,4 @@ curl https://api.your-domain.com/health
 
 ---
 
-*이 문서는 ABEKM 시스템의 컨테이너 배포를 위한 공식 가이드입니다. 배포 환경 변경 시 본 문서도 함께 업데이트해 주시기 바랍니다.*
+*이 문서는 IPBridge 시스템의 컨테이너 배포를 위한 공식 가이드입니다. 배포 환경 변경 시 본 문서도 함께 업데이트해 주시기 바랍니다.*

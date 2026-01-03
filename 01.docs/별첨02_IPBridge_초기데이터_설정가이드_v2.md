@@ -1,10 +1,10 @@
-# 별첨02 - ABEKM 초기 데이터 설정 가이드
+# 별첨02 - IPBridge 초기 데이터 설정 가이드
 
 ## 📋 문서 개요
 
 ### 목적
 
-ABEKM(AI Based Enterprise Knowledge Management) 초기 데이터를 **CSV 파일 기반**으로 관리하여:
+IPBridge(AI Based Enterprise Knowledge Management) 초기 데이터를 **CSV 파일 기반**으로 관리하여:
 - ✅ 비개발자도 데이터 수정 가능
 - ✅ 코드 변경 없이 데이터 구조 변경
 - ✅ 버전 관리 및 이력 추적
@@ -1051,7 +1051,7 @@ python -m data.seeds.run_all_seeders
 ## 📚 관련 문서
 
 - `backend/data/README.md`: 완전한 사용 가이드 (790줄)
-- `01.docs/별첨01_ABEKM_권한관리_체계_v2.md`: 권한 관리 상세
+- `01.docs/별첨01_IPBridge_권한관리_체계_v2.md`: 권한 관리 상세
 - `01.docs/01.system_overview_design.md`: 시스템 전체 아키텍처
 - `01.docs/08.static_design_specification.md`: 데이터베이스 스키마
 
@@ -1210,7 +1210,7 @@ docker ps | grep postgres
 
 스크립트 실행 시 다음과 같은 단계별 로그가 출력됩니다:
 ```
-🚀 ABEKM 마스터 초기 데이터 설정을 시작합니다...
+🚀 IPBridge 마스터 초기 데이터 설정을 시작합니다...
 
 1️⃣ SAP HR 정보 생성 중...
 ✅ SAP HR 정보 생성 완료
@@ -1234,7 +1234,7 @@ docker ps | grep postgres
 ✅ 샘플 문서 생성 완료
 
 8️⃣ 시스템 설정 검증 중...
-🏢 ABEKM 시스템 설정 검증:
+🏢 IPBridge 시스템 설정 검증:
    👥 SAP HR 정보: 9명
    🔐 사용자 계정: 9개
    📁 지식 컨테이너:
@@ -1247,7 +1247,7 @@ docker ps | grep postgres
    🔒 권한 할당: 24개
    📄 샘플 문서: 3개
 
-🎉 ABEKM 마스터 초기 데이터 설정이 완료되었습니다!
+🎉 IPBridge 마스터 초기 데이터 설정이 완료되었습니다!
 ```
 
 ---
@@ -1460,4 +1460,4 @@ tar -czf wkms_files_backup_$(date +%Y%m%d).tar.gz /home/admin/wkms-aws/uploads/
 
 ---
 
-*이 문서는 ABEKM 시스템의 초기 데이터 설정을 위한 공식 가이드입니다. 시스템 변경 시 본 문서도 함께 업데이트해 주시기 바랍니다.*
+*이 문서는 IPBridge 시스템의 초기 데이터 설정을 위한 공식 가이드입니다. 시스템 변경 시 본 문서도 함께 업데이트해 주시기 바랍니다.*

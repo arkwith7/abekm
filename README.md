@@ -1,8 +1,8 @@
-# InsightBridge - AI 지식생성 플랫폼
+# InsightBridge - AI 기반 지식/특허(IP) 관리 플랫폼
 
 ## 프로젝트 개요
 
-InsightBridge는 문서를 기반으로 지식을 자동 생성하고 관리하는 AI 플랫폼입니다. 대용량 문서를 처리하여 구조화된 지식으로 변환하고, 자연어 검색과 Q&A 기능을 제공합니다.
+InsightBridge는 문서를 기반으로 지식을 자동 생성하고 관리하는 AI 플랫폼이며, ABEKM을 기반으로 **IP 포트폴리오 / IP Copilot(선행기술 조사)** 중심의 IP 관리 워크플로우로 확장하고 있습니다.
 
 ### 주요 기능
 
@@ -10,7 +10,8 @@ InsightBridge는 문서를 기반으로 지식을 자동 생성하고 관리하�
 - 🧠 **AI 지식 생성**: 문서 내용을 기반으로 구조화된 지식 자동 생성
 - 🔍 **자연어 검색**: 한국어 특화 검색 엔진을 통한 정확한 정보 검색
 - 💬 **AI Q&A**: RAG(Retrieval-Augmented Generation) 기반 질의응답 시스템
-- 📊 **지식 관리**: 지식 컨테이너를 통한 체계적인 지식 분류 및 관리
+- 📁 **IP 포트폴리오**: (기존 지식 컨테이너 기반) 특허/문서를 체계적으로 분류 및 관리
+- 🤖 **IP Copilot**: 대화형 인터페이스로 검색/분석/선행기술 조사 워크플로우 수행
 - 👥 **권한 관리**: 역할 기반 접근 제어 및 사용자 관리
 
 ## 기술 스택
@@ -25,10 +26,10 @@ InsightBridge는 문서를 기반으로 지식을 자동 생성하고 관리하�
 
 ### Frontend
 
-- **Framework**: React 18+ with TypeScript
-- **UI Components**: Ant Design, Material-UI
-- **State Management**: Redux Toolkit
-- **Build Tool**: Vite
+- **Framework**: React 18 + TypeScript (CRA / react-scripts)
+- **Routing**: React Router v6
+- **Styling**: Tailwind CSS
+- **Testing**: Jest + React Testing Library
 
 ### Infrastructure
 
@@ -171,5 +172,8 @@ docker-compose up -d
 📚 **추가 문서**
 - [시스템 설계 개요](./01.docs/01.system_overview_design.md)
 - [검색 및 Q&A 서비스](./01.docs/03.search_and_qa_service.md)
-- [지식 컨테이너 관리](./01.docs/04.knowledge_container_management.md)
+- [IP 포트폴리오(지식 컨테이너) 관리](./01.docs/04.knowledge_container_management.md)
 - [AI 지식 생성](./01.docs/05.ai_knowledge_generation.md)
+- [IP 관리 솔루션 UI/UX 개편안](./01.docs/IP관리솔루션_UI_UX_개편안.md)
+- [IP 관리 솔루션 업그레이드 계획](./01.docs/IP관리솔루션_업그레이드_계획.md)
+- [프론트엔드 상태 캐시/복원 정책](./01.docs/20.frontend_state_cache_policy.md)

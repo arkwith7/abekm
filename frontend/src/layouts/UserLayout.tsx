@@ -8,7 +8,6 @@ import {
   LogOut,
   Menu,
   MessageSquare,
-  Search,
   Settings,
   Shield,
   User,
@@ -50,16 +49,10 @@ const userMenuItems: MenuItem[] = [
     id: 'dashboard'
   },
   {
-    name: '지식 컨테이너',
-    path: '/user/my-knowledge',
+    name: 'IP 포트폴리오',
+    path: '/user/ip-portfolio',
     icon: Folder,
     id: 'my-knowledge'
-  },
-  {
-    name: '지식 검색',
-    path: '/user/search',
-    icon: Search,
-    id: 'search'
   },
   // ⚠️ "일반 RAG 채팅" 메뉴 비활성화 (2025-12-09)
   // AI Agents로 통합되어 더 이상 사용하지 않음
@@ -70,11 +63,17 @@ const userMenuItems: MenuItem[] = [
   //   id: 'chat'
   // },
   {
-    name: 'AI Agents',
-    path: '/user/agent-chat',
+    name: 'IP Copilot',
+    path: '/user/ip-copilot',
     icon: MessageSquare,
     id: 'agent-chat',
     badge: 'Beta'
+  },
+  {
+    name: '선행기술 조사',
+    path: '/user/prior-art',
+    icon: FileCheck,
+    id: 'prior-art'
   },
   {
     name: '대화 이력',
@@ -96,10 +95,14 @@ export const UserLayout: React.FC = () => {
 
   const activeMenu = useMemo(() => {
     if (location.pathname === '/user') return 'dashboard';
+    if (location.pathname.startsWith('/user/ip-portfolio')) return 'my-knowledge';
     if (location.pathname.startsWith('/user/my-knowledge')) return 'my-knowledge';
-    if (location.pathname.startsWith('/user/search')) return 'search';
+    // 기존 검색 라우트는 IP Copilot(통합)으로 하이라이트 처리
+    if (location.pathname.startsWith('/user/search')) return 'agent-chat';
+    if (location.pathname.startsWith('/user/ip-copilot')) return 'agent-chat';
     if (location.pathname === '/user/agent-chat') return 'agent-chat';
     if (location.pathname.startsWith('/user/agent-chat/')) return 'agent-chat-sub';
+    if (location.pathname.startsWith('/user/prior-art')) return 'prior-art';
     if (location.pathname.startsWith('/user/chat/history')) return 'chat-history';
     // ⚠️ "일반 RAG 채팅" 비활성화 (2025-12-09)
     // if (location.pathname.startsWith('/user/chat')) return 'chat';
@@ -174,7 +177,7 @@ export const UserLayout: React.FC = () => {
     setHoveredMenuId(null);
   }, [isSidebarOpen]);
 
-  const sourcePageMenuIds: SourcePageType[] = ['dashboard', 'my-knowledge', 'search', 'chat', 'agent-chat'];
+  const sourcePageMenuIds: SourcePageType[] = ['dashboard', 'my-knowledge', 'agent-chat'];
 
   const handleMenuClick = (menuId: string, path: string) => {
     if (sourcePageMenuIds.includes(menuId as SourcePageType)) {
@@ -278,8 +281,8 @@ export const UserLayout: React.FC = () => {
                     <span className="text-white font-bold">W</span>
                   </div>
                   <div>
-                    <h1 className="text-lg font-bold text-gray-900">ABEKM</h1>
-                    <p className="text-xs text-gray-500">지식관리시스템</p>
+                    <h1 className="text-lg font-bold text-gray-900">IPBridge</h1>
+                    <p className="text-xs text-gray-500">AI-powered IP Portfolio & Copilot</p>
                   </div>
                 </div>
               )}
