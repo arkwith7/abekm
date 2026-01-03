@@ -68,6 +68,22 @@ def _should_force_ppt_generation(message: str, tool: Optional[str]) -> bool:
     return contains_ppt and contains_action
 
 
+def _should_force_text_to_sql(message: str, tool: Optional[str]) -> bool:
+    """사용자 질의나 도구 선택을 기반으로 Text-to-SQL 실행을 강제할지 여부를 판단."""
+    if tool == "sql":
+        return True
+
+    if not message:
+        return False
+
+    lowered = message.lower()
+    sql_keywords = ["sql", "쿼리", "query", "db", "database", "데이터베이스", "테이블", "조회", "집계"]
+    action_keywords = ["해줘", "해줘요", "알려줘", "보여줘", "구해", "계산", "작성", "생성", "만들", "뽑아"]
+    contains_sql = any(k in lowered for k in sql_keywords)
+    contains_action = any(k in lowered for k in action_keywords)
+    return contains_sql and contains_action
+
+
 # Request/Response 모델
 class AgentChatRequest(BaseModel):
     """Agent 기반 채팅 요청"""
@@ -154,6 +170,40 @@ async def agent_chat(
     try:
         user_emp_no = str(current_user.emp_no)
         logger.info(f"🤖 [AgentChat] 사용자: {user_emp_no}, 질의: '{request.message[:50]}...'")
+
+        # Tool override: force specific worker without supervisor routing.
+        if _should_force_text_to_sql(request.message, request.tool):
+            from app.agents.catalog import agent_catalog
+
+            workers = agent_catalog.get_workers()
+            spec = workers.get("TextToSQLAgent")
+            if spec is None:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="TextToSQLAgent is not available in AgentCatalog",
+                )
+
+            initial_state = {
+                "messages": [HumanMessage(content=request.message)],
+                "next": "",
+                "shared_context": {},
+            }
+            final_state = await spec.node(initial_state)
+
+            messages = final_state["messages"]
+            answer = messages[-1].content
+
+            return AgentChatResponse(
+                answer=answer,
+                intent="sql",
+                strategy_used=["text_to_sql"],
+                references=[],
+                detailed_chunks=[],
+                steps=[],
+                metrics={},
+                success=True,
+                errors=[],
+            )
         
         # Supervisor 실행
         initial_state = {
@@ -259,7 +309,7 @@ async def agent_chat(
         )
         
     except Exception as e:
-        logger.error(f"❌ [AgentChat] 실패: {e}", exc_info=True)
+        logger.opt(exception=True).error("❌ [AgentChat] 실패: {}", str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Agent 실행 실패: {str(e)}"

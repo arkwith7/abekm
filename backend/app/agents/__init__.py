@@ -8,8 +8,6 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
-    "paper_search_agent",
-    "PaperSearchAgent",
     "PresentationAgentTool",
     "presentation_agent_tool",
     "PatentAnalysisAgentTool",
@@ -21,11 +19,6 @@ __all__ = [
 
 
 def __getattr__(name: str) -> Any:  # pragma: no cover
-    if name in {"paper_search_agent", "PaperSearchAgent"}:
-        from app.agents.features.search_rag.agent import PaperSearchAgent, paper_search_agent
-
-        return PaperSearchAgent if name == "PaperSearchAgent" else paper_search_agent
-
     if name in {"PresentationAgentTool", "presentation_agent_tool"}:
         from app.agents.features.presentation import PresentationAgentTool, presentation_agent_tool
 

@@ -20,6 +20,7 @@ AGENT_PROMPT_DIRS = {
     "presentation": AGENTS_BASE_DIR / "presentation" / "prompts",
     "search_rag": AGENTS_BASE_DIR / "search_rag" / "prompts",
     "patent": AGENTS_BASE_DIR / "patent" / "prompts",
+    "text_to_sql": AGENTS_BASE_DIR / "text_to_sql" / "prompts",
 }
 
 
@@ -143,3 +144,8 @@ def load_presentation_prompt(prompt_name: str) -> str:
 def load_search_rag_prompt(prompt_name: str) -> str:
     """Load a search_rag-related prompt from search_rag agent's prompts directory"""
     return PromptLoader.load("search_rag", prompt_name)
+
+
+def load_text_to_sql_prompt(prompt_name: str) -> str:
+    """Load a text_to_sql-related prompt from text_to_sql agent's prompts directory"""
+    return PromptLoader.load("text_to_sql", prompt_name)

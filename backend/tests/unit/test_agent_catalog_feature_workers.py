@@ -10,7 +10,7 @@ def test_agent_catalog_prefers_feature_pack_workers() -> None:
     if (
         "app.agents.features.search_rag.worker" in sys.modules
         or "app.agents.features.presentation.worker" in sys.modules
-        or "app.agents.features.prior_art.worker" in sys.modules
+        or "app.agents.features.patent.worker" in sys.modules
     ):
         pytest.skip("feature worker already imported; cannot assert discovery behavior")
 
@@ -28,4 +28,4 @@ def test_agent_catalog_prefers_feature_pack_workers() -> None:
     assert workers["PresentationAgent"].node.__module__.startswith("app.agents.features.presentation")
 
     # Our feature-pack implementation provides the PriorArtAgent worker node.
-    assert workers["PriorArtAgent"].node.__module__.startswith("app.agents.features.prior_art")
+    assert workers["PriorArtAgent"].node.__module__.startswith("app.agents.features.patent.prior_art_agent")

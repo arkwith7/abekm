@@ -130,12 +130,12 @@ class TestPriorArtAgent:
             pytest.skip("Prior Art Agent not yet migrated")
     
     def test_compatibility_shim(self):
-        """호환성 shim 테스트"""
+        """호환성 shim 테스트 - patent 경로로 변경"""
         try:
-            # 기존 경로에서 임포트 가능해야 함
-            from app.agents.features.prior_art.agent import (
-                PriorArtAnalysisAgent,
+            # patent 경로에서 임포트
+            from app.agents.features.patent.prior_art_agent.graph import (
+                prior_art_worker_node,
             )
-            assert PriorArtAnalysisAgent is not None
+            assert prior_art_worker_node is not None
         except ImportError:
-            pytest.skip("Compatibility shim not available")
+            pytest.skip("Prior art agent not available")

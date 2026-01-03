@@ -45,6 +45,7 @@ system_prompt = (
     " If the user just asks for a presentation without search context,"
     " you can call 'PresentationAgent' directly."
     " If the user asks for prior-art search (e.g., KIPRIS, 선행기술조사), call 'PriorArtAgent'."
+    " If the user asks to query a database / wants SQL results (e.g., SQL, DB 조회, 테이블에서 집계), call 'TextToSQLAgent'."
 )
 
 # Dynamic worker loading via AgentCatalog (Phase 1 unification)
