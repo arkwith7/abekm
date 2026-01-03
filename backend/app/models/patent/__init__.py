@@ -17,6 +17,10 @@ from .collection_models import (
     TbPatentCollectionSettings,
     TbPatentCollectionTasks,
 )
+from .ipc_models import (
+    TbIpcCode,
+    TbPatentMetadata,
+)
 
 __all__ = [
     "TbPatentBibliographicInfo",
@@ -31,4 +35,6 @@ __all__ = [
     "TbPatentPriorArtReports",
     "TbPatentCollectionSettings",
     "TbPatentCollectionTasks",
+    "TbIpcCode",
+    "TbPatentMetadata",
 ]
