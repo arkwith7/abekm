@@ -15,7 +15,7 @@ try:
 except ImportError:
     from langchain_core.tools import BaseTool
 
-from app.tools.contracts import (
+from app.core.contracts import (
     SearchToolResult, SearchChunk, ToolMetrics
 )
 from app.services.core.embedding_service import embedding_service

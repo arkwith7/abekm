@@ -5,12 +5,11 @@
 ## 📁 파일 구조
 
 ```
-backend/prompts/presentation/
-├── content_structurer_system.txt    # StructuredOutline 생성 시스템 프롬프트
-├── content_structurer_user.txt      # StructuredOutline 생성 사용자 프롬프트
-├── html_generator_system.txt        # HTML 생성 시스템 프롬프트
-├── html_generator_user.txt          # HTML 생성 사용자 프롬프트
+backend/app/agents/features/presentation/prompts/
 ├── react_agent_system.prompt        # ReAct Agent 시스템 프롬프트 (Quick PPT용)
+├── templated_react_agent_system.prompt # Template ReAct 시스템 프롬프트
+├── ai_direct_mapping_system.prompt  # AI-First 매핑 생성 시스템 프롬프트
+├── presentation.prompt              # 공용 프롬프트(필요 시)
 └── README.md                         # 본 문서
 ```
 
@@ -18,11 +17,8 @@ backend/prompts/presentation/
 
 ### 1. Content Structurer Prompts
 
-**파일:** `content_structurer_system.txt`, `content_structurer_user.txt`
-
-**역할:** Markdown → StructuredOutline JSON 변환
-
-**사용 위치:** `backend/app/agents/presentation/content_structurer.py`
+이전(레거시) HTML/StructuredOutline 파이프라인에서 사용되던 프롬프트(예: content_structurer/html_generator 계열)는
+feature-pack 통합 이후 기본 경로에서 사용하지 않습니다.
 
 **시스템 프롬프트 내용:**
 - 프레젠테이션 디자이너 역할 정의
@@ -40,11 +36,7 @@ backend/prompts/presentation/
 
 ### 2. HTML Generator Prompts
 
-**파일:** `html_generator_system.txt`, `html_generator_user.txt`
-
-**역할:** StructuredOutline JSON → Interactive HTML
-
-**사용 위치:** `backend/app/agents/presentation/html_generator.py`
+이전(레거시) HTML 생성 파이프라인 프롬프트는 현재 feature-pack의 기본 실행 경로에서 사용하지 않습니다.
 
 **시스템 프롬프트 내용:**
 - 프론트엔드 엔지니어 역할 정의
@@ -65,7 +57,7 @@ backend/prompts/presentation/
 
 **역할:** ReAct (Reasoning + Acting) Agent 시스템 프롬프트
 
-**사용 위치:** `backend/app/agents/presentation/presentation_agent.py`
+**사용 위치:** `backend/app/agents/features/presentation/unified_presentation_agent.py`
 
 **프롬프트 내용:**
 - AI 에이전트 역할 정의 (프레젠테이션 생성 전문가)
@@ -87,15 +79,16 @@ backend/prompts/presentation/
 from app.utils.prompt_loader import load_presentation_prompt
 
 # 프롬프트 로드
-system_prompt = load_presentation_prompt("content_structurer_system")
-user_prompt = load_presentation_prompt("content_structurer_user")
+system_prompt = load_presentation_prompt("react_agent_system")
+# template 위자드/AI-first 경로에서 사용
+ai_first_prompt = load_presentation_prompt("ai_direct_mapping_system")
 
 # LangChain 프롬프트 템플릿에 사용
 from langchain_core.prompts import ChatPromptTemplate
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", system_prompt),
-    ("user", user_prompt)
+  ("user", "{user_input}")
 ])
 ```
 
@@ -104,12 +97,9 @@ prompt = ChatPromptTemplate.from_messages([
 사용자 프롬프트는 변수를 포함할 수 있습니다:
 
 ```python
-# content_structurer_user.txt에는 {markdown}, {max_slides} 등의 변수 포함
+# 프롬프트에 포함된 변수에 맞춰 format_messages()로 치환
 messages = prompt.format_messages(
-    markdown="## 제목\n내용...",
-    max_slides=15,
-    audience="general",
-    style="business"
+  user_input="인슐린펌프 제품소개서 PPT 만들어줘"
 )
 ```
 
@@ -119,7 +109,7 @@ messages = prompt.format_messages(
 
 ```bash
 # 시스템 프롬프트 수정
-nano backend/prompts/presentation/content_structurer_system.txt
+nano backend/app/agents/features/presentation/prompts/react_agent_system.prompt
 
 # 변경사항 저장 후 서버 재시작
 ```
@@ -143,7 +133,7 @@ from app.utils.prompt_loader import PromptLoader
 PromptLoader.clear_cache()
 
 # 또는 특정 프롬프트만 리로드
-PromptLoader.reload("presentation", "content_structurer_system")
+PromptLoader.reload("presentation", "react_agent_system")
 ```
 
 ## 📝 프롬프트 작성 가이드
@@ -235,10 +225,10 @@ python -m uvicorn app.main:app --reload
 **해결책:**
 ```python
 # 올바른 파일 위치 확인
-# backend/prompts/presentation/[prompt_name].txt
+# backend/app/agents/features/presentation/prompts/[prompt_name].prompt
 
 # 파일 존재 확인
-ls -la backend/prompts/presentation/
+ls -la backend/app/agents/features/presentation/prompts/
 ```
 
 ### 문제: 변수 치환 오류
@@ -257,10 +247,10 @@ ls -la backend/prompts/presentation/
 
 ```bash
 # 변경사항 확인
-git diff backend/prompts/presentation/
+git diff backend/app/agents/features/presentation/prompts/
 
 # 변경사항 커밋
-git add backend/prompts/presentation/
+git add backend/app/agents/features/presentation/prompts/
 git commit -m "feat: Update content structurer prompt for better icon usage"
 ```
 
@@ -268,10 +258,10 @@ git commit -m "feat: Update content structurer prompt for better icon usage"
 
 ```bash
 # 특정 프롬프트의 변경 이력
-git log --follow backend/prompts/presentation/content_structurer_system.txt
+git log --follow backend/app/agents/features/presentation/prompts/react_agent_system.prompt
 
 # 이전 버전으로 롤백
-git checkout <commit-hash> backend/prompts/presentation/content_structurer_system.txt
+git checkout <commit-hash> backend/app/agents/features/presentation/prompts/react_agent_system.prompt
 ```
 
 ## 🚀 새 프롬프트 추가
@@ -280,11 +270,11 @@ git checkout <commit-hash> backend/prompts/presentation/content_structurer_syste
 
 ```bash
 # 새 카테고리 디렉토리
-mkdir -p backend/prompts/new_category
+mkdir -p backend/app/agents/features/presentation/prompts
 
 # 프롬프트 파일
-touch backend/prompts/new_category/my_prompt_system.txt
-touch backend/prompts/new_category/my_prompt_user.txt
+touch backend/app/agents/features/presentation/prompts/my_prompt_system.prompt
+touch backend/app/agents/features/presentation/prompts/my_prompt_user.prompt
 ```
 
 ### 2. 프롬프트 내용 작성

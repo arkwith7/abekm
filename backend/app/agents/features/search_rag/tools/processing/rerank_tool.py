@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from loguru import logger
 
-from app.tools.contracts import SearchChunk, ToolResult, ToolMetrics
+from app.core.contracts import SearchChunk, ToolResult, ToolMetrics
 from langchain_core.tools import BaseTool
 
 

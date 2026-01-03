@@ -16,7 +16,7 @@ import asyncio
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models import User
-from app.agents.patent import patent_analysis_agent
+from app.agents.features.patent.analysis_agent import patent_analysis_agent
 from app.agents.base import AgentExecutionContext
 from loguru import logger
 
@@ -310,7 +310,7 @@ async def get_patent_detail(
     SerpAPI Google Patents Details API를 통해 상세 정보를 가져옵니다.
     """
     try:
-        from app.tools.retrieval.patent_search_tool import PatentSearchTool
+        from app.agents.features.patent.clients.patent_search_tool import PatentSearchTool
         
         tool = PatentSearchTool()
         detail = await tool.get_patent_details(patent_id)

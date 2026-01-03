@@ -30,7 +30,7 @@ class WorkerSpec:
 async def _search_node(state: AgentState) -> Dict[str, Any]:
     # Lazy import to avoid heavyweight initialization at module import time
     # (important for tests and misconfigured environments).
-    from app.agents.paper_search_agent import paper_search_agent
+    from app.agents.features.search_rag.agent import paper_search_agent
 
     messages = state["messages"]
     last_message = messages[-1].content
@@ -68,7 +68,7 @@ async def _search_node(state: AgentState) -> Dict[str, Any]:
 async def _presentation_node(state: AgentState) -> Dict[str, Any]:
     # Lazy import to avoid heavyweight initialization at module import time
     # (important for tests and misconfigured environments).
-    from app.agents.presentation import presentation_agent_tool
+    from app.agents.features.presentation import presentation_agent_tool
 
     shared_context = state.get("shared_context", {})
     search_result = shared_context.get("search_result", "")

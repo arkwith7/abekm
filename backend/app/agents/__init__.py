@@ -22,17 +22,17 @@ __all__ = [
 
 def __getattr__(name: str) -> Any:  # pragma: no cover
     if name in {"paper_search_agent", "PaperSearchAgent"}:
-        from app.agents.paper_search_agent import PaperSearchAgent, paper_search_agent
+        from app.agents.features.search_rag.agent import PaperSearchAgent, paper_search_agent
 
         return PaperSearchAgent if name == "PaperSearchAgent" else paper_search_agent
 
     if name in {"PresentationAgentTool", "presentation_agent_tool"}:
-        from app.agents.presentation import PresentationAgentTool, presentation_agent_tool
+        from app.agents.features.presentation import PresentationAgentTool, presentation_agent_tool
 
         return PresentationAgentTool if name == "PresentationAgentTool" else presentation_agent_tool
 
     if name in {"PatentAnalysisAgentTool", "patent_analysis_agent_tool"}:
-        from app.agents.patent import PatentAnalysisAgentTool, patent_analysis_agent_tool
+        from app.agents.features.patent.analysis_agent import PatentAnalysisAgentTool, patent_analysis_agent_tool
 
         return (
             PatentAnalysisAgentTool

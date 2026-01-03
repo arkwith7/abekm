@@ -11,7 +11,7 @@ try:
 except ImportError:
     from langchain_core.tools import BaseTool
 
-from app.tools.contracts import ContextResult, SearchChunk, ToolMetrics
+from app.core.contracts import ContextResult, SearchChunk, ToolMetrics
 
 
 class ContextBuilderTool(BaseTool):

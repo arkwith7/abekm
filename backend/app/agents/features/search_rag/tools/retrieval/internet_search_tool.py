@@ -16,7 +16,7 @@ try:
 except ImportError:
     from langchain_core.tools import BaseTool
 
-from app.tools.contracts import (
+from app.core.contracts import (
     SearchToolResult, SearchChunk, ToolMetrics
 )
 from app.core.config import settings
@@ -30,7 +30,7 @@ def _get_tavily_tool():
     global _tavily_tool, _HAS_TAVILY
     if _tavily_tool is None:
         try:
-            from app.tools.retrieval.tavily_search_tool import tavily_search_tool, HAS_TAVILY
+            from app.agents.features.search_rag.tools.retrieval.tavily_search_tool import tavily_search_tool, HAS_TAVILY
             _tavily_tool = tavily_search_tool
             _HAS_TAVILY = HAS_TAVILY
         except ImportError:
@@ -41,7 +41,7 @@ def _get_bing_tool():
     global _bing_tool
     if _bing_tool is None:
         try:
-            from app.tools.retrieval.bing_search_tool import bing_search_tool
+            from app.agents.features.search_rag.tools.retrieval.bing_search_tool import bing_search_tool
             _bing_tool = bing_search_tool
         except ImportError:
             pass

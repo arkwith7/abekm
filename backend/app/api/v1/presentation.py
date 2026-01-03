@@ -18,18 +18,18 @@ from sqlalchemy import select
 from app.models import User
 from app.models.chat import RedisChatManager, get_redis_client, TbChatHistory, RedisChatMessage, MessageType
 from app.core.config import settings
-# from app.services.presentation.quick_ppt_generator_service import quick_ppt_service  # Deprecated
-from app.services.presentation.templated_ppt_generator_service import templated_ppt_service
-from app.services.presentation.ppt_template_manager import template_manager
-from app.services.presentation.template_migration_service import template_migration_service
-from app.services.presentation.template_debugger import template_debugger
-from app.services.presentation.template_content_generator_service import template_content_generator
-from app.services.presentation.file_manager import file_manager
-from app.services.presentation.office_generator_client import office_generator_client
+# from app.agents.features.presentation.services.quick_ppt_generator_service import quick_ppt_service  # Deprecated
+from app.agents.features.presentation.services.templated_ppt_generator_service import templated_ppt_service
+from app.agents.features.presentation.services.ppt_template_manager import template_manager
+from app.agents.features.presentation.services.template_migration_service import template_migration_service
+from app.agents.features.presentation.services.template_debugger import template_debugger
+from app.agents.features.presentation.services.template_content_generator_service import template_content_generator
+from app.agents.features.presentation.services.file_manager import file_manager
+from app.agents.features.presentation.services.office_generator_client import office_generator_client
 from app.models.presentation import PresentationRequest, PresentationResponse, PresentationMetadata, StructuredOutline
 
 # 🚀 Unified Agent (Replaces all legacy agents)
-from app.agents.presentation.unified_presentation_agent import unified_presentation_agent
+from app.agents.features.presentation.unified_presentation_agent import unified_presentation_agent
 import logging
 
 
@@ -511,7 +511,7 @@ class PresentationBuildRequest(BaseModel):
 @router.get("/agent/presentation/templates", summary="PPT 템플릿 목록")
 async def list_presentation_templates(current_user: User = Depends(get_current_user)):
     """사용자별 템플릿 목록 조회 (공용 + 개인)"""
-    from app.services.presentation.user_template_manager import user_template_manager
+    from app.agents.features.presentation.services.user_template_manager import user_template_manager
     
     user_id = str(current_user.id)
     return user_template_manager.list_templates_for_user(user_id)
@@ -573,7 +573,7 @@ async def get_template_thumbnails(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        from app.services.presentation.user_template_manager import user_template_manager
+        from app.agents.features.presentation.services.user_template_manager import user_template_manager
         import urllib.parse
         
         decoded_template_id = urllib.parse.unquote(template_id)
@@ -607,7 +607,7 @@ async def get_template_thumbnails(
 @router.get("/agent/presentation/templates/{template_id}/thumbnails/{slide_index}", summary="슬라이드 썸네일 이미지")
 async def get_slide_thumbnail(template_id: str, slide_index: int):
     try:
-        from app.services.presentation.thumbnail_generator import thumbnail_generator
+        from app.agents.features.presentation.services.thumbnail_generator import thumbnail_generator
         logger.info(f"슬라이드 썸네일 이미지 요청: {template_id}/{slide_index}")
         thumbnail_data = thumbnail_generator.get_slide_thumbnail(template_id, slide_index)
         if thumbnail_data:
@@ -629,7 +629,7 @@ async def upload_presentation_template(
     current_user: User = Depends(get_current_user)
 ):
     """사용자별 템플릿 업로드"""
-    from app.services.presentation.user_template_manager import user_template_manager
+    from app.agents.features.presentation.services.user_template_manager import user_template_manager
     
     if not file.filename or not file.filename.lower().endswith('.pptx'):
         raise HTTPException(status_code=400, detail="pptx 파일만 지원합니다")
@@ -652,7 +652,7 @@ async def delete_presentation_template(
     current_user: User = Depends(get_current_user)
 ):
     """사용자 템플릿 삭제 (공용 템플릿은 삭제 불가)"""
-    from app.services.presentation.user_template_manager import user_template_manager
+    from app.agents.features.presentation.services.user_template_manager import user_template_manager
     
     try:
         decoded_template_id = urllib.parse.unquote(template_id)
@@ -675,7 +675,7 @@ async def set_default_presentation_template(
     current_user: User = Depends(get_current_user)
 ):
     """사용자별 기본 템플릿 설정"""
-    from app.services.presentation.user_template_manager import user_template_manager
+    from app.agents.features.presentation.services.user_template_manager import user_template_manager
     
     try:
         decoded_template_id = urllib.parse.unquote(template_id)
@@ -783,7 +783,7 @@ async def get_template_simple_metadata(
     }
     """
     try:
-        from app.services.presentation.user_template_manager import user_template_manager
+        from app.agents.features.presentation.services.user_template_manager import user_template_manager
         
         logger.info(f"🔍 [simple-metadata] 요청: raw_id='{template_id}'")
         decoded_id = urllib.parse.unquote(template_id)
@@ -910,7 +910,7 @@ async def get_template_metadata(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        from app.services.presentation.user_template_manager import user_template_manager
+        from app.agents.features.presentation.services.user_template_manager import user_template_manager
         
         decoded_id = urllib.parse.unquote(template_id)
         user_id = str(current_user.id)
@@ -1749,13 +1749,13 @@ async def build_presentation_with_template(
             deck = templated_ppt_service._parse_ai_response(json.dumps(req.outline), req.outline.get('topic', '발표자료'), 'business')
             if not deck:
                 # 폴백: 직접 DeckSpec 생성
-                from app.services.presentation.ppt_models import SlideSpec, DeckSpec
+                from app.agents.features.presentation.services.ppt_models import SlideSpec, DeckSpec
                 slides = []
                 for slide_data in req.outline.get('slides', []):
                     # DiagramData 변환 로직 추가
                     diagram_data = None
                     if slide_data.get('diagram'):
-                        from app.services.presentation.ppt_models import DiagramData, ChartData
+                        from app.agents.features.presentation.services.ppt_models import DiagramData, ChartData
                         d_raw = slide_data.get('diagram')
                         chart_data = None
                         if d_raw.get('chart'):
@@ -1922,12 +1922,12 @@ async def generate_template_content(
     4. content_mapping_tool: 콘텐츠-텍스트박스 매핑
     """
     try:
-        from app.agents.presentation.ppt_wizard_checkpoint import (
+        from app.agents.features.presentation.ppt_wizard_checkpoint import (
             ensure_saved as wizard_cp_ensure_saved,
             is_enabled as wizard_cp_is_enabled,
             make_thread_id as wizard_cp_make_thread_id,
         )
-        from app.services.presentation.ppt_wizard_store import PPTWizardKey, ppt_wizard_store
+        from app.agents.features.presentation.services.ppt_wizard_store import PPTWizardKey, ppt_wizard_store
 
         user_id = str(current_user.emp_no) if hasattr(current_user, 'emp_no') else str(current_user.id)
         
@@ -2030,13 +2030,13 @@ async def build_ppt_from_data(
     템플릿 스타일을 완전히 보존하면서 콘텐츠만 교체.
     """
     try:
-        from app.agents.presentation.ppt_wizard_checkpoint import (
+        from app.agents.features.presentation.ppt_wizard_checkpoint import (
             load as wizard_cp_load,
             update as wizard_cp_update,
             is_enabled as wizard_cp_is_enabled,
             make_thread_id as wizard_cp_make_thread_id,
         )
-        from app.services.presentation.ppt_wizard_store import PPTWizardKey, ppt_wizard_store
+        from app.agents.features.presentation.services.ppt_wizard_store import PPTWizardKey, ppt_wizard_store
 
         # Convert Pydantic models to dict
         slides_data = [s.dict() for s in request.slides]
@@ -2678,8 +2678,8 @@ async def auto_map_outline_to_template(
 ):
     """AI 아웃라인을 템플릿에 자동 매핑"""
     try:
-        from app.services.presentation.template_auto_mapping_service import template_auto_mapping_service
-        from app.services.presentation.user_template_manager import UserTemplateManager
+        from app.agents.features.presentation.services.template_auto_mapping_service import template_auto_mapping_service
+        from app.agents.features.presentation.services.user_template_manager import UserTemplateManager
         
         logger.info(f"🔄 자동 매핑 요청: template_id={req.template_id}, user_id={current_user.id}")
         
@@ -2738,7 +2738,7 @@ async def generate_template_preview(
 ):
     """템플릿 PDF 프리뷰 생성"""
     try:
-        from app.services.presentation.pdf_preview_generator import pdf_preview_generator
+        from app.agents.features.presentation.services.pdf_preview_generator import pdf_preview_generator
         
         decoded_id = urllib.parse.unquote(template_id)
         logger.info(f"📄 프리뷰 생성 요청: template_id={decoded_id}")
@@ -2792,7 +2792,7 @@ async def list_template_previews(
 ):
     """템플릿의 모든 프리뷰 정보 조회"""
     try:
-        from app.services.presentation.pdf_preview_generator import pdf_preview_generator
+        from app.agents.features.presentation.services.pdf_preview_generator import pdf_preview_generator
         
         decoded_id = urllib.parse.unquote(template_id)
         return pdf_preview_generator.list_template_previews(decoded_id)
@@ -2813,7 +2813,7 @@ async def get_slide_preview_image(
 ):
     """특정 슬라이드의 프리뷰 이미지 반환"""
     try:
-        from app.services.presentation.pdf_preview_generator import pdf_preview_generator
+        from app.agents.features.presentation.services.pdf_preview_generator import pdf_preview_generator
         
         decoded_id = urllib.parse.unquote(template_id)
         image_path = pdf_preview_generator.get_slide_preview_path(decoded_id, slide_index)

@@ -22,8 +22,8 @@ from app.services.core.ai_service import MultiVendorAIService as AIService
 
 logger = logging.getLogger(__name__)
 
-# 프롬프트 파일 경로
-PROMPT_DIR = Path(__file__).parent.parent.parent.parent / "prompts" / "presentation"
+# 프롬프트 파일 경로 (로컬 prompts 디렉토리)
+PROMPT_DIR = Path(__file__).parent.parent / "prompts"
 AI_DIRECT_MAPPING_PROMPT_FILE = PROMPT_DIR / "ai_direct_mapping_system.prompt"
 
 

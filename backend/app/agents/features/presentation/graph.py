@@ -13,7 +13,7 @@ async def presentation_worker_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
 
     # Lazy import to avoid heavyweight initialization at module import time.
-    from app.agents.presentation import presentation_agent_tool
+    from app.agents.features.presentation import presentation_agent_tool
 
     shared_context = state.get("shared_context", {})
     search_result = shared_context.get("search_result", "")

@@ -59,7 +59,7 @@ presentation/
 **Complete consolidation:**
 - Moved from `app/tools/presentation/` → `app/agents/features/presentation/tools/`
 - Moved from `app/services/presentation/` → `app/agents/features/presentation/services/`
-- Moved from `backend/prompts/presentation/` → `app/agents/features/presentation/prompts/`
+- Moved from `backend/prompts/presentation/` → `backend/app/agents/features/presentation/prompts/`
 
 **Updated imports in:**
 - All 13 tool files (tools → tools, tools → services)
@@ -76,6 +76,6 @@ presentation/
 ## Notes
 
 - Entry: `presentation_worker_node` in `graph.py`
-- Main agent: `app.agents.presentation.presentation_agent_tool`
+- Main agent: `app.agents.features.presentation.presentation_agent_tool`
 - Uses: LangGraph for workflow orchestration
 - Dependencies: Search RAG results, template files, PPT libraries

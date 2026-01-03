@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from loguru import logger
 
-from app.tools.contracts import SearchChunk, SearchToolResult, ToolMetrics
+from app.core.contracts import SearchChunk, SearchToolResult, ToolMetrics
 from app.services.document.vision.image_embedding_service import ImageEmbeddingService
 
 

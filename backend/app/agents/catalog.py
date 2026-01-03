@@ -63,7 +63,7 @@ class AgentCatalog:
 		The main system should route through `get_workers()`.
 		"""
 		if agent_type == "presentation":
-			from app.agents.presentation import presentation_agent_tool
+			from app.agents.features.presentation import presentation_agent_tool
 
 			return presentation_agent_tool
 

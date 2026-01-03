@@ -28,10 +28,10 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.config import settings
 from app.models import User
-from app.agents.paper_search_agent import paper_search_agent
+from app.agents.features.search_rag.agent import paper_search_agent
 from app.agents.supervisor_agent import supervisor_agent
 from langchain_core.messages import HumanMessage
-from app.tools.contracts import AgentConstraints, AgentIntent, AgentResult
+from app.core.contracts import AgentConstraints, AgentIntent, AgentResult
 from loguru import logger
 from app.services.document.extraction.text_extractor_service import TextExtractorService
 from app.services.chat.chat_attachment_service import chat_attachment_service
@@ -883,7 +883,7 @@ async def agent_chat_stream(
                     # Step 2: 즉시 PPT 생성 (Unified Agent)
                     yield f"event: reasoning_step\ndata: {json.dumps({'stage': 'ppt_generation', 'status': 'started', 'message': 'PPT 파일을 생성하고 있습니다...'}, ensure_ascii=False)}\n\n"
                     
-                    from app.agents.presentation.unified_presentation_agent import unified_presentation_agent
+                    from app.agents.features.presentation.unified_presentation_agent import unified_presentation_agent
 
                     import uuid
 
@@ -1008,7 +1008,7 @@ async def agent_chat_stream(
                             yield text[i:i + size]
 
                     try:
-                        from app.agents.features.prior_art.tools.orchestrator import prior_art_orchestrator
+                        from app.agents.features.patent.prior_art_agent.tools.orchestrator import prior_art_orchestrator
 
                         yield (
                             "event: reasoning_step\n"
@@ -1284,7 +1284,7 @@ async def agent_chat_stream(
                     )
 
                     try:
-                        from app.agents.patent import patent_analysis_agent
+                        from app.agents.features.patent.analysis_agent import patent_analysis_agent
                         from app.agents.base.agent_protocol import AgentExecutionContext
 
                         exec_ctx = AgentExecutionContext(
@@ -1359,7 +1359,7 @@ async def agent_chat_stream(
                     )
 
                     try:
-                        from app.agents.deep_research_agent import deep_research_agent
+                        from app.agents.features.deep_research import deep_research_agent
                         from app.agents.base.agent_protocol import AgentExecutionContext
 
                         deep_ctx = AgentExecutionContext(

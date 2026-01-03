@@ -9,7 +9,7 @@ from datetime import datetime
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.tools.contracts import (
+from app.core.contracts import (
     AgentIntent, AgentConstraints, AgentResult, AgentStep,
     SearchChunk, ToolResult
 )
@@ -23,7 +23,7 @@ from app.agents.features.search_rag.tools.processing.deduplicate_tool import ded
 from app.agents.features.search_rag.tools.processing.rerank_tool import rerank_tool
 from app.agents.features.search_rag.tools.context.context_builder_tool import context_builder_tool
 # 공통 도구 (아직 통합 안 됨)
-from app.tools.vision.image_analysis_tool import get_image_analysis_tool  # 🆕 이미지 분석 도구
+from app.agents.features.search_rag.tools.vision.image_analysis_tool import get_image_analysis_tool  # 🆕 이미지 분석 도구
 from app.services.core.korean_nlp_service import korean_nlp_service
 from app.services.core.ai_service import ai_service
 from app.services.document.extraction.text_extractor_service import TextExtractorService
@@ -738,13 +738,12 @@ Return ONLY the category name (e.g., FACTUAL_QA)."""
         if not context or context.strip() == "":
             return "죄송합니다. 질문과 관련된 문서를 찾을 수 없습니다. 다른 키워드로 검색해 주세요."
         
-        # 🆕 general.prompt 로드 (일반 채팅과 동일한 품질 보장)
+        # 🆕 general.prompt 로드 (로컬 prompts 디렉토리에서 로드)
         system_prompt = None
         try:
-            # 현재 파일의 위치를 기준으로 상대 경로 계산
-            current_dir = Path(__file__).parent  # backend/app/agents
-            backend_dir = current_dir.parent.parent  # backend
-            prompt_path = backend_dir / "prompts" / "general.prompt"
+            # 현재 파일 기준 로컬 prompts 디렉토리에서 로드
+            current_dir = Path(__file__).parent  # backend/app/agents/features/search_rag
+            prompt_path = current_dir / "prompts" / "general.prompt"
             
             if prompt_path.exists():
                 system_prompt = prompt_path.read_text(encoding='utf-8').strip()
