@@ -35,23 +35,23 @@ from app.agents.presentation.ppt_generation_graph import (
 )
 
 # Tools import
-from app.tools.presentation.outline_generation_tool import outline_generation_tool
-from app.tools.presentation.quick_pptx_builder_tool import quick_pptx_builder_tool  # Restored 2025-12-09
-from app.tools.presentation.template_analyzer_tool import template_analyzer_tool
-from app.tools.presentation.slide_type_matcher_tool import slide_type_matcher_tool
-from app.tools.presentation.content_mapping_tool import content_mapping_tool
-from app.tools.presentation.templated_pptx_builder_tool import templated_pptx_builder_tool
-from app.tools.presentation.visualization_tool import visualization_tool
-from app.tools.presentation.ppt_quality_validator_tool import ppt_quality_validator_tool
-from app.tools.presentation.template_ppt_comparator_tool import template_ppt_comparator_tool
+from app.agents.features.presentation.tools.outline_generation_tool import outline_generation_tool
+from app.agents.features.presentation.tools.quick_pptx_builder_tool import quick_pptx_builder_tool  # Restored 2025-12-09
+from app.agents.features.presentation.tools.template_analyzer_tool import template_analyzer_tool
+from app.agents.features.presentation.tools.slide_type_matcher_tool import slide_type_matcher_tool
+from app.agents.features.presentation.tools.content_mapping_tool import content_mapping_tool
+from app.agents.features.presentation.tools.templated_pptx_builder_tool import templated_pptx_builder_tool
+from app.agents.features.presentation.tools.visualization_tool import visualization_tool
+from app.agents.features.presentation.tools.ppt_quality_validator_tool import ppt_quality_validator_tool
+from app.agents.features.presentation.tools.template_ppt_comparator_tool import template_ppt_comparator_tool
 
 # AI-First Tools (신규)
-from app.tools.presentation.ai_direct_mapping_tool import AIDirectMappingTool
-from app.services.presentation.simple_ppt_builder import SimplePPTBuilder
-from app.services.presentation.ai_ppt_builder import AIPPTBuilder, build_ppt_from_ai_mappings
+from app.agents.features.presentation.tools.ai_direct_mapping_tool import AIDirectMappingTool
+from app.agents.features.presentation.services.simple_ppt_builder import SimplePPTBuilder
+from app.agents.features.presentation.services.ai_ppt_builder import AIPPTBuilder, build_ppt_from_ai_mappings
 
 # 🆕 v3.7: 동적 슬라이드 관리
-from app.services.presentation.dynamic_slide_manager import DynamicSlideManager
+from app.agents.features.presentation.services.dynamic_slide_manager import DynamicSlideManager
 
 
 class PresentationMode(str, Enum):
@@ -2152,8 +2152,8 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             품질 검증 리포트 또는 None (검증 실패 시)
         """
         try:
-            from app.services.presentation.ppt_template_manager import template_manager
-            from app.services.presentation.user_template_manager import user_template_manager
+            from app.agents.features.presentation.services.ppt_template_manager import template_manager
+            from app.agents.features.presentation.services.user_template_manager import user_template_manager
             
             logger.info(f"🔍 [{self.name}] 품질 검증 시작: {template_id}")
             
@@ -2310,7 +2310,7 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
             # 품질 이슈가 있는 요소만 타겟팅하여 부분 재생성합니다.
             # 기존 정상 콘텐츠는 보존됩니다.
             # =================================================================
-            from app.tools.presentation.quality_guard_tool import QualityGuard
+            from app.agents.features.presentation.tools.quality_guard_tool import QualityGuard
             quality_guard = QualityGuard()
             
             # 품질 검증
@@ -2624,8 +2624,8 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
     ) -> Optional[str]:
         """템플릿 파일 경로 반환"""
         try:
-            from app.services.presentation.ppt_template_manager import template_manager
-            from app.services.presentation.user_template_manager import user_template_manager
+            from app.agents.features.presentation.services.ppt_template_manager import template_manager
+            from app.agents.features.presentation.services.user_template_manager import user_template_manager
             
             # 시스템 템플릿
             path = template_manager.get_template_path(template_id)
@@ -2655,8 +2655,8 @@ deck_spec이 너무 길다면 빈 객체로 보내도 됩니다 (시스템이 �
     ) -> Optional[Dict[str, Any]]:
         """템플릿 메타데이터 직접 로드 (shapes 정보 포함)"""
         try:
-            from app.services.presentation.ppt_template_manager import template_manager
-            from app.services.presentation.user_template_manager import user_template_manager
+            from app.agents.features.presentation.services.ppt_template_manager import template_manager
+            from app.agents.features.presentation.services.user_template_manager import user_template_manager
             
             # 시스템 템플릿에서 먼저 찾기
             metadata = template_manager.get_template_metadata(template_id)

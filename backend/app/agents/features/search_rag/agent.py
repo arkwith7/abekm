@@ -13,14 +13,16 @@ from app.tools.contracts import (
     AgentIntent, AgentConstraints, AgentResult, AgentStep,
     SearchChunk, ToolResult
 )
-from app.tools.retrieval.vector_search_tool import vector_search_tool
-from app.tools.retrieval.keyword_search_tool import keyword_search_tool
-from app.tools.retrieval.fulltext_search_tool import fulltext_search_tool
-from app.tools.retrieval.internet_search_tool import internet_search_tool
-from app.tools.retrieval.multimodal_search_tool import multimodal_search_tool  # 🆕 멀티모달 검색 도구
-from app.tools.processing.deduplicate_tool import deduplicate_tool
-from app.tools.processing.rerank_tool import rerank_tool
-from app.tools.context.context_builder_tool import context_builder_tool
+# Search RAG 통합 도구 (feature-pack 내부)
+from app.agents.features.search_rag.tools.retrieval.vector_search_tool import vector_search_tool
+from app.agents.features.search_rag.tools.retrieval.keyword_search_tool import keyword_search_tool
+from app.agents.features.search_rag.tools.retrieval.fulltext_search_tool import fulltext_search_tool
+from app.agents.features.search_rag.tools.retrieval.internet_search_tool import internet_search_tool
+from app.agents.features.search_rag.tools.retrieval.multimodal_search_tool import multimodal_search_tool
+from app.agents.features.search_rag.tools.processing.deduplicate_tool import deduplicate_tool
+from app.agents.features.search_rag.tools.processing.rerank_tool import rerank_tool
+from app.agents.features.search_rag.tools.context.context_builder_tool import context_builder_tool
+# 공통 도구 (아직 통합 안 됨)
 from app.tools.vision.image_analysis_tool import get_image_analysis_tool  # 🆕 이미지 분석 도구
 from app.services.core.korean_nlp_service import korean_nlp_service
 from app.services.core.ai_service import ai_service

@@ -26,13 +26,13 @@ from langgraph.graph import END, StateGraph
 
 from app.agents.presentation.ppt_checkpointer import get_checkpointer
 
-from app.tools.presentation.content_mapping_tool import content_mapping_tool
-from app.tools.presentation.outline_generation_tool import outline_generation_tool
-from app.tools.presentation.ppt_quality_validator_tool import ppt_quality_validator_tool
-from app.tools.presentation.quick_pptx_builder_tool import quick_pptx_builder_tool
-from app.tools.presentation.slide_type_matcher_tool import slide_type_matcher_tool
-from app.tools.presentation.template_analyzer_tool import template_analyzer_tool
-from app.tools.presentation.templated_pptx_builder_tool import templated_pptx_builder_tool
+from app.agents.features.presentation.tools.content_mapping_tool import content_mapping_tool
+from app.agents.features.presentation.tools.outline_generation_tool import outline_generation_tool
+from app.agents.features.presentation.tools.ppt_quality_validator_tool import ppt_quality_validator_tool
+from app.agents.features.presentation.tools.quick_pptx_builder_tool import quick_pptx_builder_tool
+from app.agents.features.presentation.tools.slide_type_matcher_tool import slide_type_matcher_tool
+from app.agents.features.presentation.tools.template_analyzer_tool import template_analyzer_tool
+from app.agents.features.presentation.tools.templated_pptx_builder_tool import templated_pptx_builder_tool
 
 
 class PPTAgentState(TypedDict, total=False):

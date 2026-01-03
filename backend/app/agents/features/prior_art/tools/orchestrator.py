@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from app.tools.prior_art.patent_analysis_tool import patent_analysis_tool
-from app.tools.prior_art.search_tool import prior_art_search_tool
-from app.tools.prior_art.report_tool import prior_art_report_tool
-from app.tools.prior_art.screening_tool import prior_art_screening_tool
+from app.agents.features.prior_art.tools.patent_analysis_tool import patent_analysis_tool
+from app.agents.features.prior_art.tools.search_tool import prior_art_search_tool
+from app.agents.features.prior_art.tools.report_tool import prior_art_report_tool
+from app.agents.features.prior_art.tools.screening_tool import prior_art_screening_tool
 
 
 class PriorArtOrchestrator:

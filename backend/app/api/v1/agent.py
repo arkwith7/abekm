@@ -1008,7 +1008,7 @@ async def agent_chat_stream(
                             yield text[i:i + size]
 
                     try:
-                        from app.tools.prior_art.orchestrator import prior_art_orchestrator
+                        from app.agents.features.prior_art.tools.orchestrator import prior_art_orchestrator
 
                         yield (
                             "event: reasoning_step\n"

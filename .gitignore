@@ -327,6 +327,12 @@ backend/**/*.log
 # uploads 디렉토리 제외
 backend/uploads/
 
+# pytest / coverage artifacts (generated)
+backend/.coverage
+backend/.coverage.*
+backend/htmlcov/
+backend/.pytest_cache/
+
 # 마크다운 리포트/가이드 (선택적)
 # 필요하면 개별적으로 추가 커밋
 *_REPORT.md

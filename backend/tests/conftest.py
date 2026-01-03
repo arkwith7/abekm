@@ -9,6 +9,8 @@ Important:
 """
 
 import asyncio
+import os
+from pathlib import Path
 from typing import AsyncGenerator, Generator
 
 import pytest
@@ -16,13 +18,26 @@ import pytest_asyncio
 
 
 @pytest_asyncio.fixture(scope="function")
-async def functional_client() -> AsyncGenerator["AsyncClient", None]:
+async def functional_client(tmp_path: Path) -> AsyncGenerator["AsyncClient", None]:
     """Async HTTP client for functional tests.
 
     Goal: run inside containers without requiring a dedicated test database.
     We override auth + DB dependencies so endpoint wiring can be validated even
     when DB/LLM are not configured.
     """
+
+    # Ensure any import-time global services (like ChatAttachmentService) write
+    # into a per-test, writable directory.
+    chat_dir = str(tmp_path / "chat_attachments")
+    # Always override (not setdefault): unit tests may have already imported settings.
+    os.environ["CHAT_ATTACHMENT_DIR"] = chat_dir
+    try:
+        from app.core.config import settings
+
+        settings.chat_attachment_dir = chat_dir
+    except Exception:
+        # If settings import fails, the subsequent imports will raise with context.
+        pass
 
     try:
         from fastapi import FastAPI

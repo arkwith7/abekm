@@ -18,7 +18,7 @@ async def prior_art_worker_node(state: Dict[str, Any]) -> Dict[str, Any]:
     """
 
     # Lazy imports to avoid import-time side effects.
-    from app.tools.prior_art.orchestrator import prior_art_orchestrator
+    from app.agents.features.prior_art.tools.orchestrator import prior_art_orchestrator
 
     messages: Sequence[BaseMessage] = state["messages"]
     user_text = messages[-1].content
