@@ -4,6 +4,7 @@ Tavily API를 사용하여 AI 친화적인 검색 결과 제공
 """
 import asyncio
 import uuid
+import hashlib
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from loguru import logger
@@ -66,6 +67,14 @@ class TavilySearchTool(BaseTool):
                 logger.error(f"❌ [TavilySearch] 클라이언트 초기화 실패: {e}")
                 self._client = None
                 self._async_client = None
+
+    def _format_query_for_log(self, query: str) -> str:
+        """Avoid logging raw queries unless explicitly allowed."""
+        q = (query or "").strip()
+        if settings.web_search_log_queries:
+            return q[:200]
+        digest = hashlib.sha256(q.encode("utf-8")).hexdigest()[:12] if q else "empty"
+        return f"len={len(q)} sha256={digest}"
         
     async def _arun(
         self,
@@ -125,8 +134,10 @@ class TavilySearchTool(BaseTool):
             
             if not self._async_client:
                 raise Exception("Tavily 클라이언트 초기화 실패")
-            
-            logger.info(f"🔍 [TavilySearch] 검색 시작: '{query}' (depth={search_depth}, top_k={top_k})")
+
+            logger.info(
+                f"🔍 [TavilySearch] 검색 시작: query=({self._format_query_for_log(query)}) (depth={search_depth}, top_k={top_k})"
+            )
             
             # Tavily 검색 실행
             response = await self._async_client.search(
@@ -261,7 +272,7 @@ class TavilySearchTool(BaseTool):
             if not self._client:
                 raise Exception("Tavily 클라이언트 초기화 실패")
             
-            logger.info(f"🔍 [TavilySearch] 검색 시작: '{query}'")
+            logger.info(f"🔍 [TavilySearch] 검색 시작: query=({self._format_query_for_log(query)})")
             
             response = self._client.search(
                 query=query,

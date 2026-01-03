@@ -1,26 +1,13 @@
-from typing import TypedDict, Annotated, List, Dict, Any, Optional, Sequence, Literal
+from typing import TypedDict, Annotated, Dict, Any, Optional, Sequence
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from app.core.config import settings
-from app.agents import paper_search_agent
-from app.agents import presentation_agent_tool
-from app.core.database import get_async_engine
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from contextlib import asynccontextmanager
 import json
 import operator
 from loguru import logger
 from pydantic import BaseModel
-
-# DB Session Helper
-@asynccontextmanager
-async def get_db_session_context():
-    engine = get_async_engine()
-    async_session = async_sessionmaker(engine, expire_on_commit=False)
-    async with async_session() as session:
-        yield session
 
 # State 정의
 class AgentState(TypedDict):
@@ -57,13 +44,20 @@ system_prompt = (
     " first call 'SearchAgent', then call 'PresentationAgent'."
     " If the user just asks for a presentation without search context,"
     " you can call 'PresentationAgent' directly."
+    " If the user asks for prior-art search (e.g., KIPRIS, 선행기술조사), call 'PriorArtAgent'."
 )
 
-options = ["SearchAgent", "PresentationAgent", "FINISH"]
+# Dynamic worker loading via AgentCatalog (Phase 1 unification)
+from app.agents.catalog import agent_catalog
+
+workers = agent_catalog.get_workers()
+worker_names = list(workers.keys())
+options = [*worker_names, "FINISH"]
 
 
 class RouteDecision(BaseModel):
-    next: Literal["SearchAgent", "PresentationAgent", "FINISH"]
+    # options는 런타임에 구성되므로 Literal 대신 런타임 검증
+    next: str
 
 # Function definition for routing
 function_def = {
@@ -96,97 +90,41 @@ prompt = ChatPromptTemplate.from_messages(
     ]
 ).partial(options=str(options), members=", ".join(options))
 
-supervisor_chain = (
-    prompt
-    | llm.with_structured_output(RouteDecision)
-)
+if llm is None:
+    supervisor_chain = None
+else:
+    supervisor_chain = prompt | llm.with_structured_output(RouteDecision)
 
 # Nodes
 async def supervisor_node(state: AgentState):
-    decision = await supervisor_chain.ainvoke(state)
-    return {"next": decision.next}
-
-async def search_node(state: AgentState):
-    messages = state["messages"]
-    last_message = messages[-1].content
-    
-    logger.info(f"Supervisor routing to SearchAgent: {last_message[:50]}...")
-    
-    async with get_db_session_context() as db_session:
-        # 검색 실행
-        # constraints 등은 기본값 사용
-        # history 변환 필요 (BaseMessage -> Dict)
-        history_dicts = []
-        for msg in messages[:-1]: # 마지막 메시지는 query이므로 제외
-            role = "user" if isinstance(msg, HumanMessage) else "assistant"
-            history_dicts.append({"role": role, "content": msg.content})
-
-        result = await paper_search_agent.execute(
-            query=last_message,
-            db_session=db_session,
-            history=history_dicts
+    if supervisor_chain is None:
+        # Avoid worker execution when supervisor cannot route.
+        # This keeps unit tests and misconfigured deployments from crashing at import-time.
+        msg = (
+            "❌ Supervisor LLM is not configured. "
+            "Set OpenAI/Azure credentials (e.g., OPENAI_API_KEY or AZURE_OPENAI_API_KEY)."
         )
-    
-    response_content = result.answer
-    
-    # 검색 결과를 shared_context에 저장
-    # AgentResult 객체 자체를 저장하여 메타데이터 보존
-    return {
-        "messages": [AIMessage(content=response_content, name="SearchAgent")],
-        "shared_context": {
-            "search_result": response_content,
-            "search_agent_result": result  # AgentResult 객체 저장
+        return {
+            "next": "FINISH",
+            "messages": [AIMessage(content=msg, name="Supervisor")],
+            "shared_context": state.get("shared_context", {}),
         }
-    }
 
-async def presentation_node(state: AgentState):
-    messages = state["messages"]
-    # messages에는 User -> SearchAgent(AI) -> ... 순으로 쌓여있음.
-    # PresentationAgent에게 전달할 때는 "검색 결과를 바탕으로 PPT 만들어줘"라는 의도가 전달되어야 함.
-    
-    shared_context = state.get("shared_context", {})
-    search_result = shared_context.get("search_result", "")
-    
-    logger.info(f"Supervisor routing to PresentationAgent. Context len: {len(search_result)}")
-    
-    # PresentationAgent Tool 실행 (New Tool-based Architecture)
-    context_text = search_result if search_result else "Create a presentation based on the conversation."
-    
-    # 원래 사용자 요청에서 주제 추출 시도
-    original_query = messages[0].content if messages else ""
-    
-    try:
-        tool_result = await presentation_agent_tool._arun(
-            context_text=context_text,
-            topic=None,  # 자동 추론
-            documents=[],
-            options={},
-            template_style="business",
-            presentation_type="general",
-            quick_mode=False
-        )
-        
-        if tool_result.get("success"):
-            file_name = tool_result.get("file_name", "presentation.pptx")
-            file_path = tool_result.get("file_path", "")
-            final_response = f"✅ PPT 생성 완료!\n\n📄 파일명: {file_name}\n💾 경로: {file_path}"
-        else:
-            error_msg = tool_result.get("error", "알 수 없는 오류")
-            final_response = f"❌ PPT 생성 실패: {error_msg}"
-    
-    except Exception as e:
-        logger.error(f"PresentationAgent Tool 실행 실패: {e}")
-        final_response = f"❌ Presentation generation failed: {str(e)}"
-    
-    return {
-        "messages": [AIMessage(content=final_response, name="PresentationAgent")]
-    }
+    decision = await supervisor_chain.ainvoke(state)
+
+    chosen = decision.next
+    if chosen not in options:
+        logger.warning(f"⚠️ Supervisor returned unknown next='{chosen}', defaulting to FINISH")
+        chosen = "FINISH"
+
+    # shared_context는 유지
+    return {"next": chosen, "shared_context": state.get("shared_context", {})}
 
 # Graph 구성
 workflow = StateGraph(AgentState)
 workflow.add_node("supervisor", supervisor_node)
-workflow.add_node("SearchAgent", search_node)
-workflow.add_node("PresentationAgent", presentation_node)
+for worker_name, spec in workers.items():
+    workflow.add_node(worker_name, spec.node)
 
 for member in options[:-1]:
     workflow.add_edge(member, "supervisor")

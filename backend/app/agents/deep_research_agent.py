@@ -25,7 +25,7 @@ from app.agents.base.agent_protocol import (
     AgentStep,
     BaseAutonomousAgent,
 )
-from app.agents import paper_search_agent
+from app.agents.paper_search_agent import paper_search_agent
 from app.services.core.ai_service import ai_service
 from app.tools.contracts import AgentConstraints, SearchChunk
 

@@ -438,14 +438,29 @@ def _get_checkpointer():
 	return get_checkpointer()
 
 
-_CHECKPOINTER = _get_checkpointer()
+_QUICK_GRAPH: Any | None = None
+_TEMPLATE_GRAPH: Any | None = None
 
-if _CHECKPOINTER is not None:
-	_quick_graph = _build_quick_graph().compile(checkpointer=_CHECKPOINTER)
-	_template_graph = _build_template_graph().compile(checkpointer=_CHECKPOINTER)
-else:
-	_quick_graph = _build_quick_graph().compile()
-	_template_graph = _build_template_graph().compile()
+
+def _get_compiled_graphs() -> tuple[Any, Any]:
+	"""Compile graphs lazily to avoid import-time side effects.
+
+	Import-time compilation previously initialized the Postgres async pool even
+	when PPT flows weren't invoked (e.g. during unrelated API tests).
+	"""
+	global _QUICK_GRAPH, _TEMPLATE_GRAPH
+	if _QUICK_GRAPH is not None and _TEMPLATE_GRAPH is not None:
+		return _QUICK_GRAPH, _TEMPLATE_GRAPH
+
+	checkpointer = _get_checkpointer()
+	if checkpointer is not None:
+		_QUICK_GRAPH = _build_quick_graph().compile(checkpointer=checkpointer)
+		_TEMPLATE_GRAPH = _build_template_graph().compile(checkpointer=checkpointer)
+	else:
+		_QUICK_GRAPH = _build_quick_graph().compile()
+		_TEMPLATE_GRAPH = _build_template_graph().compile()
+
+	return _QUICK_GRAPH, _TEMPLATE_GRAPH
 
 
 async def run_ppt_generation_graph(
@@ -476,7 +491,8 @@ async def run_ppt_generation_graph(
 		"errors": [],
 	}
 
-	graph = _template_graph if mode == "template" else _quick_graph
+	quick_graph, template_graph = _get_compiled_graphs()
+	graph = template_graph if mode == "template" else quick_graph
 
 	logger.info(
 		"🧩 [PPTGraph] start: mode=%s, topic='%s', validate=%s, request_id=%s",

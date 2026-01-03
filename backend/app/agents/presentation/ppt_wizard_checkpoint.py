@@ -80,17 +80,26 @@ def _compile_graph():
 	return g.compile(checkpointer=saver)
 
 
-_GRAPH = _compile_graph()
+_GRAPH: Any | None = None
+
+
+def _get_graph() -> Any | None:
+	global _GRAPH
+	if _GRAPH is not None:
+		return _GRAPH
+	_GRAPH = _compile_graph()
+	return _GRAPH
 
 
 async def ensure_saved(*, thread_id: str, state: Dict[str, Any]) -> None:
 	"""Create or overwrite the wizard checkpoint for thread_id."""
-	if _GRAPH is None:
+	graph = _get_graph()
+	if graph is None:
 		raise RuntimeError("Wizard checkpointer is not available")
 
 	config = {"configurable": {"thread_id": thread_id}}
 	await asyncio.to_thread(
-		_GRAPH.invoke,
+		graph.invoke,
 		state,
 		config,
 		interrupt_after=["checkpoint"],
@@ -99,12 +108,13 @@ async def ensure_saved(*, thread_id: str, state: Dict[str, Any]) -> None:
 
 async def load(*, thread_id: str) -> Optional[Dict[str, Any]]:
 	"""Load the latest persisted state for thread_id."""
-	if _GRAPH is None:
+	graph = _get_graph()
+	if graph is None:
 		return None
 
 	config = {"configurable": {"thread_id": thread_id}}
 	try:
-		snap = await asyncio.to_thread(_GRAPH.get_state, config)
+		snap = await asyncio.to_thread(graph.get_state, config)
 		return dict(getattr(snap, "values", None) or {})
 	except Exception:
 		return None
@@ -112,8 +122,9 @@ async def load(*, thread_id: str) -> Optional[Dict[str, Any]]:
 
 async def update(*, thread_id: str, values: Dict[str, Any]) -> None:
 	"""Merge-update the persisted state for thread_id."""
-	if _GRAPH is None:
+	graph = _get_graph()
+	if graph is None:
 		raise RuntimeError("Wizard checkpointer is not available")
 
 	config = {"configurable": {"thread_id": thread_id}}
-	await asyncio.to_thread(_GRAPH.update_state, config, values)
+	await asyncio.to_thread(graph.update_state, config, values)

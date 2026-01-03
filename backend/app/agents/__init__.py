@@ -1,19 +1,53 @@
-"""Agents package - 에이전트 계층"""
-from app.agents.paper_search_agent import paper_search_agent, PaperSearchAgent
-from app.agents.summary import SummaryAgentTool, summary_agent_tool
-from app.agents.presentation import PresentationAgentTool, presentation_agent_tool
-from app.agents.patent import PatentAnalysisAgentTool, patent_analysis_agent_tool
-from app.agents.registry import agent_registry, AgentRegistry
+"""Agents package - 에이전트 계층.
+
+Import-time side effects를 피하기 위해 이 패키지는 lazy export를 사용한다.
+"""
+
+from __future__ import annotations
+
+from typing import Any
 
 __all__ = [
     "paper_search_agent",
     "PaperSearchAgent",
-    "SummaryAgentTool",
-    "summary_agent_tool",
     "PresentationAgentTool",
     "presentation_agent_tool",
     "PatentAnalysisAgentTool",
     "patent_analysis_agent_tool",
-    "agent_registry",
-    "AgentRegistry",
+    "agent_catalog",
+    "AgentCatalog",
+    "CatalogItem",
 ]
+
+
+def __getattr__(name: str) -> Any:  # pragma: no cover
+    if name in {"paper_search_agent", "PaperSearchAgent"}:
+        from app.agents.paper_search_agent import PaperSearchAgent, paper_search_agent
+
+        return PaperSearchAgent if name == "PaperSearchAgent" else paper_search_agent
+
+    if name in {"PresentationAgentTool", "presentation_agent_tool"}:
+        from app.agents.presentation import PresentationAgentTool, presentation_agent_tool
+
+        return PresentationAgentTool if name == "PresentationAgentTool" else presentation_agent_tool
+
+    if name in {"PatentAnalysisAgentTool", "patent_analysis_agent_tool"}:
+        from app.agents.patent import PatentAnalysisAgentTool, patent_analysis_agent_tool
+
+        return (
+            PatentAnalysisAgentTool
+            if name == "PatentAnalysisAgentTool"
+            else patent_analysis_agent_tool
+        )
+
+    if name in {"agent_catalog", "AgentCatalog", "CatalogItem"}:
+        from app.agents.catalog import AgentCatalog, CatalogItem, agent_catalog
+
+        if name == "AgentCatalog":
+            return AgentCatalog
+        if name == "CatalogItem":
+            return CatalogItem
+        return agent_catalog
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+

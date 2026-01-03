@@ -6,6 +6,7 @@ import asyncio
 import uuid
 import time
 import random
+import hashlib
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from loguru import logger
@@ -99,6 +100,11 @@ class InternetSearchTool(BaseTool):
         """설정에 따른 선호 제공자 반환"""
         provider = settings.web_search_provider.lower()
         _, has_tavily = _get_tavily_tool()
+
+        # "mock" is used as a safe default in config examples.
+        # Treat it as disabled to avoid accidental external calls.
+        if provider in {"mock", "none", "disabled", "off", "false"}:
+            return "none"
         
         # 명시적 설정이 있으면 해당 제공자 사용
         if provider == "tavily" and settings.tavily_api_key and has_tavily:
@@ -117,11 +123,19 @@ class InternetSearchTool(BaseTool):
             return "duckduckgo"
         
         return "none"
+
+    def _format_query_for_log(self, query: str) -> str:
+        """Avoid logging raw queries unless explicitly allowed."""
+        q = (query or "").strip()
+        if settings.web_search_log_queries:
+            return q[:200]
+        digest = hashlib.sha256(q.encode("utf-8")).hexdigest()[:12] if q else "empty"
+        return f"len={len(q)} sha256={digest}"
         
     async def _arun(
         self,
         query: str,
-        top_k: int = 5,
+        top_k: int = 0,
         provider: Optional[str] = None,  # 명시적 제공자 선택
         **kwargs
     ) -> SearchToolResult:
@@ -135,11 +149,32 @@ class InternetSearchTool(BaseTool):
         """
         start_time = datetime.utcnow()
         trace_id = str(uuid.uuid4())
+
+        # Feature-flag guard: do not call external providers when disabled.
+        if not settings.web_search_enabled:
+            return SearchToolResult(
+                success=False,
+                data=[],
+                total_found=0,
+                filtered_count=0,
+                search_params={"query": "" if not settings.web_search_log_queries else query},
+                metrics=ToolMetrics(latency_ms=0, provider="disabled", trace_id=trace_id),
+                errors=["WEB_SEARCH가 비활성화되어 있습니다 (web_search_enabled=false)."],
+                trace_id=trace_id,
+                tool_name=self.name,
+                tool_version=self.version,
+            )
+
+        # Align default result size with config.
+        if not isinstance(top_k, int) or top_k <= 0:
+            top_k = int(settings.web_search_max_results or 6)
         
         # 제공자 결정
         selected_provider = provider or self._get_preferred_provider()
-        
-        logger.info(f"🔍 [InternetSearch] 제공자: {selected_provider}, 쿼리: '{query[:50]}...'")
+
+        logger.info(
+            f"🔍 [InternetSearch] 제공자: {selected_provider}, query=({self._format_query_for_log(query)})"
+        )
         
         # 제공자별 검색 실행
         if selected_provider == "tavily":
@@ -339,11 +374,29 @@ class InternetSearchTool(BaseTool):
     def _run(
         self,
         query: str,
-        top_k: int = 5,
+        top_k: int = 0,
         provider: Optional[str] = None,
         **kwargs
     ) -> SearchToolResult:
         """인터넷 검색 실행 (동기)"""
+        if not settings.web_search_enabled:
+            trace_id = str(uuid.uuid4())
+            return SearchToolResult(
+                success=False,
+                data=[],
+                total_found=0,
+                filtered_count=0,
+                search_params={"query": "" if not settings.web_search_log_queries else query},
+                metrics=ToolMetrics(latency_ms=0, provider="disabled", trace_id=trace_id),
+                errors=["WEB_SEARCH가 비활성화되어 있습니다 (web_search_enabled=false)."],
+                trace_id=trace_id,
+                tool_name=self.name,
+                tool_version=self.version,
+            )
+
+        if not isinstance(top_k, int) or top_k <= 0:
+            top_k = int(settings.web_search_max_results or 6)
+
         selected_provider = provider or self._get_preferred_provider()
         
         if selected_provider == "tavily":

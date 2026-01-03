@@ -15,6 +15,50 @@ import pytest
 import pytest_asyncio
 
 
+@pytest_asyncio.fixture(scope="function")
+async def functional_client() -> AsyncGenerator["AsyncClient", None]:
+    """Async HTTP client for functional tests.
+
+    Goal: run inside containers without requiring a dedicated test database.
+    We override auth + DB dependencies so endpoint wiring can be validated even
+    when DB/LLM are not configured.
+    """
+
+    try:
+        from fastapi import FastAPI
+        from httpx import ASGITransport, AsyncClient
+        from app.api.v1.agent import router as agent_router
+        from app.core.database import get_db
+        from app.core.dependencies import get_current_user
+    except Exception as e:
+        raise RuntimeError(f"Functional test import failed: {e}") from e
+
+    app = FastAPI()
+    app.include_router(agent_router)
+
+    class _DummyUser:
+        emp_no = "000000"
+        is_active = True
+        is_admin = True
+        username = "test"
+
+    async def override_get_db():
+        yield None
+
+    async def override_get_current_user():
+        return _DummyUser()
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+    app.dependency_overrides.clear()
+
+
 def _build_test_db_url() -> str:
     from app.core.config import settings
 

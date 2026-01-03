@@ -5,6 +5,7 @@ Microsoft Bing Search API v7을 사용하여 웹/뉴스 검색 수행
 import asyncio
 import uuid
 import aiohttp
+import hashlib
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from loguru import logger
@@ -44,6 +45,14 @@ class BingSearchTool(BaseTool):
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+
+    def _format_query_for_log(self, query: str) -> str:
+        """Avoid logging raw queries unless explicitly allowed."""
+        q = (query or "").strip()
+        if settings.web_search_log_queries:
+            return q[:200]
+        digest = hashlib.sha256(q.encode("utf-8")).hexdigest()[:12] if q else "empty"
+        return f"len={len(q)} sha256={digest}"
         
     async def _arun(
         self,
@@ -84,7 +93,9 @@ class BingSearchTool(BaseTool):
             )
             
         try:
-            logger.info(f"🔍 [BingSearch] 검색 시작: '{query}' (type={search_type}, market={market})")
+            logger.info(
+                f"🔍 [BingSearch] 검색 시작: query=({self._format_query_for_log(query)}) (type={search_type}, market={market})"
+            )
             
             chunks = []
             
@@ -335,7 +346,7 @@ class BingSearchTool(BaseTool):
             )
             
         try:
-            logger.info(f"🔍 [BingSearch] 검색 시작: '{query}'")
+            logger.info(f"🔍 [BingSearch] 검색 시작: query=({self._format_query_for_log(query)})")
             
             headers = {"Ocp-Apim-Subscription-Key": api_key}
             params = {

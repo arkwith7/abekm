@@ -9,7 +9,7 @@ import asyncio
 from datetime import datetime
 import json
 
-from app.agents import agent_registry
+from app.agents.catalog import agent_catalog
 from app.core.config import settings
 from app.services.core.ai_service import ai_service
 from app.services.chat.ai_agent_service import ai_agent_service
@@ -27,7 +27,7 @@ class IntegratedMultiAgentService:
         self.tool_registry = tool_registry
         self.enhanced_tool_registry = enhanced_tool_registry  # 새로운 확장된 툴 레지스트리
         self.legacy_agent_service = ai_agent_service
-        self.new_agent_registry = agent_registry
+        self.new_agent_registry = agent_catalog
         self.enable_new_summary_agent = settings.enable_new_summary_agent
         self.enable_new_presentation_agent = settings.enable_new_presentation_agent
         
@@ -146,7 +146,7 @@ class IntegratedMultiAgentService:
             )
 
             if use_new_architecture:
-                new_agent_tool = self.new_agent_registry.get_agent_tool(agent_type)
+                new_agent_tool = self.new_agent_registry.get_tool(agent_type)
                 if new_agent_tool:
                     logger.info("🆕 신규 에이전트 아키텍처 사용: %s", agent_type)
                     return await self._execute_new_agent_tool(
