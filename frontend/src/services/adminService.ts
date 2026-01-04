@@ -683,3 +683,108 @@ export const getStorageAnalytics = async (): Promise<any> => {
   const response = await api.get(`/api/admin/analytics/storage`);
   return response.data;
 };
+
+// ==================== IPC 권한 관리 API ====================
+
+export interface IpcPermission {
+  permission_id: number;
+  user_emp_no: string;
+  ipc_code: string;
+  role_id: string;
+  access_scope: string;
+  include_children: boolean;
+  valid_from: string;
+  valid_until?: string;
+  is_active: boolean;
+  created_date: string;
+  created_by?: string;
+  user_name?: string;
+  department_name?: string;
+  ipc_description?: string;
+}
+
+export interface IpcPermissionCreate {
+  user_emp_no: string;
+  ipc_code: string;
+  role_id: string;
+  access_scope?: string;
+  include_children?: boolean;
+  valid_until?: string;
+}
+
+export interface IpcPermissionUpdate {
+  role_id?: string;
+  access_scope?: string;
+  include_children?: boolean;
+  valid_until?: string;
+  is_active?: boolean;
+}
+
+export interface IpcPermissionBulkCreate {
+  permissions: IpcPermissionCreate[];
+}
+
+export interface IpcPermissionListResponse {
+  permissions: IpcPermission[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface IpcPermissionListParams {
+  page?: number;
+  page_size?: number;
+  user_emp_no?: string;
+  ipc_code?: string;
+  role_id?: string;
+  is_active?: boolean;
+  dept_code?: string;
+  user_name?: string;
+}
+
+/**
+ * IPC 권한 목록 조회 (필터링, 페이징 지원)
+ */
+export const listIpcPermissions = async (params?: IpcPermissionListParams): Promise<IpcPermissionListResponse> => {
+  const response = await api.get('/api/v1/admin/ipc-permissions', { params });
+  return response.data;
+};
+
+/**
+ * IPC 권한 생성
+ */
+export const createIpcPermission = async (data: IpcPermissionCreate): Promise<IpcPermission> => {
+  const response = await api.post('/api/v1/admin/ipc-permissions', data);
+  return response.data.permission;
+};
+
+/**
+ * IPC 권한 수정
+ */
+export const updateIpcPermission = async (permissionId: number, data: IpcPermissionUpdate): Promise<IpcPermission> => {
+  const response = await api.put(`/api/v1/admin/ipc-permissions/${permissionId}`, data);
+  return response.data.permission;
+};
+
+/**
+ * IPC 권한 삭제
+ */
+export const deleteIpcPermission = async (permissionId: number): Promise<void> => {
+  await api.delete(`/api/v1/admin/ipc-permissions/${permissionId}`);
+};
+
+/**
+ * 사용자별 IPC 권한 조회
+ */
+export const getUserIpcPermissions = async (userEmpNo: string): Promise<IpcPermission[]> => {
+  const response = await api.get(`/api/v1/admin/ipc-permissions/user/${userEmpNo}`);
+  return response.data.permissions;
+};
+
+/**
+ * 벌크 IPC 권한 생성
+ */
+export const bulkCreateIpcPermissions = async (data: IpcPermissionBulkCreate): Promise<IpcPermission[]> => {
+  const response = await api.post('/api/v1/admin/ipc-permissions/bulk', data);
+  return response.data.permissions;
+};

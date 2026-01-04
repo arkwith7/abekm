@@ -28,12 +28,12 @@ export const SystemMonitoring: React.FC = () => {
   const [services, setServices] = useState<ServiceHealth[]>([
     {
       name: '백엔드 API',
-      endpoint: '/api/health',
+      endpoint: '/health',
       status: { status: 'unknown', lastCheck: new Date() }
     },
     {
-      name: '인증 서비스',
-      endpoint: '/api/v1/auth/health',
+      name: '관리자 서비스',
+      endpoint: '/api/v1/admin/health',
       status: { status: 'unknown', lastCheck: new Date() }
     }
   ]);

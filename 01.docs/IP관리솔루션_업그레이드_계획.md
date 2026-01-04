@@ -217,6 +217,11 @@ CREATE TABLE tb_search_results (
 
 ### Phase 2: 선행기술 조사 Agent 개발 (6주)
 *   **5주**: Agent 워크플로우 설계 (입력 → 키워드 → 검색식)
+    *   ✅ **완료 (2026-01-04)**: IPC 권한 관리 백엔드 API 구현
+        - 관리자 IPC 권한 CRUD API 8개 엔드포인트 구현
+        - `/api/v1/admin/ipc-permissions` 라우터 완성
+        - 백엔드 API 테스트 8개 작성 (5개 통과, 3개 수정 필요)
+        - 2단계 권한 체계 확정: 사용자/시스템관리자
 *   **6주**: KIPRIS 검색 연동 및 결과 파싱 모듈 개발
 *   **7주**: 유사도 분석 엔진 (SBERT) 및 X-Y 매트릭스 생성 로직 구현
 *   **8주**: Frontend - IP Copilot 채팅 인터페이스 통합 (모드 전환)
@@ -232,3 +237,56 @@ CREATE TABLE tb_search_results (
 **문의**: 성균관대학교 기술경영대학원 Smart Factory Research Group  
 **작성일**: 2026년 1월 3일  
 **버전**: 2.0 (Focused Plan)
+
+---
+
+## 작업 일지
+
+### 2026-01-04: IPC 권한 관리 백엔드 완료
+
+#### 구현 완료 사항
+
+**1. 백엔드 API 구현**
+- [admin_ipc_permissions.py](../backend/app/api/v1/admin_ipc_permissions.py): 관리자 전용 IPC 권한 관리 라우터
+  - 8개 엔드포인트 구현: 목록조회, 생성, 수정, 삭제, 사용자별조회, 벌크생성, 인증테스트
+  - `require_admin` 의존성 주입으로 시스템 관리자만 접근 가능
+  - 필터링/페이징 지원 (부서코드, 사용자명, 권한명)
+- [ipc_permission_service.py](../backend/app/services/auth/ipc_permission_service.py): IPC 권한 비즈니스 로직 서비스 레이어
+
+**2. 테스트 작성 및 환경 설정**
+- [test_admin_ipc_permissions.py](../backend/tests/api/test_admin_ipc_permissions.py): 8개 테스트 케이스 작성
+  - 테스트 결과 (2026-01-04 09:13):
+    - ✅ **통과 (5/8)**: `test_list_empty`, `test_update_permission`, `test_delete_permission`, `test_get_user_permissions`, `test_bulk_create`
+    - ❌ **실패 (2/8)**: `test_create_success`, `test_create_duplicate_returns_409`
+    - ⚠️ **에러 (1/8)**: `test_unauthorized_access`
+- [conftest.py](../backend/tests/conftest.py): pytest 환경 설정 대규모 리팩토링
+  - Docker 컨테이너 Python path 추가 (`sys.path.insert(0, '/app')`)
+  - DATABASE_URL 비밀번호 마스킹 방지 헬퍼 함수 추가
+  - httpx AsyncClient transport 방식 수정 (0.23+ 호환)
+  - simple 테스트 모드 도입 (개발 DB 직접 사용, 격리 없음)
+
+**3. 버그 수정**
+- TbUser → User import 수정 (6곳)
+- connect_args None → {} 수정
+- pgvector extension 설치 스크립트 추가
+
+#### 다음 작업 (우선순위)
+
+**1. 테스트 수정 및 안정화 (최우선)**
+- [ ] 실패한 3개 테스트 디버깅 및 수정
+  - `test_create_success`: API 응답 스펙 검증
+  - `test_create_duplicate_returns_409`: 중복 처리 로직 확인
+  - `test_unauthorized_access`: 인증 fixture 수정
+- [ ] 전체 테스트 통과 확인
+- [ ] Swagger UI에서 실제 API 동작 검증 (http://localhost:8000/docs)
+
+**2. 프론트엔드 관리자 UI 개발**
+- [ ] `/admin/ipc-permissions` 페이지 구현
+  - IPC 권한 목록 테이블 (필터링/페이징)
+  - 권한 생성/수정/삭제 모달
+  - 사용자별 권한 조회 및 벌크 생성 기능
+- [ ] 백엔드 API와 통합 테스트
+
+**3. 문서화**
+- [ ] API 명세서 작성 (엔드포인트별 request/response)
+- [ ] 관리자 사용자 가이드 작성

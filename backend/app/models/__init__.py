@@ -79,6 +79,7 @@ from .patent import (
     TbPatentCollectionTasks,
     TbIpcCode,
     TbPatentMetadata,
+    TbIpcPermissions,
 )
 
 # 채팅 및 대화 모델
@@ -142,6 +143,7 @@ __all__ = [
     "TbPatentCollectionTasks",
     "TbIpcCode",
     "TbPatentMetadata",
+        "TbIpcPermissions",
     
     # 채팅 및 대화 모델
     "TbChatHistory",

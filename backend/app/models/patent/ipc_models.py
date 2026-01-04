@@ -15,7 +15,10 @@ from sqlalchemy import (
     Text,
     DateTime,
     Index,
+    Boolean,
+    UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.sql import func
 from app.core.database import Base
 
@@ -123,6 +126,12 @@ class TbPatentMetadata(Base):
     
     # 컨테이너 연계
     knowledge_container_id = Column(String(50), nullable=True, comment="지식 컨테이너 ID")
+
+    # IP 포트폴리오(IPC 중심) 확장
+    primary_ipc_section = Column(String(10), nullable=True, comment="IPC 섹션/대분류 (A~H 등)")
+    keywords = Column(ARRAY(Text), nullable=True, comment="키워드 배열 (검색/필터용)")
+    patent_status = Column(String(30), nullable=True, comment="UI용 상태값(등록/공개/거절/소멸 등)")
+    legacy_container_id = Column(String(50), nullable=True, comment="레거시 컨테이너 ID 보존용")
     
     # 시스템 필드
     created_by = Column(String(50), nullable=True, comment="생성자")
@@ -143,4 +152,37 @@ Index('idx_patent_meta_reg_no', TbPatentMetadata.registration_number)
 Index('idx_patent_meta_main_ipc', TbPatentMetadata.main_ipc_code)
 Index('idx_patent_meta_status', TbPatentMetadata.legal_status)
 Index('idx_patent_meta_container', TbPatentMetadata.knowledge_container_id)
+Index('idx_patent_meta_ipc_section', TbPatentMetadata.primary_ipc_section)
+Index('idx_patent_meta_keywords', TbPatentMetadata.keywords, postgresql_using='gin')
+Index('idx_patent_status', TbPatentMetadata.patent_status)
+Index('idx_patent_ipc_status', TbPatentMetadata.primary_ipc_section, TbPatentMetadata.patent_status)
+Index('idx_patent_legacy_container', TbPatentMetadata.legacy_container_id)
 Index('idx_patent_meta_del_yn', TbPatentMetadata.del_yn)
+
+
+class TbIpcPermissions(Base):
+    """IPC 코드 기반 IP 포트폴리오 권한 테이블"""
+
+    __tablename__ = "tb_ipc_permissions"
+    __table_args__ = (
+        UniqueConstraint("user_emp_no", "ipc_code", name="uq_ipc_perm_user_code"),
+        Index("idx_ipc_perm_user", "user_emp_no"),
+        Index("idx_ipc_perm_code", "ipc_code"),
+        Index("idx_ipc_perm_role", "role_id"),
+        Index("idx_ipc_perm_active", "is_active", "valid_until"),
+        Index("idx_ipc_perm_user_active", "user_emp_no", "is_active", "ipc_code"),
+    )
+
+    permission_id = Column(Integer, primary_key=True, autoincrement=True, comment="권한 ID")
+    user_emp_no = Column(String(20), nullable=False, comment="사번 (tb_user.emp_no)")
+    ipc_code = Column(String(20), nullable=False, comment="IPC 코드 (tb_ipc_code.code)")
+    role_id = Column(String(20), nullable=False, comment="권한 레벨 (ADMIN/MANAGER/EDITOR/VIEWER)")
+    access_scope = Column(String(20), nullable=False, default="FULL", comment="권한 범위 (FULL/READ_ONLY/WRITE_ONLY)")
+    include_children = Column(Boolean, nullable=False, default=True, comment="하위 IPC 코드까지 권한 적용 여부")
+    valid_from = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+    valid_until = Column(DateTime(timezone=False), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_date = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+    created_by = Column(String(20), nullable=True)
+    last_modified_date = Column(DateTime(timezone=False), nullable=True)
+    last_modified_by = Column(String(20), nullable=True)

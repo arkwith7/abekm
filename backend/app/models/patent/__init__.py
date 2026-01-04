@@ -20,6 +20,7 @@ from .collection_models import (
 from .ipc_models import (
     TbIpcCode,
     TbPatentMetadata,
+    TbIpcPermissions,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "TbPatentCollectionTasks",
     "TbIpcCode",
     "TbPatentMetadata",
+    "TbIpcPermissions",
 ]

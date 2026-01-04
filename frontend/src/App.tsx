@@ -26,6 +26,7 @@ import LoginPage from './components/LoginPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AIManagement from './pages/admin/AIManagement';
 import AuditLog from './pages/admin/AuditLog';
+import IpcPermissionManagement from './pages/admin/IpcPermissionManagement';
 import KnowledgeBaseManagement from './pages/admin/KnowledgeBaseManagement';
 import SecurityPolicy from './pages/admin/SecurityPolicy';
 import SystemMonitoring from './pages/admin/SystemMonitoring';
@@ -41,6 +42,7 @@ import ChatHistoryPage from './pages/user/chat/ChatHistoryPage';
 import ContainerExplorer from './pages/user/ContainerExplorer';
 import { UserDashboard } from './pages/user/Dashboard';
 import MyKnowledge from './pages/user/MyKnowledge';
+import IPPortfolioPage from './pages/user/ip-portfolio/IPPortfolioPage';
 import PermissionRequestsPage from './pages/user/PermissionRequestsPage';
 import HTMLPresentationViewer from './pages/user/presentation/HTMLPresentationViewer';
 import PresentationAgentChatPage from './pages/user/PresentationAgentChatPage';
@@ -112,7 +114,7 @@ function App() {
                     <Route path="/user" element={<UserLayout />}>
                       <Route index element={<UserDashboard />} />
                       {/* IP 전환 라우트 (alias) */}
-                      <Route path="ip-portfolio" element={<MyKnowledge />} />
+                      <Route path="ip-portfolio" element={<IPPortfolioPage />} />
                       <Route path="ip-copilot" element={<AgentChatPage />} />
                       <Route path="prior-art" element={<PriorArtPage />} />
 
@@ -162,6 +164,7 @@ function App() {
                       <Route path="audit" element={<AuditLog />} />
                       <Route path="knowledge-base" element={<KnowledgeBaseManagement />} />
                       <Route path="ai" element={<AIManagement />} />
+                      <Route path="ipc-permissions" element={<IpcPermissionManagement />} />
                       <Route path="settings" element={<div>시스템 설정 (개발 예정)</div>} />
 
                       {/* 지식 관리 기능 */}

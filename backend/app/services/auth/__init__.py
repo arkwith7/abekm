@@ -18,5 +18,6 @@ __all__ = [
     "permission_service",
     "user_service", 
     "container_service",
-    "permission_request_service"
+    "permission_request_service",
+    "ipc_permission_service",
 ]

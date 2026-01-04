@@ -1,0 +1,24 @@
+ipc_code,ipc_section,ipc_class,ipc_subclass,ipc_group,ipc_subgroup,korean_name,english_name,is_active
+H,H,,,,,"전기","Electricity",true
+H01L,H,01,L,,,"반도체 소자, 전기적 고체 소자","Semiconductor devices; Electric solid-state devices",true
+H01L21/00,H,01,L,21,00,"반도체 또는 고체상태 소자 제조 공정","Processes for manufacture of semiconductors",true
+H01L21/02,H,01,L,21,02,"반도체 재료의 제조 또는 처리","Manufacture or treatment of semiconductor materials",true
+H01L21/67,H,01,L,21,67,"반도체 장치 제조 장비","Apparatus for semiconductor device manufacture",true
+H01L21/677,H,01,L,21,677,"반도체 웨이퍼 이동 장치","Apparatus for conveying wafers",true
+H01L21/683,H,01,L,21,683,"반도체 웨이퍼 처리 챔버","Apparatus for processing wafers",true
+H05H,H,05,H,,,"플라즈마 기술","Plasma technique",true
+H05H1/46,H,05,H,1,46,"플라즈마 발생","Generating plasma",true
+H01J,H,01,J,,,"전자관 또는 방전관","Electric discharge tubes or discharge lamps",true
+H01J37/32,H,01,J,37,32,"플라즈마 에칭","Plasma etching",true
+G,G,,,,,"물리학","Physics",true
+G01N,G,01,N,,,"재료의 화학적 또는 물리적 성질 조사","Investigating chemical or physical properties",true
+G01N21/95,G,01,N,21,95,"반도체 웨이퍼 광학 검사","Optical inspection of semiconductor wafers",true
+G01B,G,01,B,,,"길이, 두께, 각도 측정","Measuring length, thickness, or angles",true
+B,B,,,,,"처리 조작; 운반","Performing operations; Transporting",true
+B24B,B,24,B,,,"연마, 연삭","Grinding, polishing",true
+B24B37/04,B,24,B,37,04,"CMP 장치","Chemical-mechanical polishing machines",true
+B08B,B,08,B,,,"세정 일반","Cleaning in general",true
+C,C,,,,,"화학; 야금","Chemistry; Metallurgy",true
+C23C,C,23,C,,,"금속 재료의 코팅","Coating metallic material",true
+C23C16/00,C,23,C,16,00,"화학 증착 (CVD)","Chemical vapor deposition (CVD)",true
+C23C14/00,C,23,C,14,00,"물리 증착 (PVD)","Physical vapor deposition (PVD)",true

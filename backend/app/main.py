@@ -30,6 +30,9 @@ from app.api.v1.patent import router as patent_router  # 🔬 Patent Intelligenc
 from app.api.v1.patent_collection import router as patent_collection_router  # 📥 특허 수집
 from app.api.v1.endpoints.transcribe import router as transcribe_router  # 🎤 실시간 STT
 from app.api.v1.admin import router as admin_router  # 🔧 시스템 관리자 API
+from app.api.v1.ipc import router as ipc_router  # 🗂️ IPC 코드 관리
+from app.api.v1.admin_ipc_permissions import router as admin_ipc_permissions_router  # 🔐 IPC 권한 관리
+from app.api.v1.ip_portfolio import router as ip_portfolio_router  # 📁 IP 포트폴리오(IPC 중심)
 
 from app.core.config import settings
 
@@ -373,6 +376,15 @@ app.include_router(transcribe_router, prefix="/api/v1/transcribe", tags=["🎤 S
 
 # 🔧 시스템 관리자 API
 app.include_router(admin_router, tags=["🔧 System Admin"])
+
+# 🗂️ IPC 코드 관리 API (관리자 전용)
+app.include_router(ipc_router)
+
+# � IPC 권한 관리 API (시스템 관리자 전용)
+app.include_router(admin_ipc_permissions_router)
+
+# �📁 IP 포트폴리오 API (IPC 중심)
+app.include_router(ip_portfolio_router)
 
 @app.get("/")
 async def root():

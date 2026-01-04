@@ -6,6 +6,7 @@ import {
   Database,
   FileText,
   FolderOpen,
+  Key,
   LogOut,
   Menu,
   Monitor,
@@ -23,6 +24,7 @@ import { useAuth } from '../hooks/useAuth';
 import AdminDashboard from '../pages/admin/AdminDashboard';
 import AIManagement from '../pages/admin/AIManagement';
 import AuditLog from '../pages/admin/AuditLog';
+import IpcPermissionManagement from '../pages/admin/IpcPermissionManagement';
 import KnowledgeBaseManagement from '../pages/admin/KnowledgeBaseManagement';
 import SecurityPolicy from '../pages/admin/SecurityPolicy';
 import SystemMonitoring from '../pages/admin/SystemMonitoring';
@@ -30,6 +32,7 @@ import UserManagement from '../pages/admin/UserManagement';
 import ContainerManagement from '../pages/manager/ContainerManagement';
 
 const adminMenuItems = [
+  // 📊 모니터링 & 대시보드
   {
     name: '시스템 대시보드',
     path: '/admin',
@@ -43,6 +46,22 @@ const adminMenuItems = [
     icon: BarChart3,
     id: 'monitoring'
   },
+  
+  // 👥 사용자 & 권한 관리
+  {
+    name: '사용자 관리',
+    path: '/admin/users',
+    icon: Users,
+    id: 'users'
+  },
+  {
+    name: 'IPC 권한 관리',
+    path: '/admin/ipc-permissions',
+    icon: Key,
+    id: 'ipc-permissions'
+  },
+  
+  // 📁 콘텐츠 관리
   {
     name: '지식컨테이너 관리',
     path: '/admin/containers',
@@ -50,11 +69,21 @@ const adminMenuItems = [
     id: 'containers'
   },
   {
-    name: '사용자 관리',
-    path: '/admin/users',
-    icon: Users,
-    id: 'users'
+    name: '지식베이스 관리',
+    path: '/admin/knowledge-base',
+    icon: Database,
+    id: 'knowledge-base'
   },
+  
+  // 🤖 AI 관리
+  {
+    name: 'AI 사용량 관리',
+    path: '/admin/ai',
+    icon: Brain,
+    id: 'ai'
+  },
+  
+  // 🔒 보안 & 감사
   {
     name: '보안 정책',
     path: '/admin/security',
@@ -66,18 +95,6 @@ const adminMenuItems = [
     path: '/admin/audit',
     icon: FileText,
     id: 'audit'
-  },
-  {
-    name: '지식베이스 관리',
-    path: '/admin/knowledge-base',
-    icon: Database,
-    id: 'knowledge-base'
-  },
-  {
-    name: 'AI 사용량 관리',
-    path: '/admin/ai',
-    icon: Brain,
-    id: 'ai'
   },
 ];
 
@@ -98,6 +115,7 @@ export const AdminLayout: React.FC = () => {
     if (location.pathname.startsWith('/admin/audit')) return 'audit';
     if (location.pathname.startsWith('/admin/knowledge-base')) return 'knowledge-base';
     if (location.pathname.startsWith('/admin/ai')) return 'ai';
+    if (location.pathname.startsWith('/admin/ipc-permissions')) return 'ipc-permissions';
     return 'dashboard';
   });
 
@@ -114,6 +132,7 @@ export const AdminLayout: React.FC = () => {
     else if (location.pathname.startsWith('/admin/audit')) setActiveMenu('audit');
     else if (location.pathname.startsWith('/admin/knowledge-base')) setActiveMenu('knowledge-base');
     else if (location.pathname.startsWith('/admin/ai')) setActiveMenu('ai');
+    else if (location.pathname.startsWith('/admin/ipc-permissions')) setActiveMenu('ipc-permissions');
   }, [location.pathname]);
 
   // 메뉴 클릭 핸들러 - 상태 기반 네비게이션
@@ -342,6 +361,9 @@ export const AdminLayout: React.FC = () => {
           </div>
           <div style={{ display: activeMenu === 'ai' ? 'block' : 'none' }}>
             <AIManagement />
+          </div>
+          <div style={{ display: activeMenu === 'ipc-permissions' ? 'block' : 'none' }}>
+            <IpcPermissionManagement />
           </div>
         </div>
       </div>
