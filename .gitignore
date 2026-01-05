@@ -389,3 +389,6 @@ container_*.md
 document_*.md
 frontend_*.md
 ui_ux_*.md
+
+backend/data/processed/fulltext/*
+backend/data/processed/fulltext_pdfs/*

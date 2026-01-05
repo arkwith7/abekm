@@ -1,0 +1,13 @@
+{
+  "updated_at": "2026-01-01T12:21:58.163703Z",
+  "mode": "paper",
+  "paper_use_broad_search": true,
+  "target_valid": 1500,
+  "rows_per_page": 50,
+  "max_workers": 5,
+  "min_request_interval_sec": 0.35,
+  "checkpoint_path": "/home/arkwith/Dev/paper_data/data/processed/kipris_semiconductor_ai_dataset_paper.checkpoint.jsonl",
+  "dataset_count": 1500,
+  "seen_app_nums_count": 2946,
+  "stop_reason": "Reached TARGET_VALID=1500. Stopping early."
+}
