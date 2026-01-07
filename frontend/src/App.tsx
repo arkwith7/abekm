@@ -46,7 +46,6 @@ import IPPortfolioPage from './pages/user/ip-portfolio/IPPortfolioPage';
 import PermissionRequestsPage from './pages/user/PermissionRequestsPage';
 import HTMLPresentationViewer from './pages/user/presentation/HTMLPresentationViewer';
 import PresentationAgentChatPage from './pages/user/PresentationAgentChatPage';
-import PriorArtPage from './pages/user/PriorArtPage';
 import SearchPage from './pages/user/SearchPage';
 import UserProfilePage from './pages/user/UserProfilePage';
 import UserSettingsPage from './pages/user/UserSettingsPage';
@@ -113,17 +112,16 @@ function App() {
                   <Route element={<ProtectedRoute requiredRole="USER" />}>
                     <Route path="/user" element={<UserLayout />}>
                       <Route index element={<UserDashboard />} />
-                      {/* IP 전환 라우트 (alias) */}
-                      <Route path="ip-portfolio" element={<IPPortfolioPage />} />
-                      <Route path="ip-copilot" element={<AgentChatPage />} />
-                      <Route path="prior-art" element={<PriorArtPage />} />
-
-                      <Route path="search" element={<SearchPage />} />
+                      {/* 지식 관리 라우트 */}
                       <Route path="my-knowledge" element={<MyKnowledge />} />
                       <Route path="explore" element={<ContainerExplorer />} />
-                      {/* ⚠️ "일반 RAG 채팅" 라우트 비활성화 (2025-12-09) */}
-                      {/* AI Agents로 통합되어 더 이상 사용하지 않음 */}
-                      {/* <Route path="chat" element={<ChatPage />} /> */}
+                      <Route path="search" element={<SearchPage />} />
+                      
+                      {/* IP 관리 라우트 */}
+                      <Route path="ip-portfolio" element={<IPPortfolioPage />} />
+                      <Route path="ip-copilot" element={<AgentChatPage />} />
+                      
+                      {/* 기타 라우트 */}
                       <Route path="chat/history" element={<ChatHistoryPage />} />
                       <Route path="agent-chat" element={<AgentChatPage />} />
                       <Route path="agent-chat/presentation" element={<PresentationAgentChatPage />} />

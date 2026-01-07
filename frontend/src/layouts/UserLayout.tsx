@@ -3,11 +3,13 @@ import {
   ChevronDown,
   FileCheck,
   Folder,
+  FolderTree,
   History,
   Home,
   LogOut,
   Menu,
   MessageSquare,
+  Search,
   Settings,
   Shield,
   User,
@@ -49,31 +51,29 @@ const userMenuItems: MenuItem[] = [
     id: 'dashboard'
   },
   {
+    name: '지식 컨테이너',
+    path: '/user/my-knowledge',
+    icon: FolderTree,
+    id: 'my-knowledge'
+  },
+  {
+    name: '지식검색',
+    path: '/user/search',
+    icon: Search,
+    id: 'search'
+  },
+  {
     name: 'IP 포트폴리오',
     path: '/user/ip-portfolio',
     icon: Folder,
-    id: 'my-knowledge'
+    id: 'ip-portfolio'
   },
-  // ⚠️ "일반 RAG 채팅" 메뉴 비활성화 (2025-12-09)
-  // AI Agents로 통합되어 더 이상 사용하지 않음
-  // {
-  //   name: '일반 RAG 채팅',
-  //   path: '/user/chat',
-  //   icon: MessageSquare,
-  //   id: 'chat'
-  // },
   {
     name: 'IP Copilot',
     path: '/user/ip-copilot',
     icon: MessageSquare,
     id: 'agent-chat',
     badge: 'Beta'
-  },
-  {
-    name: '선행기술 조사',
-    path: '/user/prior-art',
-    icon: FileCheck,
-    id: 'prior-art'
   },
   {
     name: '대화 이력',
@@ -95,17 +95,13 @@ export const UserLayout: React.FC = () => {
 
   const activeMenu = useMemo(() => {
     if (location.pathname === '/user') return 'dashboard';
-    if (location.pathname.startsWith('/user/ip-portfolio')) return 'my-knowledge';
     if (location.pathname.startsWith('/user/my-knowledge')) return 'my-knowledge';
-    // 기존 검색 라우트는 IP Copilot(통합)으로 하이라이트 처리
-    if (location.pathname.startsWith('/user/search')) return 'agent-chat';
+    if (location.pathname.startsWith('/user/search')) return 'search';
+    if (location.pathname.startsWith('/user/ip-portfolio')) return 'ip-portfolio';
     if (location.pathname.startsWith('/user/ip-copilot')) return 'agent-chat';
     if (location.pathname === '/user/agent-chat') return 'agent-chat';
     if (location.pathname.startsWith('/user/agent-chat/')) return 'agent-chat-sub';
-    if (location.pathname.startsWith('/user/prior-art')) return 'prior-art';
     if (location.pathname.startsWith('/user/chat/history')) return 'chat-history';
-    // ⚠️ "일반 RAG 채팅" 비활성화 (2025-12-09)
-    // if (location.pathname.startsWith('/user/chat')) return 'chat';
     if (location.pathname.startsWith('/user/profile')) return 'profile';
     if (location.pathname.startsWith('/user/permission-requests')) return 'permission-requests';
     if (location.pathname.startsWith('/user/presentation/html')) return 'presentation-html';
